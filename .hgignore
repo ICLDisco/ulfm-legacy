@@ -523,6 +523,7 @@ syntax: glob
 ./opal/mca/event/libevent2013/Makefile.in
 ./opal/mca/event/libevent2013/libevent/config.h
 ./opal/mca/event/libevent2013/libevent/Makefile.in
+./opal/mca/event/libevent2013/libevent/compile
 ./opal/mca/event/libevent2013/libevent/config.h.in
 ./opal/mca/event/libevent2013/libevent/stamp-h1
 ./opal/mca/event/libevent2013/libevent/libevent_pthreads.pc

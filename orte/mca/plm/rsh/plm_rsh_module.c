@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2007-2011 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2011      IBM Corporation.  All rights reserved.
@@ -296,7 +296,7 @@ static int setup_launch(int *argcptr, char ***argvptr,
     int rc;
     int cnt, i, j;
     bool found;
-    
+
     /* Figure out the basenames for the libdir and bindir.  This
        requires some explanation:
      
@@ -418,11 +418,13 @@ static int setup_launch(int *argcptr, char ***argvptr,
             asprintf (&final_cmd,
                       "%s%s%s PATH=%s/%s:$PATH ; export PATH ; "
                       "LD_LIBRARY_PATH=%s/%s:$LD_LIBRARY_PATH ; export LD_LIBRARY_PATH ; "
+                      "DYLD_LIBRARY_PATH=%s/%s:$DYLD_LIBRARY_PATH ; export DYLD_LIBRARY_PATH ; "
                       "%s %s",
                       (opal_prefix != NULL ? "OPAL_PREFIX=" : " "),
                       (opal_prefix != NULL ? opal_prefix : " "),
                       (opal_prefix != NULL ? " ; export OPAL_PREFIX;" : " "),
                       prefix_dir, bin_base,
+                      prefix_dir, lib_base,
                       prefix_dir, lib_base,
                       (orted_prefix != NULL ? orted_prefix : " "),
                       (full_orted_cmd != NULL ? full_orted_cmd : " "));
@@ -448,11 +450,19 @@ static int setup_launch(int *argcptr, char ***argvptr,
                       "setenv LD_LIBRARY_PATH %s/%s ; "
                       "if ( $?OMPI_have_llp == 1 ) "
                       "setenv LD_LIBRARY_PATH %s/%s:$LD_LIBRARY_PATH ; "
+                      "if ( $?DYLD_LIBRARY_PATH == 1 ) "
+                      "set OMPI_have_dllp ; "
+                      "if ( $?DYLD_LIBRARY_PATH == 0 ) "
+                      "setenv DYLD_LIBRARY_PATH %s/%s ; "
+                      "if ( $?OMPI_have_dllp == 1 ) "
+                      "setenv DYLD_LIBRARY_PATH %s/%s:$DYLD_LIBRARY_PATH ; "
                       "%s %s",
                       (opal_prefix != NULL ? "setenv OPAL_PREFIX " : " "),
                       (opal_prefix != NULL ? opal_prefix : " "),
                       (opal_prefix != NULL ? " ;" : " "),
                       prefix_dir, bin_base,
+                      prefix_dir, lib_base,
+                      prefix_dir, lib_base,
                       prefix_dir, lib_base,
                       prefix_dir, lib_base,
                       (orted_prefix != NULL ? orted_prefix : " "),
@@ -1334,7 +1344,7 @@ static orte_plm_rsh_shell_t find_shell(char *shell)
     ++sh_name;
     for (i = 0; i < (int)(sizeof (orte_plm_rsh_shell_name) /
                           sizeof(orte_plm_rsh_shell_name[0])); ++i) {
-        if (0 == strcmp(sh_name, orte_plm_rsh_shell_name[i])) {
+        if (NULL != strstr(sh_name, orte_plm_rsh_shell_name[i])) {
             return (orte_plm_rsh_shell_t)i;
         }
     }
@@ -1401,7 +1411,7 @@ static int launch_agent_setup(const char *agent, char *path)
 }
 
 /**
- * Check the Shell variable on the specified node
+ * Check the Shell variable and system type on the specified node
  */
 static int rsh_probe(char *nodename, 
                      orte_plm_rsh_shell_t *shell)
@@ -1487,15 +1497,10 @@ static int rsh_probe(char *nodename,
         char *sh_name = rindex(outbuf, '/');
         if( NULL != sh_name ) {
             sh_name++; /* skip '/' */
-            /* We cannot use "echo -n $SHELL" because -n is not portable. Therefore
-             * we have to remove the "\n" */
-            if ( sh_name[strlen(sh_name)-1] == '\n' ) {
-                sh_name[strlen(sh_name)-1] = '\0';
-            }
             /* Search for the substring of known shell-names */
             for (i = 0; i < (int)(sizeof (orte_plm_rsh_shell_name)/
                                   sizeof(orte_plm_rsh_shell_name[0])); i++) {
-                if ( 0 == strcmp(sh_name, orte_plm_rsh_shell_name[i]) ) {
+                if ( NULL != strstr(sh_name, orte_plm_rsh_shell_name[i]) ) {
                     *shell = (orte_plm_rsh_shell_t)i;
                     break;
                 }

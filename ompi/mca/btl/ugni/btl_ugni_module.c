@@ -395,7 +395,7 @@ mca_btl_ugni_prepare_src (struct mca_btl_base_module_t *btl,
             uint32_t iov_count = 1;
             struct iovec iov;
 
-            iov.iov_len = mca_btl_ugni_component.eager_limit - reserve;
+            iov.iov_len = *size;
             iov.iov_base =
                 (IOVBASE_TYPE *)(((uintptr_t)(frag->segments[0].seg_addr.pval)) +
                                  reserve);
@@ -431,7 +431,6 @@ mca_btl_ugni_prepare_src (struct mca_btl_base_module_t *btl,
                                                                   data_ptr, *size, 0,
                                                                   &registration);
                 if (OPAL_UNLIKELY(OMPI_SUCCESS != rc)) {
-                    BTL_ERROR(("btl/ugni error registering source memory"));
                     MCA_BTL_UGNI_FRAG_RETURN(frag);
                     return NULL;
                 }
