@@ -10,7 +10,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -55,6 +55,10 @@ AC_DEFUN([OPAL_SAVE_VERSION], [
         [Complete release number of ]$2)
     AC_DEFINE_UNQUOTED($1[_RELEASE_DATE], ["$]$1[_RELEASE_DATE"],
         [Release date of ]$2)
+    AC_DEFINE_UNQUOTED($1[_WANT_REPO_REV], [$]$1[_WANT_REPO_REV],
+        [Whether we want to include the repository version or not ]$2)
+    AC_DEFINE_UNQUOTED($1[_REPO_REV], ["$]$1[_REPO_REV"],
+        [The repository version ]$2)
 
     AC_CONFIG_FILES([$4])
 ])dnl

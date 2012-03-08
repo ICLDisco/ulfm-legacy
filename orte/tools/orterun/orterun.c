@@ -10,9 +10,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2011 Cisco Systems, Inc. All rights reserved.
+ * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007-2009 Sun Microsystems, Inc. All rights reserved.
- * Copyright (c) 2007-2011 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
  *
@@ -67,7 +67,7 @@
 #include "opal/util/cmd_line.h"
 #include "opal/util/opal_environ.h"
 #include "opal/util/opal_getcwd.h"
-#include "orte/util/show_help.h"
+#include "opal/util/show_help.h"
 #include "opal/sys/atomic.h"
 #if OPAL_ENABLE_FT_CR == 1
 #include "opal/runtime/opal_cr.h"
@@ -84,6 +84,7 @@
 #include "orte/util/pre_condition_transports.h"
 #include "orte/util/session_dir.h"
 #include "orte/util/hnp_contact.h"
+#include "orte/util/show_help.h"
 
 #include "orte/mca/odls/odls.h"
 #include "orte/mca/plm/plm.h"
@@ -462,10 +463,6 @@ static opal_cmd_line_init_t cmd_line_init[] = {
       NULL, OPAL_CMD_LINE_TYPE_BOOL,
       "Enable debugging of OpenRTE" },
 
-    { NULL, NULL, NULL, '\0', "tmpdir", "tmpdir", 1,
-      &orte_process_info.tmpdir_base, OPAL_CMD_LINE_TYPE_STRING,
-      "Set the root for the session directory tree for orterun ONLY" },
-
     { "orte", "do_not", "launch", '\0', "do-not-launch", "do-not-launch", 0,
       NULL, OPAL_CMD_LINE_TYPE_BOOL,
       "Perform all necessary operations to prepare to launch the application, but do not actually launch it" },
@@ -536,7 +533,8 @@ int orterun(int argc, char *argv[])
 {
     int rc;
     opal_cmd_line_t cmd_line;
-    char * tmp_env_var = NULL;
+    char *tmp_env_var = NULL;
+    char *param;
     orte_job_t *daemons;
     int32_t ljob;
     orte_app_context_t *app, *dapp;
@@ -550,8 +548,12 @@ int orterun(int argc, char *argv[])
     init_globals();
     opal_cmd_line_create(&cmd_line, cmd_line_init);
     mca_base_cmd_line_setup(&cmd_line);
-    if (ORTE_SUCCESS != (rc = opal_cmd_line_parse(&cmd_line, true,
+    if (OPAL_SUCCESS != (rc = opal_cmd_line_parse(&cmd_line, true,
                                                   argc, argv)) ) {
+        if (OPAL_ERR_SILENT != rc) {
+            fprintf(stderr, "%s: command line error (%s)\n", argv[0],
+                    opal_strerror(rc));
+        }
         return rc;
     }
 
@@ -578,6 +580,89 @@ int orterun(int argc, char *argv[])
         exit(1);
     }
     
+    /* may look strange, but the way we handle prefix is a little weird
+     * and probably needs to be addressed more fully at some future point.
+     * For now, we have a conflict between app_files and cmd line usage.
+     * Since app_files are used by the C/R system, we will make an
+     * adjustment here to avoid perturbing that system.
+     *
+     * We cannot just have the cmd line parser place any found value
+     * in the global struct as the app_file parser would replace it.
+     * So handle this specific cmd line option manually.
+     */
+    orterun_globals.prefix = NULL;
+    orterun_globals.path_to_mpirun = NULL;
+    if (opal_cmd_line_is_taken(&cmd_line, "prefix") ||
+        '/' == argv[0][0] || want_prefix_by_default) {
+        size_t param_len;
+
+        if ('/' == argv[0][0]) {
+            char* tmp_basename = NULL;
+            /* If they specified an absolute path, strip off the
+               /bin/<exec_name>" and leave just the prefix */
+            orterun_globals.path_to_mpirun = opal_dirname(argv[0]);
+            /* Quick sanity check to ensure we got
+               something/bin/<exec_name> and that the installation
+               tree is at least more or less what we expect it to
+               be */
+            tmp_basename = opal_basename(orterun_globals.path_to_mpirun);
+            if (0 == strcmp("bin", tmp_basename)) {
+                char* tmp = orterun_globals.path_to_mpirun;
+                orterun_globals.path_to_mpirun = opal_dirname(tmp);
+                free(tmp);
+            } else {
+                free(orterun_globals.path_to_mpirun);
+                orterun_globals.path_to_mpirun = NULL;
+            }
+            free(tmp_basename);
+        }
+        /* if both are given, check to see if they match */
+        if (opal_cmd_line_is_taken(&cmd_line, "prefix") && NULL != orterun_globals.path_to_mpirun) {
+            /* if they don't match, then that merits a warning */
+            param = strdup(opal_cmd_line_get_param(&cmd_line, "prefix", 0, 0));
+            if (0 != strcmp(param, orterun_globals.path_to_mpirun)) {
+                orte_show_help("help-orterun.txt", "orterun:double-prefix",
+                               true, orte_basename, param,
+                               orterun_globals.path_to_mpirun, orte_basename);
+                /* use the prefix over the path-to-mpirun so that
+                 * people can specify the backend prefix as different
+                 * from the local one
+                 */
+                free(orterun_globals.path_to_mpirun);
+                orterun_globals.path_to_mpirun = NULL;
+            } else {
+                /* since they match, just use param */
+                free(orterun_globals.path_to_mpirun);
+            }
+        } else if (NULL != orterun_globals.path_to_mpirun) {
+            param = orterun_globals.path_to_mpirun;
+        } else if (opal_cmd_line_is_taken(&cmd_line, "prefix")){
+            /* must be --prefix alone */
+            param = strdup(opal_cmd_line_get_param(&cmd_line, "prefix", 0, 0));
+        } else {
+            /* --enable-orterun-prefix-default was given to orterun */
+            param = strdup(opal_install_dirs.prefix);
+        }
+
+        if (NULL != param) {
+            /* "Parse" the param, aka remove superfluous path_sep. */
+            param_len = strlen(param);
+            while (0 == strcmp (OPAL_PATH_SEP, &(param[param_len-1]))) {
+                param[param_len-1] = '\0';
+                param_len--;
+                if (0 == param_len) {
+                    orte_show_help("help-orterun.txt", "orterun:empty-prefix",
+                                   true, orte_basename, orte_basename);
+                    return ORTE_ERR_FATAL;
+                }
+            }
+
+            orterun_globals.prefix = strdup(param);
+            free(param);
+        }
+        want_prefix_by_default = true;
+    }
+
     /* flag that I am the HNP - needs to be done prior to
      * registering params
      */
@@ -930,24 +1015,27 @@ static int parse_globals(int argc, char* argv[], opal_cmd_line_t *cmd_line)
 {
     /* print version if requested.  Do this before check for help so
        that --version --help works as one might expect. */
-    if (orterun_globals.version && 
-        !(1 == argc || orterun_globals.help)) {
-        char *project_name = NULL;
+    if (orterun_globals.version) {
+        char *str, *project_name = NULL;
         if (0 == strcmp(orte_basename, "mpirun")) {
             project_name = "Open MPI";
         } else {
             project_name = "OpenRTE";
         }
-        orte_show_help("help-orterun.txt", "orterun:version", false,
-                       orte_basename, project_name, OPAL_VERSION,
-                       PACKAGE_BUGREPORT);
-        /* if we were the only argument, exit */
-        if (2 == argc) exit(0);
+        str = opal_show_help_string("help-orterun.txt", "orterun:version", 
+                                    false,
+                                    orte_basename, project_name, OPAL_VERSION,
+                                    PACKAGE_BUGREPORT);
+        if (NULL != str) {
+            printf("%s", str);
+            free(str);
+        }
+        exit(0);
     }
 
     /* Check for help request */
-    if (1 == argc || orterun_globals.help) {
-        char *args = NULL;
+    if (orterun_globals.help) {
+        char *str, *args = NULL;
         char *project_name = NULL;
         if (0 == strcmp(orte_basename, "mpirun")) {
             project_name = "Open MPI";
@@ -955,10 +1043,14 @@ static int parse_globals(int argc, char* argv[], opal_cmd_line_t *cmd_line)
             project_name = "OpenRTE";
         }
         args = opal_cmd_line_get_usage_msg(cmd_line);
-        orte_show_help("help-orterun.txt", "orterun:usage", false,
-                       orte_basename, project_name, OPAL_VERSION,
-                       orte_basename, args,
-                       PACKAGE_BUGREPORT);
+        str = opal_show_help_string("help-orterun.txt", "orterun:usage", false,
+                                    orte_basename, project_name, OPAL_VERSION,
+                                    orte_basename, args,
+                                    PACKAGE_BUGREPORT);
+        if (NULL != str) {
+            printf("%s", str);
+            free(str);
+        }
         free(args);
 
         /* If someone asks for help, that should be all we do */
@@ -1387,7 +1479,8 @@ static int create_app(int argc, char* argv[],
     char *param, *value, *value2;
     orte_app_context_t *app = NULL;
     bool cmd_line_made = false;
-
+    bool found = false;
+    
     *made_app = false;
 
     /* Pre-process the command line if we are going to parse an appfile later.
@@ -1562,81 +1655,68 @@ static int create_app(int argc, char* argv[],
         app->user_specified_cwd = false;
     }
 
-    /* Check to see if the user explicitly wanted to disable automatic
-       --prefix behavior */
-
-    if (opal_cmd_line_is_taken(&cmd_line, "noprefix")) {
-        want_prefix_by_default = false;
-    }
-
-    /* Did the user specify a specific prefix for this app_context_t
-       or provide an absolute path name to argv[0]? */
-    if (opal_cmd_line_is_taken(&cmd_line, "prefix") ||
-        '/' == argv[0][0] || want_prefix_by_default) {
-        size_t param_len;
-        char *path_to_mpirun=NULL;
-
-        if ('/' == argv[0][0]) {
-           char* tmp_basename = NULL;
-            /* If they specified an absolute path, strip off the
-               /bin/<exec_name>" and leave just the prefix */
-            path_to_mpirun = opal_dirname(argv[0]);
-            /* Quick sanity check to ensure we got
-               something/bin/<exec_name> and that the installation
-               tree is at least more or less what we expect it to
-               be */
-            tmp_basename = opal_basename(path_to_mpirun);
-            if (0 == strcmp("bin", tmp_basename)) {
-                char* tmp = path_to_mpirun;
-                path_to_mpirun = opal_dirname(tmp);
-                free(tmp);
-            } else {
-                free(path_to_mpirun);
-                path_to_mpirun = NULL;
-            }
-            free(tmp_basename);
-        }
-        /* if both are given, check to see if they match */
-        if (opal_cmd_line_is_taken(&cmd_line, "prefix") && NULL != path_to_mpirun) {
-            /* if they don't match, then that merits a warning */
-            param = strdup(opal_cmd_line_get_param(&cmd_line, "prefix", 0, 0));
-            if (0 != strcmp(param, path_to_mpirun)) {
-                orte_show_help("help-orterun.txt", "orterun:double-prefix",
-                               true, orte_basename, orte_basename, param, path_to_mpirun);
-                /* let the path-to-mpirun take precedence since we
-                 * know that one is being  used
-                 */
-                free(param);
-                param = path_to_mpirun;
-            } else {
-                /* since they match, just use param */
-                free(path_to_mpirun);
-            }
-        } else if (NULL != path_to_mpirun) {
-            param = path_to_mpirun;
-        } else if (opal_cmd_line_is_taken(&cmd_line, "prefix")){
-            /* must be --prefix alone */
-            param = strdup(opal_cmd_line_get_param(&cmd_line, "prefix", 0, 0));
-        } else {
-            /* --enable-orterun-prefix-default was given to orterun */
-            param = strdup(opal_install_dirs.prefix);
+    /* if this is the first app_context, check for prefix directions.
+     * We only do this for the first app_context because the launchers
+     * only look at the first one when setting the prefix - we do NOT
+     * support per-app_context prefix settings!
+     */
+    if (0 == total_num_apps) {
+        /* Check to see if the user explicitly wanted to disable automatic
+           --prefix behavior */
+        
+        if (opal_cmd_line_is_taken(&cmd_line, "noprefix")) {
+            want_prefix_by_default = false;
         }
 
-        if (NULL != param) {
-            /* "Parse" the param, aka remove superfluous path_sep. */
-            param_len = strlen(param);
-            while (0 == strcmp (OPAL_PATH_SEP, &(param[param_len-1]))) {
-                param[param_len-1] = '\0';
-                param_len--;
-                if (0 == param_len) {
-                    orte_show_help("help-orterun.txt", "orterun:empty-prefix",
-                                   true, orte_basename, orte_basename);
-                    return ORTE_ERR_FATAL;
+        /* Did the user specify a prefix, or want prefix by default? */
+        if (opal_cmd_line_is_taken(&cmd_line, "prefix") || want_prefix_by_default) {
+            size_t param_len;
+            /* if both the prefix was given and we have a prefix
+             * given above, check to see if they match
+             */
+            if (opal_cmd_line_is_taken(&cmd_line, "prefix") &&
+                NULL != orterun_globals.prefix) {
+                /* if they don't match, then that merits a warning */
+                param = strdup(opal_cmd_line_get_param(&cmd_line, "prefix", 0, 0));
+                if (0 != strcmp(param, orterun_globals.prefix)) {
+                    orte_show_help("help-orterun.txt", "orterun:app-prefix-conflict",
+                                   true, orte_basename, orterun_globals.prefix, param);
+                    /* let the global-level prefix take precedence since we
+                     * know that one is being  used
+                     */
+                    free(param);
+                    param = orterun_globals.prefix;
+                } else {
+                    /* since they match, just use param */
+                    free(orterun_globals.prefix);
+                    orterun_globals.prefix = NULL;
                 }
+            } else if (NULL != orterun_globals.prefix) {
+                param = orterun_globals.prefix;
+            } else if (opal_cmd_line_is_taken(&cmd_line, "prefix")){
+                /* must be --prefix alone */
+                param = strdup(opal_cmd_line_get_param(&cmd_line, "prefix", 0, 0));
+            } else {
+                /* --enable-orterun-prefix-default was given to orterun */
+                param = strdup(opal_install_dirs.prefix);
             }
 
-            app->prefix_dir = strdup(param);
-            free(param);
+            if (NULL != param) {
+                /* "Parse" the param, aka remove superfluous path_sep. */
+                param_len = strlen(param);
+                while (0 == strcmp (OPAL_PATH_SEP, &(param[param_len-1]))) {
+                    param[param_len-1] = '\0';
+                    param_len--;
+                    if (0 == param_len) {
+                        orte_show_help("help-orterun.txt", "orterun:empty-prefix",
+                                       true, orte_basename, orte_basename);
+                        return ORTE_ERR_FATAL;
+                    }
+                }
+
+                app->prefix_dir = strdup(param);
+                free(param);
+            }
         }
     }
 
@@ -1711,6 +1791,104 @@ static int create_app(int argc, char* argv[],
         goto cleanup;
     }
 
+    /* if this is a Java application, we have a bit more work to do. Such
+     * applications actually need to be run under the Java virtual machine
+     * and the "java" command will start the "executable". So we need to ensure
+     * that all the proper java-specific paths are provided
+     */
+    if (0 == strcmp(app->app, "java")) {
+        /* see if we were given a library path */
+        found = false;
+        for (i=0; NULL != app->argv[i]; i++) {
+            if (NULL != strstr(app->argv[i], "java.library.path")) {
+                /* yep - but does it include the path to the mpi libs? */
+                found = true;
+                if (NULL == strstr(app->argv[i], opal_install_dirs.libdir)) {
+                    /* doesn't appear to - add it to be safe */
+                    if (':' == app->argv[i][strlen(app->argv[i]-1)]) {
+                        asprintf(&value, "-Djava.library.path=%s%s", app->argv[i], opal_install_dirs.libdir);
+                    } else {
+                        asprintf(&value, "-Djava.library.path=%s:%s", app->argv[i], opal_install_dirs.libdir);
+                    }
+                    free(app->argv[i]);
+                    app->argv[i] = value;
+                }
+            }
+        }
+        if (!found) {
+            /* need to add it right after the java command */
+            asprintf(&value, "-Djava.library.path=%s", opal_install_dirs.libdir);
+            opal_argv_insert_element(&app->argv, 1, value);
+            free(value);
+        }
+        
+        /* see if we were given a class path */
+        found = false;
+        for (i=0; NULL != app->argv[i]; i++) {
+            if (NULL != strstr(app->argv[i], "cp") ||
+                NULL != strstr(app->argv[i], "classpath")) {
+                /* yep - but does it include the path to the mpi libs? */
+                found = true;
+                if (NULL == strstr(app->argv[i+1], "mpi.jar")) {
+                    /* nope - need to add it */
+                    if (':' == app->argv[i+1][strlen(app->argv[i+1]-1)]) {
+                        asprintf(&value, "%s%s/mpi.jar", app->argv[i+1], opal_install_dirs.libdir);
+                    } else {
+                        asprintf(&value, "%s:%s/mpi.jar", app->argv[i+1], opal_install_dirs.libdir);
+                    }
+                    free(app->argv[i+1]);
+                    app->argv[i+1] = value;
+                }
+                break;
+            }
+        }
+        if (!found) {
+            /* check to see if CLASSPATH is in the environment */
+            for (i=0; NULL != environ[i]; i++) {
+                if (0 == strncmp(environ[i], "CLASSPATH", strlen("CLASSPATH"))) {
+                    /* check if mpi.jar is present */
+                    if (NULL != strstr(environ[i], "mpi.jar")) {
+                        /* yes - just add the envar to the argv in the
+                         * right format
+                         */
+                        value = strchr(environ[i], '=');
+                        ++value; /* step over the = */
+                        opal_argv_insert_element(&app->argv, 1, value);
+                        opal_argv_insert_element(&app->argv, 1, "-cp");
+                    } else {
+                        /* need to add it */
+                        value = strchr(environ[i], '=');
+                        ++value; /* step over the = */
+                        if (':' == value[strlen(value-1)]) {
+                            asprintf(&param, "%s%s/mpi.jar", value, opal_install_dirs.libdir);
+                        } else {
+                            asprintf(&param, "%s:%s/mpi.jar", value, opal_install_dirs.libdir);
+                        }
+                        opal_argv_insert_element(&app->argv, 1, param);
+                        opal_argv_insert_element(&app->argv, 1, "-cp");
+                        free(param);
+                    }
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                /* need to add it right after the java command - have
+                 * to include the current directory and trust that
+                 * the user set cwd if necessary
+                 */
+                asprintf(&value, ".:%s/mpi.jar", opal_install_dirs.libdir);
+                opal_argv_insert_element(&app->argv, 1, value);
+                free(value);
+                opal_argv_insert_element(&app->argv, 1, "-cp");
+            }
+        }
+    }
+    if (orterun_globals.verbose) {
+        value = opal_argv_join(app->argv, ' ');
+        free(value);
+    }
+    
     *app_ptr = app;
     app = NULL;
     *made_app = true;
@@ -2272,9 +2450,10 @@ static void orte_debugger_init_before_spawn(orte_job_t *jdata)
                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                 orte_debugger_check_rate);
             ORTE_TIMER_EVENT(orte_debugger_check_rate, 0, attach_debugger);
-        } else {
-            /* create the attachment FIFO and setup readevent */
-            /* create a FIFO name in the session dir */
+        } else if (orte_create_session_dirs) {
+            /* create the attachment FIFO and setup readevent - cannot be
+             * done if no session dirs exist!
+             */
             attach_fifo = opal_os_path(false, orte_process_info.job_session_dir, "debugger_attach_fifo", NULL);
             if ((mkfifo(attach_fifo, FILE_MODE) < 0) && errno != EEXIST) {
                 opal_output(0, "CANNOT CREATE FIFO %s: errno %d", attach_fifo, errno);

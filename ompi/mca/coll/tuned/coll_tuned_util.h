@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2012 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart, 
@@ -30,10 +30,10 @@
 BEGIN_C_DECLS
 
 /* prototypes */
-int ompi_coll_tuned_sendrecv_actual( void* sendbuf, int scount, 
+int ompi_coll_tuned_sendrecv_actual( void* sendbuf, size_t scount, 
                                      ompi_datatype_t* sdatatype,
                                      int dest, int stag,
-                                     void* recvbuf, int rcount, 
+                                     void* recvbuf, size_t rcount, 
                                      ompi_datatype_t* rdatatype,
                                      int source, int rtag,
                                      struct ompi_communicator_t* comm,
@@ -43,9 +43,9 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, int scount,
 /* inline functions */
 
 static inline int
-ompi_coll_tuned_sendrecv( void* sendbuf, int scount, ompi_datatype_t* sdatatype,
+ompi_coll_tuned_sendrecv( void* sendbuf, size_t scount, ompi_datatype_t* sdatatype,
                           int dest, int stag,
-                          void* recvbuf, int rcount, ompi_datatype_t* rdatatype,
+                          void* recvbuf, size_t rcount, ompi_datatype_t* rdatatype,
                           int source, int rtag, 
                           struct ompi_communicator_t* comm,
                           ompi_status_public_t* status, int myid )
@@ -61,10 +61,10 @@ ompi_coll_tuned_sendrecv( void* sendbuf, int scount, ompi_datatype_t* sdatatype,
 }
 
 int 
-ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, int scount, 
+ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, size_t scount, 
                                                 ompi_datatype_t* sdatatype,
                                                 int dest, int stag,
-                                                void* recvbuf, int rcount, 
+                                                void* recvbuf, size_t rcount, 
                                                 ompi_datatype_t* rdatatype,
                                                 int source, int rtag,
                                                 struct ompi_communicator_t* comm,
@@ -74,10 +74,10 @@ ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, int scount,
 /* inline functions */
 
 static inline int 
-ompi_coll_tuned_sendrecv_localcompleted( void* sendbuf, int scount, 
+ompi_coll_tuned_sendrecv_localcompleted( void* sendbuf, size_t scount, 
                                          ompi_datatype_t* sdatatype,
                                          int dest, int stag,
-                                         void* recvbuf, int rcount, 
+                                         void* recvbuf, size_t rcount, 
                                          ompi_datatype_t* rdatatype,
                                          int source, int rtag,
                                          struct ompi_communicator_t* comm,
@@ -98,9 +98,9 @@ ompi_coll_tuned_sendrecv_localcompleted( void* sendbuf, int scount,
 
 /* inline functions */
 static inline int
-ompi_coll_tuned_isendrecv( void* sendbuf, int scount, ompi_datatype_t* sdtype,
+ompi_coll_tuned_isendrecv( void* sendbuf, size_t scount, ompi_datatype_t* sdtype,
                            int dest, int stag, ompi_request_t** sreq,
-                           void* recvbuf, int rcount, ompi_datatype_t* rdtype,
+                           void* recvbuf, size_t rcount, ompi_datatype_t* rdtype,
                            int source, int rtag, ompi_request_t** rreq,
                            struct ompi_communicator_t* comm ) {
    int ret, line;

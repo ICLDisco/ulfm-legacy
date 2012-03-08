@@ -9,7 +9,7 @@ dnl Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2006-2008 Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
 dnl                         reserved. 
@@ -159,6 +159,7 @@ AC_DEFUN([_OPAL_SETUP_LIBLTDL_INTERNAL],[
     CFLAGS_save="$CFLAGS"
     CFLAGS="$OMPI_CFLAGS_BEFORE_PICKY $OPAL_VISIBILITY_CFLAGS"
 
+    # VPATH support will be included by default in CONFIG_SUBDIR
     OMPI_CONFIG_SUBDIR(opal/libltdl, [$ompi_subdir_args], 
                        [HAPPY=1], [HAPPY=0])
     if test "$HAPPY" = "1"; then
@@ -167,12 +168,15 @@ AC_DEFUN([_OPAL_SETUP_LIBLTDL_INTERNAL],[
 
         CPPFLAGS_save="$CPPFLAGS"
         CPPFLAGS="-I."
-        AC_EGREP_HEADER([lt_dladvise_init], [opal/libltdl/ltdl.h],
+        # Must specifically mention $srcdir here for VPATH builds
+        # (this file is in the src tree).
+        AC_EGREP_HEADER([lt_dladvise_init], [$srcdir/opal/libltdl/ltdl.h],
                         [OPAL_HAVE_LTDL_ADVISE=1])
         CPPFLAGS="$CPPFLAGS_save"
 
-        # Arrgh.  This is gross.  But I can't think of any other
-        # way to do it.  :-(
+        # Arrgh.  This is gross.  But I can't think of any other way
+        # to do it.  :-( These files are in the build tree; don't list
+        # $srcdir here.
         flags=`$EGREP ^LIBADD_DL opal/libltdl/Makefile | cut -d= -f2-`
         OMPI_CHECK_LINKER_FLAGS([opal/libltdl/libtool], 
                                 [-export-dynamic $flags])

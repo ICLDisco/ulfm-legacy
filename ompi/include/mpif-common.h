@@ -10,7 +10,7 @@
 !                         University of Stuttgart.  All rights reserved.
 ! Copyright (c) 2004-2005 The Regents of the University of California.
 !                         All rights reserved.
-! Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+! Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
 ! Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
 ! Copyright (c) 2012      Sandia National Laboratories. All rights reserved.
 ! $COPYRIGHT$
@@ -198,7 +198,7 @@
 !
       integer MPI_GROUP_NULL, MPI_COMM_NULL, MPI_DATATYPE_NULL
       integer MPI_REQUEST_NULL, MPI_OP_NULL, MPI_ERRHANDLER_NULL
-      integer MPI_INFO_NULL, MPI_WIN_NULL
+      integer MPI_INFO_NULL, MPI_WIN_NULL, MPI_MESSAGE_NULL
 
       parameter (MPI_GROUP_NULL=0)
       parameter (MPI_COMM_NULL=2)
@@ -208,6 +208,7 @@
       parameter (MPI_ERRHANDLER_NULL=0)
       parameter (MPI_INFO_NULL=0)
       parameter (MPI_WIN_NULL=0)
+      parameter (MPI_MESSAGE_NULL=0)
 !
 !     MPI_Init_thread constants
 !
@@ -399,12 +400,14 @@
       integer MPI_COMM_WORLD, MPI_COMM_SELF
       integer MPI_GROUP_EMPTY
       integer MPI_ERRORS_ARE_FATAL, MPI_ERRORS_RETURN
+      integer MPI_MESSAGE_NO_PROC
 
       parameter (MPI_COMM_WORLD=0)
       parameter (MPI_COMM_SELF=1)
       parameter (MPI_GROUP_EMPTY=1)
       parameter (MPI_ERRORS_ARE_FATAL=1)
       parameter (MPI_ERRORS_RETURN=2)
+      parameter (MPI_MESSAGE_NO_PROC=1)
 
       integer MPI_BYTE, MPI_PACKED, MPI_UB, MPI_LB
       integer MPI_CHARACTER, MPI_LOGICAL

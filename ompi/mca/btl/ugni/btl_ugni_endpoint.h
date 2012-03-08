@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2011      Los Alamos National Security, LLC. All rights
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2011      UT-Battelle, LLC. All rights reserved.
  * $COPYRIGHT$
@@ -15,17 +15,14 @@
 
 #include "btl_ugni.h"
 
-struct mca_btl_ugni_smsg_mbox_t {
+typedef struct mca_btl_ugni_smsg_mbox_t {
     ompi_free_list_item_t super;
-
-    void            *buffer;
     gni_smsg_attr_t  smsg_attrib;
-};
-typedef struct mca_btl_ugni_smsg_mbox_t mca_btl_ugni_smsg_mbox_t;
+} mca_btl_ugni_smsg_mbox_t;
 
 OBJ_CLASS_DECLARATION(mca_btl_ugni_smsg_mbox_t);
 
-struct mca_btl_base_endpoint_t {
+typedef struct mca_btl_base_endpoint_t {
     opal_object_t super;
 
     ompi_common_ugni_endpoint_t *common;
@@ -37,15 +34,13 @@ struct mca_btl_base_endpoint_t {
     mca_btl_ugni_smsg_mbox_t *mailbox;
 
     opal_list_t pending_list;
+    opal_list_t pending_smsg_sends;
+} mca_btl_base_endpoint_t;
 
-    /* true if a frag was received before the connection was complete */
-    bool smsgs_waiting;
-};
-typedef struct mca_btl_base_endpoint_t mca_btl_base_endpoint_t;
+OBJ_CLASS_DECLARATION(mca_btl_base_endpoint_t);
 
 #define MCA_BTL_UGNI_EP_STATE(ep) ((ep)->common->state)
 
-OBJ_CLASS_DECLARATION(mca_btl_base_endpoint_t);
 
 int mca_btl_ugni_ep_connect_progress (mca_btl_base_endpoint_t *ep);
 int mca_btl_ugni_ep_disconnect (mca_btl_base_endpoint_t *ep, bool send_disconnect);
@@ -66,6 +61,7 @@ static inline int mca_btl_ugni_init_ep (mca_btl_base_endpoint_t **ep,
     }
 
     endpoint->btl = btl;
+    endpoint->common->btl_ctx = (void *) endpoint;
 
     *ep = endpoint;
 

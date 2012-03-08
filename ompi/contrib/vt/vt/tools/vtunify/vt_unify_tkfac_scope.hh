@@ -2,7 +2,7 @@
  * VampirTrace
  * http://www.tu-dresden.de/zih/vampirtrace
  *
- * Copyright (c) 2005-2011, ZIH, TU Dresden, Federal Republic of Germany
+ * Copyright (c) 2005-2012, ZIH, TU Dresden, Federal Republic of Germany
  *
  * Copyright (c) 1998-2005, Forschungszentrum Juelich, Juelich Supercomputing
  *                          Centre, Federal Republic of Germany
@@ -60,7 +60,7 @@ TokenFactoryScopeC<T>::create( const void * localDef, uint32_t globalToken )
       else
          global_def.deftoken = globalToken;
 
-      m_globDefs->insert( global_def ).first;
+      m_globDefs->insert( global_def );
    }
 
    // set token translation for process, if necessary

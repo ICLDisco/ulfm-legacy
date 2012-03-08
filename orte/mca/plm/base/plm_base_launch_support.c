@@ -79,7 +79,11 @@ int orte_plm_base_setup_job(orte_job_t *jdata)
     int rc;
     int32_t ljob;
     int i;
-    
+#if OPAL_HAVE_HWLOC
+    orte_node_t *node;
+    hwloc_topology_t t0;
+#endif
+
     OPAL_OUTPUT_VERBOSE((5, orte_plm_globals.output,
                          "%s plm:base:setup_job for job %s",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -123,6 +127,25 @@ int orte_plm_base_setup_job(orte_job_t *jdata)
         ORTE_ERROR_LOG(rc);
         return rc;
     }
+
+#if OPAL_HAVE_HWLOC
+    /* if we are not going to launch, then we need to set any
+     * undefined topologies to match our own so the mapper
+     * can operate
+     */
+    if (orte_do_not_launch) {
+        node = (orte_node_t*)opal_pointer_array_get_item(orte_node_pool, 0);
+        t0 = node->topology;
+        for (i=1; i < orte_node_pool->size; i++) {
+            if (NULL == (node = (orte_node_t*)opal_pointer_array_get_item(orte_node_pool, i))) {
+                continue;
+            }
+            if (NULL == node->topology) {
+                node->topology = t0;
+            }
+        }
+    }
+#endif
 
     /* map the job */
     if (ORTE_SUCCESS != (rc = orte_rmaps.map_job(jdata))) {
@@ -994,6 +1017,7 @@ int orte_plm_base_setup_virtual_machine(orte_job_t *jdata)
     opal_list_t nodes;
     opal_list_item_t *item, *next;
     orte_app_context_t *app;
+    bool one_filter = false;
 
     OPAL_OUTPUT_VERBOSE((5, orte_plm_globals.output,
                          "%s plm:base:setup_vm",
@@ -1022,6 +1046,11 @@ int orte_plm_base_setup_virtual_machine(orte_job_t *jdata)
     }
     map = daemons->map;
     
+    /* zero-out the number of new daemons as we will compute this
+     * each time we are called
+     */
+    map->num_new_daemons = 0;
+
     /* run the allocator on the application job - this allows us to
      * pickup any host or hostfile arguments so we get the full
      * array of nodes in our allocation
@@ -1062,14 +1091,31 @@ int orte_plm_base_setup_virtual_machine(orte_job_t *jdata)
         }
     }
 
+    /* if we didn't get anything, then we are the only node in the
+     * allocation - so there is nothing else to do as no other
+     * daemons are to be launched
+     */
+    if (0 == opal_list_get_size(&nodes)) {
+        OPAL_OUTPUT_VERBOSE((5, orte_plm_globals.output,
+                             "%s plm:base:setup_vm only HNP in allocation",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+        OBJ_DESTRUCT(&nodes);
+        return ORTE_SUCCESS;
+    }
+
     /* is there a default hostfile? */
     if (NULL != orte_default_hostfile) {
         /* yes - filter the node list through the file, marking
          * any nodes not in the file -or- excluded via ^
          */
-        if (ORTE_SUCCESS != (rc = orte_util_filter_hostfile_nodes(&nodes, orte_default_hostfile, false))) {
+        if (ORTE_SUCCESS != (rc = orte_util_filter_hostfile_nodes(&nodes, orte_default_hostfile, false)) &&
+            ORTE_ERR_TAKE_NEXT_OPTION != rc) {
             ORTE_ERROR_LOG(rc);
             return rc;
+        }
+        if (ORTE_SUCCESS == rc) {
+            /* we filtered something */
+            one_filter = true;
         }
     }
  
@@ -1083,10 +1129,13 @@ int orte_plm_base_setup_virtual_machine(orte_job_t *jdata)
             ORTE_ERROR_LOG(rc);
             return rc;
         }
+        if (ORTE_SUCCESS == rc) {
+            /* we filtered something */
+            one_filter = true;
+        }
     }
 
-    if (NULL != orte_default_hostfile ||
-        ORTE_ERR_TAKE_NEXT_OPTION != rc) {
+    if (one_filter) {
         /* at least one filtering option was executed, so
          * remove all nodes that were not mapped
          */
@@ -1102,10 +1151,17 @@ int orte_plm_base_setup_virtual_machine(orte_job_t *jdata)
         }
     }
 
-    /* zero-out the number of new daemons as we will compute this
-     * each time we are called
+    /* if we didn't get anything, then we are the only node in the
+     * allocation - so there is nothing else to do as no other
+     * daemons are to be launched
      */
-    map->num_new_daemons = 0;
+    if (0 == opal_list_get_size(&nodes)) {
+        OPAL_OUTPUT_VERBOSE((5, orte_plm_globals.output,
+                             "%s plm:base:setup_vm only HNP left",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+        OBJ_DESTRUCT(&nodes);
+        return ORTE_SUCCESS;
+    }
 
     /* cycle thru all available nodes and find those that do not already
      * have a daemon on them - no need to include our own as we are
