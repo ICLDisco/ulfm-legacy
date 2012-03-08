@@ -17,7 +17,7 @@
 # 
 # $HEADER$
 #
-AC_DEFUN([MCA_opal_timer_altix_PRIORITY], [30])
+AC_DEFUN([MCA_opal_timer_altix_PRIORITY], [100])
 
 AC_DEFUN([MCA_opal_timer_altix_COMPILE_MODE], [
     AC_MSG_CHECKING([for MCA component $2:$3 compile mode])
@@ -25,6 +25,9 @@ AC_DEFUN([MCA_opal_timer_altix_COMPILE_MODE], [
     AC_MSG_RESULT([$$4])
 ])
 
+AC_DEFUN([MCA_opal_timer_altix_POST_CONFIG],[
+    AS_IF([test "$1" = "1"], [timer_base_include="altix/timer_altix.h"])
+])dnl
 
 # MCA_timer_altix_CONFIG(action-if-can-compile, 
 #                        [action-if-cant-compile])
@@ -73,7 +76,6 @@ AC_DEFUN([MCA_opal_timer_altix_CONFIG],[
           [AC_MSG_ERROR([Altix timer requested but not available.  Aborting.])])
 
     AS_IF([test "$timer_altix_happy" = "yes"], 
-          [timer_base_include="altix/timer_altix.h"
-           $1], 
+          [$1], 
           [$2])
 ])

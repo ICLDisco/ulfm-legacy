@@ -419,8 +419,25 @@ static int hostfile_parse(const char *hostfile, opal_list_t* updates, opal_list_
     orte_util_hostfile_done = false;
     orte_util_hostfile_in = fopen(hostfile, "r");
     if (NULL == orte_util_hostfile_in) {
-        orte_show_help("help-hostfile.txt", "no-hostfile", true, hostfile);
-        rc = ORTE_ERR_NOT_FOUND;
+        if (NULL == orte_default_hostfile ||
+            0 != strcmp(orte_default_hostfile, hostfile)) {
+            /* not the default hostfile, so not finding it
+             * is an error
+             */
+            orte_show_help("help-hostfile.txt", "no-hostfile", true, hostfile);
+            rc = ORTE_ERR_SILENT;
+            goto unlock;
+        }
+        /* if this is the default hostfile and it was given,
+         * then it's an error
+         */
+        if (orte_default_hostfile_given) {
+            orte_show_help("help-hostfile.txt", "no-hostfile", true, hostfile);
+            rc = ORTE_ERR_NOT_FOUND;
+            goto unlock;
+        }
+        /* otherwise, not finding it is okay */
+        rc = ORTE_SUCCESS;
         goto unlock;
     }
 
@@ -556,9 +573,18 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
     OBJ_CONSTRUCT(&exclude, opal_list_t);
     if (ORTE_SUCCESS != (rc = hostfile_parse(hostfile, &newnodes, &exclude, false))) {
         OBJ_DESTRUCT(&newnodes);
+        OBJ_DESTRUCT(&exclude);
         return rc;
     }
     
+    /* if the hostfile was empty, then treat it as a no-op filter */
+    if (0 == opal_list_get_size(&newnodes)) {
+        OBJ_DESTRUCT(&newnodes);
+        OBJ_DESTRUCT(&exclude);
+        /* indicate that the hostfile was empty */
+        return ORTE_ERR_TAKE_NEXT_OPTION;
+    }
+
     /* remove from the list of newnodes those that are in the exclude list
      * since we could have added duplicate names above due to the */
     while (NULL != (item1 = opal_list_remove_first(&exclude))) {

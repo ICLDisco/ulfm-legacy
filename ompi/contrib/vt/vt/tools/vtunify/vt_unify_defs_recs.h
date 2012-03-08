@@ -2,7 +2,7 @@
  * VampirTrace
  * http://www.tu-dresden.de/zih/vampirtrace
  *
- * Copyright (c) 2005-2011, ZIH, TU Dresden, Federal Republic of Germany
+ * Copyright (c) 2005-2012, ZIH, TU Dresden, Federal Republic of Germany
  *
  * Copyright (c) 1998-2005, Forschungszentrum Juelich, Juelich Supercomputing
  *                          Centre, Federal Republic of Germany
@@ -88,6 +88,14 @@ struct DefRec_BaseS
    virtual void unpack( char *& buffer, const VT_MPI_INT & bufferSize,
                         VT_MPI_INT & bufferPos );
 #endif // VT_MPI
+
+   // NOTE: this operator is actually not used but necessary to work around
+   // a build error with the Clang++ compiler
+   // (see http://www.open-mpi.org/community/lists/devel/2012/02/10419.php)
+   bool operator<( const DefRec_BaseS & a ) const
+   {
+      return dtype < a.dtype;
+   }
 
    DefRecTypeT dtype;
    uint32_t    loccpuid;

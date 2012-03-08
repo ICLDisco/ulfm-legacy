@@ -173,6 +173,9 @@ int opal_hwloc_base_get_topology(void)
                          "hwloc:base:get_topology"));
 
     if (0 != hwloc_topology_init(&opal_hwloc_topology) ||
+        0 != hwloc_topology_set_flags(opal_hwloc_topology, 
+                                      (HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM |
+                                       HWLOC_TOPOLOGY_FLAG_WHOLE_IO)) ||
         0 != hwloc_topology_load(opal_hwloc_topology)) {
         return OPAL_ERR_NOT_SUPPORTED;
     }
@@ -223,20 +226,18 @@ void opal_hwloc_base_free_topology(hwloc_topology_t topo)
 void opal_hwloc_base_get_local_cpuset(void)
 {
     hwloc_obj_t root;
+    hwloc_cpuset_t base_cpus;
 
     if (NULL != opal_hwloc_topology) {
         if (NULL == opal_hwloc_my_cpuset) {
             opal_hwloc_my_cpuset = hwloc_bitmap_alloc();
         }
         /* get the cpus we are bound to */
-        hwloc_get_cpubind(opal_hwloc_topology, opal_hwloc_my_cpuset, HWLOC_CPUBIND_PROCESS);
-        /* if the cpuset is empty, then we are not bound */
-        if (hwloc_bitmap_iszero(opal_hwloc_my_cpuset)) {
-            OPAL_OUTPUT_VERBOSE((5, opal_hwloc_base_output,
-                                 "hwloc:base:get_local_cpuset MY LOCAL CPUSET WAS ZERO - NOT BOUND"));
-            /* just insert the cpuset for the root object as we are unbound */
+        if (0 > hwloc_get_cpubind(opal_hwloc_topology, opal_hwloc_my_cpuset, HWLOC_CPUBIND_PROCESS)) {
+            /* we are not bound - use the root's available cpuset */
             root = hwloc_get_root_obj(opal_hwloc_topology);
-            hwloc_bitmap_copy(opal_hwloc_my_cpuset, root->cpuset);
+            base_cpus = opal_hwloc_base_get_available_cpus(opal_hwloc_topology, root);
+            hwloc_bitmap_copy(opal_hwloc_my_cpuset, base_cpus);
         }
     }
 }
@@ -340,6 +341,34 @@ static void df_search_cores(hwloc_obj_t obj, unsigned int *cnt)
         df_search_cores(obj->children[k], cnt);
     }
     return;
+}
+
+/* determine if there is a single cpu in a bitmap */
+bool opal_hwloc_base_single_cpu(hwloc_cpuset_t cpuset)
+{
+    int i;
+    bool one=false;
+
+    /* count the number of bits that are set - there is
+     * one bit for each available pu. We could just
+     * subtract the first and last indices, but there
+     * may be "holes" in the bitmap corresponding to
+     * offline or unallowed cpus - so we have to
+     * search for them. Return false if we anything
+     * other than one
+     */
+    for (i=hwloc_bitmap_first(cpuset);
+         i <= hwloc_bitmap_last(cpuset);
+         i++) {
+        if (hwloc_bitmap_isset(cpuset, i)) {
+            if (one) {
+                return false;
+            }
+            one = true;
+        }
+    }
+
+    return one;
 }
 
 /* get the number of pu's under a given hwloc object */
@@ -760,7 +789,7 @@ static int socket_core_to_cpu_set(char *socket_core_list,
                                   hwloc_bitmap_t cpumask)
 {
     int rc=OPAL_SUCCESS, i;
-    char **socket_core;
+    char **socket_core, *corestr;
     char **range;
     int range_cnt;
     int lower_range, upper_range;
@@ -781,7 +810,7 @@ static int socket_core_to_cpu_set(char *socket_core_list,
     }
 
     /* as described in comment near top of file, hwloc isn't able
-     * to fiind cores on all platforms. Adjust the type here if
+     * to find cores on all platforms. Adjust the type here if
      * required
      */
     if (NULL == hwloc_get_obj_by_type(topo, HWLOC_OBJ_CORE, 0)) {
@@ -791,20 +820,42 @@ static int socket_core_to_cpu_set(char *socket_core_list,
     for (i=0; NULL != socket_core[i]; i++) {
         if ('C' == socket_core[i][0] ||
             'c' == socket_core[i][0]) {
-            if ('*' == socket_core[i][1]) {
-                /* set to all available logical cpus on this socket */
-                res = opal_hwloc_base_get_available_cpus(topo, socket);
+            corestr = &socket_core[i][1];
+        } else {
+            corestr = socket_core[i];
+        }
+        if ('*' == corestr[0]) {
+            /* set to all available logical cpus on this socket */
+            res = opal_hwloc_base_get_available_cpus(topo, socket);
+            hwloc_bitmap_copy(cpumask, res);
+            /* we are done - already assigned all cores! */
+            rc = OPAL_SUCCESS;
+            break;
+        } else {
+            range = opal_argv_split(corestr, '-');
+            range_cnt = opal_argv_count(range);
+            /* see if a range was set or not */
+            switch (range_cnt) {
+            case 1:  /* only one core specified */
+                core_id = atoi(range[0]);
+                /* get that object */
+                idx = 0;
+                if (NULL == (core = df_search(socket, obj_type, 0,
+                                              core_id, OPAL_HWLOC_AVAILABLE,
+                                              &idx, NULL))) {
+                    return OPAL_ERR_NOT_FOUND;
+                }
+                /* get the cpus */
+                res = opal_hwloc_base_get_available_cpus(topo, core);
                 hwloc_bitmap_copy(cpumask, res);
-                /* we are done - already assigned all cores! */
-                rc = OPAL_SUCCESS;
                 break;
-            } else {
-                range = opal_argv_split(&socket_core[i][1], '-');  /* strip the 'C' */
-                range_cnt = opal_argv_count(range);
-                /* see if a range was set or not */
-                switch (range_cnt) {
-                case 1:  /* only one core specified */
-                    core_id = atoi(range[0]);
+                
+            case 2:  /* range of core id's was given */
+                lower_range = atoi(range[0]);
+                upper_range = atoi(range[1]);
+                hwloc_bitmap_zero(cpumask);
+                avail = hwloc_bitmap_alloc();
+                for (core_id=lower_range; core_id <= upper_range; core_id++) {
                     /* get that object */
                     idx = 0;
                     if (NULL == (core = df_search(socket, obj_type, 0,
@@ -814,42 +865,19 @@ static int socket_core_to_cpu_set(char *socket_core_list,
                     }
                     /* get the cpus */
                     res = opal_hwloc_base_get_available_cpus(topo, core);
-                    hwloc_bitmap_copy(cpumask, res);
-                    break;
-                    
-                case 2:  /* range of core id's was given */
-                    lower_range = atoi(range[0]);
-                    upper_range = atoi(range[1]);
-                    hwloc_bitmap_zero(cpumask);
-                    avail = hwloc_bitmap_alloc();
-                    for (core_id=lower_range; core_id <= upper_range; core_id++) {
-                        /* get that object */
-                        idx = 0;
-                        if (NULL == (core = df_search(socket, obj_type, 0,
-                                                      core_id, OPAL_HWLOC_AVAILABLE,
-                                                      &idx, NULL))) {
-                            return OPAL_ERR_NOT_FOUND;
-                        }
-                        /* get the cpus */
-                        res = opal_hwloc_base_get_available_cpus(topo, core);
-                        /* add them into the result */
-                        hwloc_bitmap_or(avail, cpumask, res);
-                        hwloc_bitmap_copy(cpumask, avail);
-                    }
-                    hwloc_bitmap_free(avail);
-                    break;
-                    
-                default:
-                    opal_argv_free(range);
-                    opal_argv_free(socket_core);
-                    return OPAL_ERROR;
+                    /* add them into the result */
+                    hwloc_bitmap_or(avail, cpumask, res);
+                    hwloc_bitmap_copy(cpumask, avail);
                 }
+                hwloc_bitmap_free(avail);
+                break;
+                
+            default:
                 opal_argv_free(range);
+                opal_argv_free(socket_core);
+                return OPAL_ERROR;
             }
-        } else {
-            /* we don't support other levels yet */
-            rc = OPAL_ERR_NOT_SUPPORTED;
-            break;
+            opal_argv_free(range);
         }
     }
     opal_argv_free(socket_core);
@@ -863,7 +891,12 @@ int opal_hwloc_base_slot_list_parse(const char *slot_str,
 {
     char **item;
     int rc, i;
-    
+    hwloc_obj_t pu;
+    hwloc_cpuset_t pucpus;
+    char **range;
+    size_t range_cnt;
+    int core_id, lower_range, upper_range;
+
     /* bozo checks */
     if (NULL == opal_hwloc_topology) {
         return OPAL_ERR_NOT_SUPPORTED;
@@ -883,8 +916,13 @@ int opal_hwloc_base_slot_list_parse(const char *slot_str,
     hwloc_bitmap_zero(cpumask);
     /* loop across the items and accumulate the mask */
     for (i=0; NULL != item[i]; i++) {
+        /* if they specified "socket" by starting with an S/s,
+         * or if they use socket:core notation, then parse the
+         * socket/core info
+         */
         if ('S' == item[i][0] ||
-            's' == item[i][0]) {
+            's' == item[i][0] ||
+            NULL != strchr(item[i], ':')) {
             /* specified a socket */
             if (NULL == strchr(item[i], ':')) {
                 /* binding just to the socket level, though
@@ -897,16 +935,65 @@ int opal_hwloc_base_slot_list_parse(const char *slot_str,
                 }
             } else {
                 /* binding to a socket/whatever specification */
-                if (OPAL_SUCCESS != (rc = socket_core_to_cpu_set(&item[i][1],  /* skip the 'S' */
-                                                                 topo, cpumask))) {
-                    opal_argv_free(item);
-                    return rc;
+                if ('S' == item[i][0] ||
+                    's' == item[i][0]) {
+                    if (OPAL_SUCCESS != (rc = socket_core_to_cpu_set(&item[i][1],  /* skip the 'S' */
+                                                                     topo, cpumask))) {
+                        opal_argv_free(item);
+                        return rc;
+                    }
+                } else {
+                    if (OPAL_SUCCESS != (rc = socket_core_to_cpu_set(item[i],
+                                                                     topo, cpumask))) {
+                        opal_argv_free(item);
+                        return rc;
+                    }
                 }
             }
         } else {
-            /* we don't support other things yet */
-            opal_argv_free(item);
-            return OPAL_ERR_NOT_SUPPORTED;
+            /* just a core specification - see if one or a range was given */
+            range = opal_argv_split(item[i], '-');
+            range_cnt = opal_argv_count(range);
+            hwloc_bitmap_zero(cpumask);
+            /* see if a range was set or not */
+            switch (range_cnt) {
+            case 1:  /* only one core specified */
+                core_id = atoi(range[0]);
+                /* find the specified logical available cpu */
+                if (NULL == (pu = get_pu(topo, core_id))) {
+                    opal_argv_free(range);
+                    opal_argv_free(item);
+                    return OPAL_ERROR;
+                }
+                /* get the available cpus for that object */
+                pucpus = opal_hwloc_base_get_available_cpus(topo, pu);
+                 /* set that in the mask */
+                hwloc_bitmap_copy(cpumask, pucpus);
+                break;
+                    
+            case 2:  /* range of core id's was given */
+                lower_range = atoi(range[0]);
+                upper_range = atoi(range[1]);
+                hwloc_bitmap_zero(cpumask);
+                for (core_id=lower_range; core_id <= upper_range; core_id++) {
+                    /* find the specified logical available cpu */
+                    if (NULL == (pu = get_pu(topo, core_id))) {
+                        opal_argv_free(range);
+                        opal_argv_free(item);
+                        return OPAL_ERROR;
+                    }
+                    /* get the available cpus for that object */
+                    pucpus = opal_hwloc_base_get_available_cpus(topo, pu);
+                    /* set that in the mask */
+                    hwloc_bitmap_or(cpumask, cpumask, pucpus);
+                }
+                break;
+                
+            default:
+                opal_argv_free(range);
+                opal_argv_free(item);
+                return OPAL_ERROR;
+            }
         }
     }
     opal_argv_free(item);
@@ -1362,6 +1449,17 @@ char* opal_hwloc_base_print_locality(opal_paffinity_locality_t locality)
     }
     if (0 < idx) {
         ptr->buffers[ptr->cntr][idx-1] = '\0';
+    } else if (OPAL_PROC_NON_LOCAL & locality) {
+        ptr->buffers[ptr->cntr][idx++] = 'N';
+        ptr->buffers[ptr->cntr][idx++] = 'O';
+        ptr->buffers[ptr->cntr][idx++] = 'N';
+        ptr->buffers[ptr->cntr][idx++] = '\0';
+    } else {
+        /* must be an unknown locality */
+        ptr->buffers[ptr->cntr][idx++] = 'U';
+        ptr->buffers[ptr->cntr][idx++] = 'N';
+        ptr->buffers[ptr->cntr][idx++] = 'K';
+        ptr->buffers[ptr->cntr][idx++] = '\0';
     }
     return ptr->buffers[ptr->cntr];
 }

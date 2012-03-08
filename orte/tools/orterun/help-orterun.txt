@@ -11,6 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2007-2010 Cisco Systems, Inc. All rights reserved.
+# Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -159,7 +160,19 @@ given:
 
 Only one should be specified to avoid potential version
 confusion. Operation will continue, but the -prefix option will be
-ignored.
+used. This is done to allow you to select a different prefix for
+the backend computation nodes than used on the frontend for %s.
+#
+[orterun:app-prefix-conflict]
+Both a prefix or absolute path was given for %s, and a different
+prefix provided for the first app_context:
+
+  Mpirun prefix: %s
+  App prefix:    %s
+
+Only one should be specified to avoid potential version
+confusion. Operation will continue, but the applicaton's prefix
+option will be ignored.
 #
 [orterun:empty-prefix]
 A prefix was supplied to %s that only contained slashes.  
@@ -576,6 +589,7 @@ Please check your boundaries and try again.
 [orterun:proc-comm-failed]
 A critical communication path was lost to:
 
+  My name:      %s
   Process name: %s
   Node:         %s
 #

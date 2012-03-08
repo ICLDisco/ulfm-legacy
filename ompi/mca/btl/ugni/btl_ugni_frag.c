@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2011      Los Alamos National Security, LLC. All rights
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2011      UT-Battelle, LLC. All rights reserved.
  * $COPYRIGHT$
@@ -13,19 +13,15 @@
 #include "btl_ugni.h"
 #include "btl_ugni_frag.h"
 
-static inline void mca_btl_ugni_frag_constructor (mca_btl_ugni_base_frag_t *frag)
+static inline void mca_btl_ugni_smsg_frag_constructor (mca_btl_ugni_base_frag_t *frag)
 {
     /* send memory does not need to be registered so we do not need a mpool */
     memset ((char *) frag + sizeof (frag->base), 0, sizeof (*frag) - sizeof (frag->base));
-    frag->hdr = (mca_btl_ugni_frag_hdr_t *) calloc (1, sizeof (mca_btl_ugni_frag_hdr_t) + mca_btl_ugni_component.eager_limit);
-    frag->segments[0].seg_addr.pval = (void *) (frag->hdr + 1);
+    frag->segments[0].seg_addr.pval = frag->base.super.ptr;
 }
 
 static inline void mca_btl_ugni_frag_destructor (mca_btl_ugni_base_frag_t *frag)
 {
-    if (NULL != frag->hdr) {
-        free (frag->hdr);
-    }
 }
 
 static inline void mca_btl_ugni_rdma_frag_constructor (mca_btl_ugni_base_frag_t *frag)
@@ -34,8 +30,21 @@ static inline void mca_btl_ugni_rdma_frag_constructor (mca_btl_ugni_base_frag_t 
     memset ((char *) frag + sizeof (frag->base), 0, sizeof (*frag) - sizeof (frag->base));
 }
 
-OBJ_CLASS_INSTANCE(mca_btl_ugni_base_frag_t, mca_btl_base_descriptor_t,
-                   mca_btl_ugni_frag_constructor, mca_btl_ugni_frag_destructor);
+static inline void mca_btl_ugni_eager_frag_constructor (mca_btl_ugni_base_frag_t *frag)
+{
+    struct mca_btl_ugni_reg_t *reg =
+        (struct mca_btl_ugni_reg_t *) frag->base.super.registration;
+
+    memset ((char *) frag + sizeof (frag->base), 0, sizeof (*frag) - sizeof (frag->base));
+    frag->segments[0].seg_addr.pval = frag->base.super.ptr;
+    memmove (frag->segments[0].seg_key.key64, &reg->memory_hdl, sizeof (reg->memory_hdl));
+}
+
+OBJ_CLASS_INSTANCE(mca_btl_ugni_smsg_frag_t, mca_btl_base_descriptor_t,
+                   mca_btl_ugni_smsg_frag_constructor, mca_btl_ugni_frag_destructor);
 
 OBJ_CLASS_INSTANCE(mca_btl_ugni_rdma_frag_t, mca_btl_base_descriptor_t,
-                   mca_btl_ugni_rdma_frag_constructor, NULL);
+                   mca_btl_ugni_rdma_frag_constructor, mca_btl_ugni_frag_destructor);
+
+OBJ_CLASS_INSTANCE(mca_btl_ugni_eager_frag_t, mca_btl_base_descriptor_t,
+                   mca_btl_ugni_eager_frag_constructor, mca_btl_ugni_frag_destructor);

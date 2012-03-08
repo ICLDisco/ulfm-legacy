@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -198,6 +198,7 @@ PN(void, mpi_get_address, MPI_GET_ADDRESS, (char *location, MPI_Aint *address, M
 PN(void, mpi_get_count, MPI_GET_COUNT, (MPI_Fint *status, MPI_Fint *datatype, MPI_Fint *count, MPI_Fint *ierr));
 PN(void, mpi_get_elements, MPI_GET_ELEMENTS, (MPI_Fint *status, MPI_Fint *datatype, MPI_Fint *count, MPI_Fint *ierr));
 PN(void, mpi_get, MPI_GET, (char *origin_addr, MPI_Fint *origin_count, MPI_Fint *origin_datatype, MPI_Fint *target_rank, MPI_Aint *target_disp, MPI_Fint *target_count, MPI_Fint *target_datatype, MPI_Fint *win, MPI_Fint *ierr));
+PN(void, mpi_get_library_version, MPI_GET_LIBRARY_VERSION, (char *version, MPI_Fint *resultlen, MPI_Fint *ierr, MPI_Fint version_len));
 PN(void, mpi_get_processor_name, MPI_GET_PROCESSOR_NAME, (char *name, MPI_Fint *resultlen, MPI_Fint *ierr, int name_len));
 PN(void, mpi_get_version, MPI_GET_VERSION, (MPI_Fint *version, MPI_Fint *subversion, MPI_Fint *ierr));
 PN(void, mpi_graph_create, MPI_GRAPH_CREATE, (MPI_Fint *comm_old, MPI_Fint *nnodes, MPI_Fint *index, MPI_Fint *edges, ompi_fortran_logical_t *reorder, MPI_Fint *comm_graph, MPI_Fint *ierr));
@@ -221,6 +222,10 @@ PN(void, mpi_group_size, MPI_GROUP_SIZE, (MPI_Fint *group, MPI_Fint *size, MPI_F
 PN(void, mpi_group_translate_ranks, MPI_GROUP_TRANSLATE_RANKS, (MPI_Fint *group1, MPI_Fint *n, MPI_Fint *ranks1, MPI_Fint *group2, MPI_Fint *ranks2, MPI_Fint *ierr));
 PN(void, mpi_group_union, MPI_GROUP_UNION, (MPI_Fint *group1, MPI_Fint *group2, MPI_Fint *newgroup, MPI_Fint *ierr));
 PN(void, mpi_ibsend, MPI_IBSEND, (char *buf, MPI_Fint *count, MPI_Fint *datatype, MPI_Fint *dest, MPI_Fint *tag, MPI_Fint *comm, MPI_Fint *request, MPI_Fint *ierr));
+PN(void, mpi_improbe, MPI_IMPROBE, (MPI_Fint *source, MPI_Fint *tag, MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *message, MPI_Fint *status, MPI_Fint *ierr));
+
+PN(void, mpi_imrecv, MPI_IMRECV, (char *buf, MPI_Fint *count, MPI_Fint *datatype, MPI_Fint *message, MPI_Fint *request, MPI_Fint *ierr));
+
 PN(void, mpi_info_create, MPI_INFO_CREATE, (MPI_Fint *info, MPI_Fint *ierr));
 PN(void, mpi_info_delete, MPI_INFO_DELETE, (MPI_Fint *info, char *key, MPI_Fint *ierr, int key_len));
 PN(void, mpi_info_dup, MPI_INFO_DUP, (MPI_Fint *info, MPI_Fint *newinfo, MPI_Fint *ierr));
@@ -244,6 +249,8 @@ PN(void, mpi_is_thread_main, MPI_IS_THREAD_MAIN, (ompi_fortran_logical_t *flag, 
 PN(void, mpi_keyval_create, MPI_KEYVAL_CREATE, (ompi_mpi1_fortran_copy_attr_function* copy_fn, ompi_mpi1_fortran_delete_attr_function* delete_fn, MPI_Fint *keyval, MPI_Fint *extra_state, MPI_Fint *ierr));
 PN(void, mpi_keyval_free, MPI_KEYVAL_FREE, (MPI_Fint *keyval, MPI_Fint *ierr));
 PN(void, mpi_lookup_name, MPI_LOOKUP_NAME, (char *service_name, MPI_Fint *info, char *port_name, MPI_Fint *ierr, int service_name_len, int port_name_len));
+PN(void, mpi_mprobe, MPI_MPROBE, (MPI_Fint *source, MPI_Fint *tag, MPI_Fint *comm, MPI_Fint *message, MPI_Fint *status, MPI_Fint *ierr));
+PN(void, mpi_mrecv, MPI_MRECV, (char *buf, MPI_Fint *count, MPI_Fint *datatype, MPI_Fint *message, MPI_Fint *status, MPI_Fint *ierr));
 PN(void, mpi_op_commutative, MPI_OP_COMMUTATIVE, (MPI_Fint *op, MPI_Fint *commute, MPI_Fint *ierr));
 PN(void, mpi_op_create, MPI_OP_CREATE, (ompi_op_fortran_handler_fn_t* function, ompi_fortran_logical_t *commute, MPI_Fint *op, MPI_Fint *ierr));
 PN(void, mpi_open_port, MPI_OPEN_PORT, (MPI_Fint *info, char *port_name, MPI_Fint *ierr, int port_name_len));
