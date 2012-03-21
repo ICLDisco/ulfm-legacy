@@ -104,9 +104,16 @@ mca_btl_ugni_module_init (mca_btl_ugni_module_t *ugni_module,
     memmove (ugni_module, &mca_btl_ugni_module, sizeof (mca_btl_ugni_module));
 
     OBJ_CONSTRUCT(&ugni_module->failed_frags, opal_list_t);
+    OBJ_CONSTRUCT(&ugni_module->eager_frags_send, ompi_free_list_t);
+    OBJ_CONSTRUCT(&ugni_module->eager_frags_recv, ompi_free_list_t);
+    OBJ_CONSTRUCT(&ugni_module->smsg_frags, ompi_free_list_t);
+    OBJ_CONSTRUCT(&ugni_module->rdma_frags, ompi_free_list_t);
+    OBJ_CONSTRUCT(&ugni_module->rdma_int_frags, ompi_free_list_t);
+    OBJ_CONSTRUCT(&ugni_module->pending_smsg_frags, opal_hash_table_t);
 
     ugni_module->device = dev;
     ugni_module->endpoints = NULL;
+    dev->btl_ctx = (void *) ugni_module;
 
     /* create wildcard endpoint to listen for connections.
      * there is no need to bind this endpoint. */
@@ -138,6 +145,8 @@ mca_btl_ugni_module_init (mca_btl_ugni_module_t *ugni_module,
         return ompi_common_rc_ugni_to_ompi (rc);
     }
 
+    ugni_module->next_frag_id = 0;
+
     return OMPI_SUCCESS;
 }
 
@@ -150,6 +159,10 @@ mca_btl_ugni_module_finalize (struct mca_btl_base_module_t *btl)
 
     OBJ_DESTRUCT(&ugni_module->eager_frags_send);
     OBJ_DESTRUCT(&ugni_module->eager_frags_recv);
+    OBJ_DESTRUCT(&ugni_module->smsg_frags);
+    OBJ_DESTRUCT(&ugni_module->rdma_frags);
+    OBJ_DESTRUCT(&ugni_module->rdma_int_frags);
+    OBJ_DESTRUCT(&ugni_module->pending_smsg_frags);
 
     /* close all open connections and release endpoints */
     if (NULL != ugni_module->endpoints) {
@@ -227,7 +240,6 @@ mca_btl_ugni_alloc(struct mca_btl_base_module_t *btl,
         frag->base.des_src_cnt = 1;
         frag->base.des_dst = frag->segments;
         frag->base.des_dst_cnt = 1;
-        frag->endpoint = endpoint;
 
         frag->segments[0].seg_len = size;
     }
@@ -252,7 +264,6 @@ mca_btl_ugni_prepare_src (struct mca_btl_base_module_t *btl,
                           uint8_t order, size_t reserve, size_t *size,
                           uint32_t flags)
 {
-    mca_btl_ugni_module_t *ugni_module = (mca_btl_ugni_module_t *) btl;
     mca_btl_ugni_base_frag_t *frag = NULL;
     void *data_ptr;
     int rc;
@@ -292,12 +303,9 @@ mca_btl_ugni_prepare_src (struct mca_btl_base_module_t *btl,
                 mca_btl_ugni_frag_return (frag);
                 return NULL;
             }
-
-            frag->segments[0].seg_len = reserve + *size;
         } else {
             memmove ((void *)((uintptr_t)frag->segments[0].seg_addr.pval + reserve),
                      data_ptr, *size);
-            frag->segments[0].seg_len = reserve + *size;
         }
     } else {
         (void) MCA_BTL_UGNI_FRAG_ALLOC_RDMA(endpoint, frag);
@@ -320,7 +328,7 @@ mca_btl_ugni_prepare_src (struct mca_btl_base_module_t *btl,
                     return NULL;
                 }
 
-                frag->registration = (mca_btl_ugni_reg_t*)registration;
+                frag->registration = (mca_btl_ugni_reg_t *) registration;
             }
 
             memcpy ((void *) frag->segments[0].seg_key.key64,
@@ -331,9 +339,10 @@ mca_btl_ugni_prepare_src (struct mca_btl_base_module_t *btl,
                     sizeof (frag->segments[0].seg_key.key64));
         }
 
-        frag->segments[0].seg_len       = *size;
         frag->segments[0].seg_addr.pval = data_ptr;
     }
+
+    frag->segments[0].seg_len = reserve + *size;
 
     frag->base.des_src     = frag->segments;
     frag->base.des_src_cnt = 1;
@@ -350,7 +359,6 @@ mca_btl_ugni_prepare_dst (mca_btl_base_module_t *btl,
                           opal_convertor_t *convertor, uint8_t order,
                           size_t reserve, size_t *size, uint32_t flags)
 {
-    mca_btl_ugni_module_t *ugni_module = (mca_btl_ugni_module_t *) btl;
     mca_btl_ugni_base_frag_t *frag;
     void *data_ptr;
     int rc;

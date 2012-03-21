@@ -61,7 +61,7 @@ VTThrdMutex* VTThrdMutexCudart = NULL;
  * @param _bytes the number of bytes to be transfered
  * @param _call the function call of the CUDA Runtime API function
  */
-#define CUDA_SEND_RECV(_ptid, _kind, _bytes, _call){                                  \
+#define CUDA_SEND_RECV(_ptid, _kind, _bytes, _call){                           \
   uint64_t time = 0;                                                           \
   uint8_t do_traceE = 0; /* is call limit reached */                           \
   VTCUDADevice* vtDev = NULL;                                                  \
@@ -92,13 +92,13 @@ VTThrdMutex* VTThrdMutexCudart = NULL;
   }                                                                            \
   if(do_traceE){                                                               \
     if(_kind == cudaMemcpyHostToDevice){                                       \
-      vt_mpi_rma_put(_ptid, &time, strmID * 65536 + vt_my_trace,               \
+      vt_mpi_rma_put(_ptid, &time, VT_GPU_RANK_ID(strmID),                     \
                      vt_gpu_commCID, 0, (uint64_t)_bytes);                     \
     }else if(_kind == cudaMemcpyDeviceToHost){                                 \
-      vt_mpi_rma_get(_ptid, &time, strmID * 65536 + vt_my_trace,               \
+      vt_mpi_rma_get(_ptid, &time, VT_GPU_RANK_ID(strmID),                     \
                      vt_gpu_commCID, 0, (uint64_t)_bytes);                     \
     }else if(_kind == cudaMemcpyDeviceToDevice && syncLevel > 2){              \
-      vt_mpi_rma_get(strmID, &time, strmID * 65536 + vt_my_trace,              \
+      vt_mpi_rma_get(strmID, &time, VT_GPU_RANK_ID(strmID),                    \
                      vt_gpu_commCID, 0, (uint64_t)_bytes);                     \
     }                                                                          \
   }                                                                            \
@@ -142,7 +142,7 @@ VTThrdMutex* VTThrdMutexCudart = NULL;
 \
   if(do_traceE){\
     vt_mpi_rma_get(vtSrcDev->strmList->tid, &time, \
-                   vtDstDev->strmList->tid * 65536 + vt_my_trace,\
+                   VT_GPU_RANK_ID(vtDstDev->strmList->tid),\
                    vt_gpu_commCID, 0, _bytes);\
   }\
 \
@@ -274,13 +274,13 @@ VTThrdMutex* VTThrdMutexCudart = NULL;
     VT_CUDART_CALL(cudaThreadSynchronize_ptr(),"vtcudaSync() failed!");      \
     if(syncLevel > 1){time = vt_pform_wtime(); vt_exit(ptid, &time);}        \
     if(_kind == cudaMemcpyHostToDevice){                                     \
-      vt_mpi_rma_put(ptid, &time, strmID * 65536 + vt_my_trace,              \
+      vt_mpi_rma_put(ptid, &time, VT_GPU_RANK_ID(strmID),                    \
                      vt_gpu_commCID, 0, _bytes);                             \
     }else if(_kind == cudaMemcpyDeviceToHost){                               \
-      vt_mpi_rma_get(ptid, &time, strmID * 65536 + vt_my_trace,              \
+      vt_mpi_rma_get(ptid, &time, VT_GPU_RANK_ID(strmID),                    \
                      vt_gpu_commCID, 0, _bytes);                             \
     }else if(_kind == cudaMemcpyDeviceToDevice && syncLevel > 2){            \
-      vt_mpi_rma_get(strmID, &time, strmID * 65536 + vt_my_trace,            \
+      vt_mpi_rma_get(strmID, &time, VT_GPU_RANK_ID(strmID),                  \
                      vt_gpu_commCID, 0, _bytes);                             \
       CUDARTWRAP_LOCK();                                                     \
       vt_gpu_prop[strmID] |= VTGPU_GPU_COMM;                                 \
@@ -344,8 +344,10 @@ static uint8_t trace_gpumem = 0;
 /* flag: trace NVIDIA CUPTI events/counters */
 static uint8_t trace_cupti_events = 0;
 
+#if defined(VT_CUPTI_EVENTS)
 /* flag: sampling for CUPTI counter values enabled? */
 static uint8_t cupti_event_sampling = 0;
+#endif
 
 /* flag: event based tracing (kernels, memcpyAsync) enabled? */
 static uint8_t trace_events = 1;
@@ -1192,13 +1194,13 @@ static void VTCUDAflush(VTCUDADevice *vtDev, uint32_t ptid)
         }*/
         
         if(mcpy->kind == cudaMemcpyHostToDevice){
-          vt_mpi_rma_get(tid, &strttime, mcpy->pid * 65536 + vt_my_trace,
+          vt_mpi_rma_get(tid, &strttime, VT_GPU_RANK_ID(mcpy->pid),
                           vt_gpu_commCID, 0, mcpy->byteCount);
         }else if(mcpy->kind == cudaMemcpyDeviceToHost){
-          vt_mpi_rma_put(tid, &strttime, mcpy->pid * 65536 + vt_my_trace,
+          vt_mpi_rma_put(tid, &strttime, VT_GPU_RANK_ID(mcpy->pid),
                           vt_gpu_commCID, 0, mcpy->byteCount);
         }else if(mcpy->kind == cudaMemcpyDeviceToDevice){
-          vt_mpi_rma_get(tid, &strttime, tid * 65536 + vt_my_trace,
+          vt_mpi_rma_get(tid, &strttime, VT_GPU_RANK_ID(tid),
                           vt_gpu_commCID, 0, mcpy->byteCount);
        }
 

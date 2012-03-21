@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -59,10 +60,17 @@ int MPI_Testany(int count, MPI_Request requests[], int *indx, int *completed, MP
                 }
             }
         }
-        if ((NULL == indx) || (NULL == completed) || (0 > count)) {
+        if (((NULL == indx || NULL == completed) && count > 0) ||
+            count < 0) {
             rc = MPI_ERR_ARG;
         }
         OMPI_ERRHANDLER_CHECK(rc, MPI_COMM_WORLD, rc, FUNC_NAME);
+    }
+
+    if (OPAL_UNLIKELY(0 == count)) {
+        *completed = true;
+        *indx = MPI_UNDEFINED;
+        return MPI_SUCCESS;
     }
 
     OPAL_CR_ENTER_LIBRARY();
