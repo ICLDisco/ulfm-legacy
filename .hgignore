@@ -520,7 +520,6 @@ syntax: glob
 ./opal/mca/carto/auto_detect/Makefile.in
 ./opal/mca/carto/file/Makefile.in
 ./opal/mca/carto/file/carto_file_lex.c
-./opal/mca/common/Makefile.in
 ./opal/mca/compress/Makefile.in
 ./opal/mca/compress/bzip/Makefile.in
 ./opal/mca/compress/gzip/Makefile.in
