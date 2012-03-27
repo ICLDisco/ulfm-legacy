@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2010      Sandia National Laboratories.  All rights reserved.
+ * Copyright (c) 2010-2012 Sandia National Laboratories.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,7 +29,6 @@
 
 #include "mtl_portals4.h"
 #include "mtl_portals4_endpoint.h"
-#include "mtl_portals4_request.h"
 #include "mtl_portals4_recv_short.h"
 
 extern mca_mtl_base_component_2_0_0_t mca_mtl_portals4_component;
@@ -45,14 +44,16 @@ mca_mtl_portals4_module_t ompi_mtl_portals4 = {
         ompi_mtl_portals4_del_procs,
         ompi_mtl_portals4_finalize,
 
-        NULL, /* send */
+        ompi_mtl_portals4_send,
         ompi_mtl_portals4_isend,
         ompi_mtl_portals4_irecv,
         ompi_mtl_portals4_iprobe,
+        ompi_mtl_portals4_imrecv,
+        ompi_mtl_portals4_improbe,
 
         ompi_mtl_portals4_cancel,
-        NULL,       /* add_comm */
-        NULL        /* del_comm */
+        ompi_mtl_portals4_add_comm,
+        ompi_mtl_portals4_del_comm
     }
 };
 
@@ -63,13 +64,17 @@ ompi_mtl_portals4_add_procs(struct mca_mtl_base_module_t *mtl,
                             struct ompi_proc_t** procs, 
                             struct mca_mtl_base_endpoint_t **mtl_peer_data)
 {
-    int ret;
+    int ret, me;
     size_t i;
 
     /* Get the list of ptl_process_id_t from the runtime and copy into structure */
     for (i = 0 ; i < nprocs ; ++i) {
         ptl_process_t *id;
         size_t size;
+
+        if( procs[i] == ompi_proc_local_proc ) {
+            me = i;
+        }
 
         if (procs[i]->proc_arch != ompi_proc_local()->proc_arch) {
             opal_output_verbose(1, ompi_mtl_base_output,
@@ -102,9 +107,19 @@ ompi_mtl_portals4_add_procs(struct mca_mtl_base_module_t *mtl,
                                 __FILE__, __LINE__, ret);
             return OMPI_ERR_BAD_PARAM;
         }
-
+ 
         mtl_peer_data[i]->ptl_proc = *id;
     }
+
+#if OMPI_MTL_PORTALS4_FLOW_CONTROL
+    ret = ompi_mtl_portals4_flowctl_add_procs(me, nprocs, mtl_peer_data);
+    if (OMPI_SUCCESS != ret) {
+        opal_output_verbose(1, ompi_mtl_base_output,
+                            "%s:%d: flowctl_add_procs failed: %d\n",
+                            __FILE__, __LINE__, ret);
+        return ret;
+    }
+#endif
 
     return OMPI_SUCCESS;
 }
@@ -134,85 +149,34 @@ ompi_mtl_portals4_finalize(struct mca_mtl_base_module_t *mtl)
     opal_progress_unregister(ompi_mtl_portals4_progress);
     while (0 != ompi_mtl_portals4_progress()) { }
 
-    ompi_mtl_portals4_recv_short_fini(&ompi_mtl_portals4);
+#if OMPI_MTL_PORTALS4_FLOW_CONTROL
+    ompi_mtl_portals4_flowctl_fini();
+#endif
+    ompi_mtl_portals4_recv_short_fini();
 
     PtlMEUnlink(ompi_mtl_portals4.long_overflow_me_h);
     PtlMDRelease(ompi_mtl_portals4.zero_md_h);
     PtlPTFree(ompi_mtl_portals4.ni_h, ompi_mtl_portals4.read_idx);
     PtlPTFree(ompi_mtl_portals4.ni_h, ompi_mtl_portals4.send_idx);
-    PtlEQFree(ompi_mtl_portals4.eq_h);
+    PtlEQFree(ompi_mtl_portals4.send_eq_h);
+    PtlEQFree(ompi_mtl_portals4.recv_eq_h);
     PtlNIFini(ompi_mtl_portals4.ni_h);
     PtlFini();
 
     return OMPI_SUCCESS;
 }
 
+
 int
-ompi_mtl_portals4_cancel(struct mca_mtl_base_module_t* mtl,
-                         mca_mtl_request_t *mtl_request,
-                         int flag)
+ompi_mtl_portals4_add_comm(struct mca_mtl_base_module_t *mtl,
+                           struct ompi_communicator_t *comm)
 {
     return OMPI_SUCCESS;
 }
 
-
 int
-ompi_mtl_portals4_progress(void)
+ompi_mtl_portals4_del_comm(struct mca_mtl_base_module_t *mtl,
+                           struct ompi_communicator_t *comm)
 {
-    int count = 0, ret;
-    ptl_event_t ev;
-    ompi_mtl_portals4_base_request_t *ptl_request;
-
-    while (true) {
-	ret = PtlEQGet(ompi_mtl_portals4.eq_h, &ev);
-        if (PTL_OK == ret) {
-            OPAL_OUTPUT_VERBOSE((60, ompi_mtl_base_output,
-                                 "Found event of type %d\n", ev.type));
-            switch (ev.type) {
-            case PTL_EVENT_GET:
-            case PTL_EVENT_PUT:
-            case PTL_EVENT_PUT_OVERFLOW:
-            case PTL_EVENT_ATOMIC:
-            case PTL_EVENT_ATOMIC_OVERFLOW:
-            case PTL_EVENT_REPLY:
-            case PTL_EVENT_SEND:
-            case PTL_EVENT_ACK:
-            case PTL_EVENT_AUTO_FREE:
-            case PTL_EVENT_SEARCH:
-                if (NULL != ev.user_ptr) {
-                    ptl_request = ev.user_ptr;
-                    ret = ptl_request->event_callback(&ev, ptl_request);
-                    if (OMPI_SUCCESS != ret) {
-                        opal_output(ompi_mtl_base_output,
-                                    "Error returned from target event callback: %d", ret);
-                        abort();
-                    }
-                }
-                break;
-            case PTL_EVENT_PT_DISABLED:
-                /* BWB: FIX ME: do stuff - flow control */
-                opal_output(ompi_mtl_base_output, "Unhandled send flow control event.");
-                abort();
-                break;
-            case PTL_EVENT_AUTO_UNLINK:
-                opal_output_verbose(1, ompi_mtl_base_output,
-                                    "Unexpected auto unlink event");
-                break;
-            case PTL_EVENT_LINK:
-            case PTL_EVENT_GET_OVERFLOW:
-            case PTL_EVENT_FETCH_ATOMIC:
-            case PTL_EVENT_FETCH_ATOMIC_OVERFLOW:
-                opal_output_verbose(1, ompi_mtl_base_output,
-                                    "Unexpected event of type %d", ev.type);
-            }
-        } else if (PTL_EQ_EMPTY == ret) {
-            break;
-        } else {
-            opal_output(ompi_mtl_base_output,
-                        "Error returned from PtlEQGet: %d", ret);
-            abort();
-        }
-    }
-
-    return count;
+    return OMPI_SUCCESS;
 }

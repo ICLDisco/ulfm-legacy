@@ -527,6 +527,7 @@ syntax: glob
 ./opal/mca/crs/opal_crs.7
 ./opal/mca/crs/base/Makefile.in
 ./opal/mca/crs/blcr/Makefile.in
+./opal/mca/crs/dmtcp/Makefile.in
 ./opal/mca/crs/none/Makefile.in
 ./opal/mca/crs/self/Makefile.in
 ./opal/mca/event/Makefile.in

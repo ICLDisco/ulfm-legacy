@@ -10,7 +10,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2010      Sandia National Laboratories.  All rights reserved.
+# Copyright (c) 2010-2012 Sandia National Laboratories.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -34,15 +34,24 @@ endif
 
 local_sources = \
 	mtl_portals4.c \
+	mtl_portals4.h \
+	mtl_portals4_cancel.c \
 	mtl_portals4_component.c \
 	mtl_portals4_endpoint.h \
-	mtl_portals4.h \
+	mtl_portals4_message.c \
+	mtl_portals4_message.h \
 	mtl_portals4_probe.c \
 	mtl_portals4_recv.c \
 	mtl_portals4_recv_short.c \
 	mtl_portals4_recv_short.h \
 	mtl_portals4_request.h \
 	mtl_portals4_send.c
+
+if OMPI_MTL_PORTALS4_FLOW_CONTROL
+local_sources += \
+	mtl_portals4_flowctl.h \
+	mtl_portals4_flowctl.c
+endif
 
 mcacomponentdir = $(pkglibdir)
 mcacomponent_LTLIBRARIES = $(component_install)

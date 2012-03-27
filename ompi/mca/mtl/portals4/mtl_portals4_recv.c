@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2010      Sandia National Laboratories.  All rights reserved.
+ * Copyright (c) 2010-2012 Sandia National Laboratories.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,14 +26,16 @@
 #include "opal/datatype/opal_convertor.h"
 #include "ompi/mca/mtl/base/base.h"
 #include "ompi/mca/mtl/base/mtl_base_datatype.h"
+#include "ompi/message/message.h"
 
 #include "mtl_portals4.h"
 #include "mtl_portals4_endpoint.h"
 #include "mtl_portals4_request.h"
 #include "mtl_portals4_recv_short.h"
+#include "mtl_portals4_message.h"
 
 /* called when a receive should be progressed */
-int
+static int
 ompi_mtl_portals4_recv_progress(ptl_event_t *ev,
                                 ompi_mtl_portals4_base_request_t* ptl_base_request)
 {
@@ -41,6 +43,10 @@ ompi_mtl_portals4_recv_progress(ptl_event_t *ev,
     ompi_mtl_portals4_recv_request_t* ptl_request = 
         (ompi_mtl_portals4_recv_request_t*) ptl_base_request;
     size_t msg_length = 0;
+
+    /* as soon as we've seen any event associated with a request, it's
+       started */
+    ptl_request->req_started = true;
 
     switch (ev->type) {
     case PTL_EVENT_PUT:
@@ -53,6 +59,8 @@ ompi_mtl_portals4_recv_progress(ptl_event_t *ev,
                                 __FILE__, __LINE__, ev->ni_fail_type);
             goto callback_error;
         }
+
+        ptl_request->me_h = PTL_INVALID_HANDLE;
 
         msg_length = MTL_PORTALS4_GET_LENGTH(ev->hdr_data);
         ptl_request->super.super.ompi_req->req_status.MPI_SOURCE =
@@ -76,7 +84,7 @@ ompi_mtl_portals4_recv_progress(ptl_event_t *ev,
             md.length = ((msg_length > ptl_request->delivery_len) ?
                          ptl_request->delivery_len : msg_length) - ompi_mtl_portals4.eager_limit;
             md.options = 0;
-            md.eq_handle = ompi_mtl_portals4.eq_h;
+            md.eq_handle = ompi_mtl_portals4.recv_eq_h;
             md.ct_handle = PTL_CT_NONE;
 
             ret = PtlMDBind(ompi_mtl_portals4.ni_h,
@@ -177,6 +185,8 @@ ompi_mtl_portals4_recv_progress(ptl_event_t *ev,
             goto callback_error;
         }
 
+        ptl_request->me_h = PTL_INVALID_HANDLE;
+
         msg_length = MTL_PORTALS4_GET_LENGTH(ev->hdr_data);
         ptl_request->super.super.ompi_req->req_status.MPI_SOURCE =
             MTL_PORTALS4_GET_SOURCE(ev->match_bits);
@@ -253,7 +263,7 @@ ompi_mtl_portals4_recv_progress(ptl_event_t *ev,
             md.length = ((msg_length > ptl_request->delivery_len) ?
                          ptl_request->delivery_len : msg_length) - ev->mlength;
             md.options = 0;
-            md.eq_handle = ompi_mtl_portals4.eq_h;
+            md.eq_handle = ompi_mtl_portals4.recv_eq_h;
             md.ct_handle = PTL_CT_NONE;
 
             ret = PtlMDBind(ompi_mtl_portals4.ni_h,
@@ -287,6 +297,9 @@ ompi_mtl_portals4_recv_progress(ptl_event_t *ev,
             }
         }
 
+        break;
+
+    case PTL_EVENT_LINK:
         break;
 
     default:
@@ -342,15 +355,17 @@ ompi_mtl_portals4_irecv(struct mca_mtl_base_module_t* mtl,
         return ret;
     }
 
+    ptl_request->super.type = portals4_req_recv;
+    ptl_request->super.event_callback = ompi_mtl_portals4_recv_progress;
 #if OPAL_ENABLE_DEBUG
     ptl_request->opcount = ++ompi_mtl_portals4.recv_opcount;
     ptl_request->hdr_data = 0;
 #endif
-    ptl_request->super.event_callback = ompi_mtl_portals4_recv_progress;
     ptl_request->buffer_ptr = (free_after) ? start : NULL;
     ptl_request->convertor = convertor;
     ptl_request->delivery_ptr = start;
     ptl_request->delivery_len = length;
+    ptl_request->req_started = false;
     ptl_request->super.super.ompi_req->req_status.MPI_ERROR = OMPI_SUCCESS;
 
     OPAL_OUTPUT_VERBOSE((50, ompi_mtl_base_output,
@@ -367,8 +382,10 @@ ompi_mtl_portals4_irecv(struct mca_mtl_base_module_t* mtl,
     me.options = 
         PTL_ME_OP_PUT | 
         PTL_ME_USE_ONCE | 
-        PTL_ME_EVENT_LINK_DISABLE | /* BWB: FIX ME */
         PTL_ME_EVENT_UNLINK_DISABLE;
+    if (length <= ompi_mtl_portals4.eager_limit) {
+        me.options |= PTL_ME_EVENT_LINK_DISABLE;
+    }
     me.match_id = remote_proc;
     me.match_bits = match_bits;
     me.ignore_bits = ignore_bits;
@@ -387,5 +404,56 @@ ompi_mtl_portals4_irecv(struct mca_mtl_base_module_t* mtl,
         return ompi_mtl_portals4_get_error(ret);
     }
 
+    /* if a long message, spin until we either have a comm event or a
+       link event, guaranteeing progress for long unexpected
+       messages. */
+    if (length > ompi_mtl_portals4.eager_limit) {
+        while (true != ptl_request->req_started) {
+            ompi_mtl_portals4_progress();
+            opal_atomic_rmb();
+        }
+    }
+
     return OMPI_SUCCESS; 
+}
+
+
+int
+ompi_mtl_portals4_imrecv(struct mca_mtl_base_module_t* mtl,
+                         struct opal_convertor_t *convertor,
+                         struct ompi_message_t **message,
+                         struct mca_mtl_request_t *mtl_request)
+{
+    ompi_mtl_portals4_recv_request_t *ptl_request = 
+        (ompi_mtl_portals4_recv_request_t*) mtl_request;
+    void *start;
+    size_t length;
+    bool free_after;
+    int ret;
+    ompi_mtl_portals4_message_t *ptl_message = 
+        (ompi_mtl_portals4_message_t*) (*message)->req_ptr;
+
+    ret = ompi_mtl_datatype_recv_buf(convertor, &start, &length, &free_after);
+    if (OMPI_SUCCESS != ret) {
+        return ret;
+    }
+
+#if OPAL_ENABLE_DEBUG
+    ptl_request->opcount = ++ompi_mtl_portals4.recv_opcount;
+    ptl_request->hdr_data = 0;
+#endif
+    ptl_request->super.type = portals4_req_recv;
+    ptl_request->super.event_callback = ompi_mtl_portals4_recv_progress;
+    ptl_request->buffer_ptr = (free_after) ? start : NULL;
+    ptl_request->convertor = convertor;
+    ptl_request->delivery_ptr = start;
+    ptl_request->delivery_len = length;
+    ptl_request->super.super.ompi_req->req_status.MPI_ERROR = OMPI_SUCCESS;
+
+    OPAL_OUTPUT_VERBOSE((50, ompi_mtl_base_output,
+                         "Mrecv %d of length %d (0x%lx)\n",
+                         ptl_request->opcount,
+                         (int)length, (unsigned long) ptl_request));
+
+    return ompi_mtl_portals4_recv_progress(&(ptl_message->ev), &ptl_request->super);
 }

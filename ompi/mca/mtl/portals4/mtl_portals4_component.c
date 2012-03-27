@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2010      Sandia National Laboratories.  All rights reserved.
+ * Copyright (c) 2010-2012 Sandia National Laboratories.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,13 +27,14 @@
 #include "mtl_portals4.h"
 #include "mtl_portals4_request.h"
 #include "mtl_portals4_recv_short.h"
-
+#include "mtl_portals4_message.h"
 
 static int ompi_mtl_portals4_component_open(void);
 static int ompi_mtl_portals4_component_close(void);
 static mca_mtl_base_module_t* 
 ompi_mtl_portals4_component_init(bool enable_progress_threads, 
                                  bool enable_mpi_threads);
+
 
 OMPI_MODULE_DECLSPEC extern mca_mtl_base_component_2_0_0_t mca_mtl_portals4_component;
 
@@ -86,7 +87,8 @@ ompi_mtl_portals4_component_open(void)
                            false,
                            false,
                            32,
-                           &ompi_mtl_portals4.recv_short_num);
+                           &tmp);
+    ompi_mtl_portals4.recv_short_num = tmp;
 
     mca_base_param_reg_int(&mca_mtl_portals4_component.mtl_version,
                            "short_recv_size",
@@ -98,15 +100,16 @@ ompi_mtl_portals4_component_open(void)
     ompi_mtl_portals4.recv_short_size = tmp;
 
     mca_base_param_reg_int(&mca_mtl_portals4_component.mtl_version,
-                           "queue_size",
+                           "event_queue_size",
                            "Size of the event queue in entries",
                            false,
                            false,
                            1024,
-                           &ompi_mtl_portals4.queue_size);
+                           &tmp);
+    ompi_mtl_portals4.queue_size = tmp;
 
     mca_base_param_reg_string(&mca_mtl_portals4_component.mtl_version,
-                              "long_proto",
+                              "long_protocol",
                               "Protocol to use for long messages.  Valid entries are eager and rndv",
                               false,
                               false,
@@ -123,9 +126,11 @@ ompi_mtl_portals4_component_open(void)
     }
 
     opal_output_verbose(1, ompi_mtl_base_output,
-                        "Eager limit: %d", (int) ompi_mtl_portals4.eager_limit);
+                        "Eager limit: %d", (int) 
+                        ompi_mtl_portals4.eager_limit);
     opal_output_verbose(1, ompi_mtl_base_output, 
-                        "Short receive blocks: %d", ompi_mtl_portals4.recv_short_num);
+                        "Short receive blocks: %d", 
+                        ompi_mtl_portals4.recv_short_num);
     opal_output_verbose(1, ompi_mtl_base_output, 
                         "Queue size: %d", ompi_mtl_portals4.queue_size);
     opal_output_verbose(1, ompi_mtl_base_output, 
@@ -134,8 +139,16 @@ ompi_mtl_portals4_component_open(void)
                         (ompi_mtl_portals4.protocol == rndv) ? "Rendezvous" :
                          "Other");
 
+    OBJ_CONSTRUCT(&ompi_mtl_portals4.fl_message, opal_free_list_t);
+    opal_free_list_init(&ompi_mtl_portals4.fl_message,
+                        sizeof(ompi_mtl_portals4_message_t) + 
+                        ompi_mtl_portals4.eager_limit,
+                        OBJ_CLASS(ompi_mtl_portals4_message_t),
+                        1, -1, 1);
+
     ompi_mtl_portals4.ni_h = PTL_INVALID_HANDLE;
-    ompi_mtl_portals4.eq_h = PTL_INVALID_HANDLE;
+    ompi_mtl_portals4.send_eq_h = PTL_INVALID_HANDLE;
+    ompi_mtl_portals4.recv_eq_h = PTL_INVALID_HANDLE;
     ompi_mtl_portals4.zero_md_h = PTL_INVALID_HANDLE;
     ompi_mtl_portals4.long_overflow_me_h = PTL_INVALID_HANDLE;
     ompi_mtl_portals4.send_idx = (ptl_pt_index_t) ~0UL;
@@ -148,6 +161,8 @@ ompi_mtl_portals4_component_open(void)
 static int
 ompi_mtl_portals4_component_close(void)
 {
+    OBJ_DESTRUCT(&ompi_mtl_portals4.fl_message);
+
     return OMPI_SUCCESS;
 }
 
@@ -208,7 +223,16 @@ ompi_mtl_portals4_component_init(bool enable_progress_threads,
     /* create event queue */
     ret = PtlEQAlloc(ompi_mtl_portals4.ni_h,
                      ompi_mtl_portals4.queue_size,
-                     &ompi_mtl_portals4.eq_h);
+                     &ompi_mtl_portals4.send_eq_h);
+    if (PTL_OK != ret) {
+        opal_output_verbose(1, ompi_mtl_base_output,
+                            "%s:%d: PtlEQAlloc failed: %d\n",
+                            __FILE__, __LINE__, ret);
+        goto error;
+    }
+    ret = PtlEQAlloc(ompi_mtl_portals4.ni_h,
+                     ompi_mtl_portals4.queue_size,
+                     &ompi_mtl_portals4.recv_eq_h);
     if (PTL_OK != ret) {
         opal_output_verbose(1, ompi_mtl_base_output,
                             "%s:%d: PtlEQAlloc failed: %d\n",
@@ -218,8 +242,14 @@ ompi_mtl_portals4_component_init(bool enable_progress_threads,
 
     /* Create portal table entries */
     ret = PtlPTAlloc(ompi_mtl_portals4.ni_h,
-                     PTL_PT_ONLY_USE_ONCE | PTL_PT_FLOWCTRL,
-                     ompi_mtl_portals4.eq_h,
+                     PTL_PT_ONLY_USE_ONCE | 
+                     PTL_PT_ONLY_TRUNCATE | 
+#if OMPI_MTL_PORTALS4_FLOW_CONTROL
+                     PTL_PT_FLOWCTRL,
+#else
+                     0,
+#endif
+                     ompi_mtl_portals4.recv_eq_h,
                      REQ_SEND_TABLE_ID,
                      &ompi_mtl_portals4.send_idx);
     if (PTL_OK != ret) {
@@ -229,8 +259,9 @@ ompi_mtl_portals4_component_init(bool enable_progress_threads,
         goto error;
     }
     ret = PtlPTAlloc(ompi_mtl_portals4.ni_h,
-                     PTL_PT_ONLY_USE_ONCE,
-                     ompi_mtl_portals4.eq_h,
+                     PTL_PT_ONLY_USE_ONCE |
+                     PTL_PT_ONLY_TRUNCATE,
+                     ompi_mtl_portals4.send_eq_h,
                      REQ_READ_TABLE_ID,
                      &ompi_mtl_portals4.read_idx);
     if (PTL_OK != ret) {
@@ -288,7 +319,7 @@ ompi_mtl_portals4_component_init(bool enable_progress_threads,
     }
 
     /* attach short unex recv blocks */
-    ret = ompi_mtl_portals4_recv_short_init(&ompi_mtl_portals4);
+    ret = ompi_mtl_portals4_recv_short_init();
     if (OMPI_SUCCESS != ret) {
         opal_output_verbose(1, ompi_mtl_base_output,
                             "%s:%d: short receive block initialization failed: %d\n",
@@ -301,6 +332,29 @@ ompi_mtl_portals4_component_init(bool enable_progress_threads,
     ompi_mtl_portals4.recv_opcount = 0;
 #endif
 
+#if OMPI_MTL_PORTALS4_FLOW_CONTROL
+    ompi_mtl_portals4.send_queue_slots = ompi_mtl_portals4.queue_size - 4;
+
+    OBJ_CONSTRUCT(&ompi_mtl_portals4.active_sends, opal_list_t);
+    OBJ_CONSTRUCT(&ompi_mtl_portals4.pending_sends, opal_list_t);
+
+    ret = ompi_mtl_portals4_flowctl_init();
+    if (OMPI_SUCCESS != ret) {
+        opal_output_verbose(1, ompi_mtl_base_output,
+                            "%s:%d: ompi_mtl_portals4_flowctl_init failed: %d\n",
+                            __FILE__, __LINE__, ret);
+        goto error;
+    }
+
+    ret = ompi_mtl_portals4_flowctl_setup_comm();
+    if (OMPI_SUCCESS != ret) {
+        opal_output_verbose(1, ompi_mtl_base_output,
+                            "%s:%d: ompi_mtl_portals4_flowctl_setup_trees failed: %d\n",
+                            __FILE__, __LINE__, ret);
+        goto error;
+    }
+#endif
+    
     /* activate progress callback */
     ret = opal_progress_register(ompi_mtl_portals4_progress);
     if (OMPI_SUCCESS != ret) {
@@ -313,10 +367,10 @@ ompi_mtl_portals4_component_init(bool enable_progress_threads,
     return &ompi_mtl_portals4.base;
 
  error:
-    if (!PtlHandleIsEqual(ompi_mtl_portals4.long_overflow_me_h, PTL_INVALID_HANDLE)) {
+    if (PTL_OK != PtlHandleIsEqual(ompi_mtl_portals4.long_overflow_me_h, PTL_INVALID_HANDLE)) {
         PtlMEUnlink(ompi_mtl_portals4.long_overflow_me_h);
     }
-    if (!PtlHandleIsEqual(ompi_mtl_portals4.zero_md_h, PTL_INVALID_HANDLE)) {
+    if (PTL_OK != PtlHandleIsEqual(ompi_mtl_portals4.zero_md_h, PTL_INVALID_HANDLE)) {
         PtlMDRelease(ompi_mtl_portals4.zero_md_h);
     }
     if (ompi_mtl_portals4.read_idx != (ptl_pt_index_t) ~0UL) {
@@ -325,8 +379,11 @@ ompi_mtl_portals4_component_init(bool enable_progress_threads,
     if (ompi_mtl_portals4.send_idx != (ptl_pt_index_t) ~0UL) {
         PtlPTFree(ompi_mtl_portals4.ni_h, ompi_mtl_portals4.send_idx);
     }
-    if (!PtlHandleIsEqual(ompi_mtl_portals4.eq_h, PTL_INVALID_HANDLE)) {
-        PtlEQFree(ompi_mtl_portals4.eq_h);
+    if (PTL_OK != PtlHandleIsEqual(ompi_mtl_portals4.send_eq_h, PTL_INVALID_HANDLE)) {
+        PtlEQFree(ompi_mtl_portals4.send_eq_h);
+    }
+    if (PTL_OK != PtlHandleIsEqual(ompi_mtl_portals4.recv_eq_h, PTL_INVALID_HANDLE)) {
+        PtlEQFree(ompi_mtl_portals4.recv_eq_h);
     }
     return NULL;
 }
@@ -388,4 +445,75 @@ ompi_mtl_portals4_get_error(int ptl_error)
     }
 
     return ret;
+}
+
+
+int
+ompi_mtl_portals4_progress(void)
+{
+    int count = 0, ret;
+    unsigned int which;
+    ptl_event_t ev;
+    ompi_mtl_portals4_base_request_t *ptl_request;
+
+    while (true) {
+	ret = PtlEQPoll(ompi_mtl_portals4.eqs_h, 2, 0, &ev, &which);
+        if (PTL_OK == ret) {
+            OPAL_OUTPUT_VERBOSE((60, ompi_mtl_base_output,
+                                 "Found event of type %d\n", ev.type));
+            switch (ev.type) {
+            case PTL_EVENT_GET:
+            case PTL_EVENT_PUT:
+            case PTL_EVENT_PUT_OVERFLOW:
+            case PTL_EVENT_REPLY:
+            case PTL_EVENT_SEND:
+            case PTL_EVENT_ACK:
+            case PTL_EVENT_AUTO_FREE:
+            case PTL_EVENT_AUTO_UNLINK:
+            case PTL_EVENT_SEARCH:
+            case PTL_EVENT_LINK:
+                if (NULL != ev.user_ptr) {
+                    ptl_request = ev.user_ptr;
+                    ret = ptl_request->event_callback(&ev, ptl_request);
+                    if (OMPI_SUCCESS != ret) {
+                        opal_output(ompi_mtl_base_output,
+                                    "Error returned from target event callback: %d", ret);
+                        abort();
+                    }
+                }
+                break;
+
+            case PTL_EVENT_PT_DISABLED:
+#if OMPI_MTL_PORTALS4_FLOW_CONTROL
+                ret = ompi_mtl_portals4_flowctl_start_recover();
+                if (OMPI_SUCCESS != ret) {
+                    opal_output_verbose(1, ompi_mtl_base_output,
+                                        "%s:%d: PtlPTEnable failed: %d\n",
+                                        __FILE__, __LINE__, ret);
+                    abort();
+                }
+#else
+                opal_output(ompi_mtl_base_output, "Unhandled flow control event.");
+                abort();
+#endif
+                break;
+
+            case PTL_EVENT_GET_OVERFLOW:
+            case PTL_EVENT_FETCH_ATOMIC:
+            case PTL_EVENT_FETCH_ATOMIC_OVERFLOW:
+            case PTL_EVENT_ATOMIC:
+            case PTL_EVENT_ATOMIC_OVERFLOW:
+                opal_output(ompi_mtl_base_output,
+                            "Unexpected event of type %d", ev.type);
+            }
+        } else if (PTL_EQ_EMPTY == ret) {
+            break;
+        } else {
+            opal_output(ompi_mtl_base_output,
+                        "Error returned from PtlEQGet: %d", ret);
+            abort();
+        }
+    }
+
+    return count;
 }
