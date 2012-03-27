@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2012      Sandia National Laboratories.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -196,9 +197,7 @@ typedef int (*mca_mtl_base_module_del_procs_fn_t)(
  * \note Open MPI is built around non-blocking operations.  This
  * function is provided for networks where progressing events outside
  * of point-to-point (for example, collectives, I/O, one-sided) can
- * occur without a progress function regularily being triggered.  If
- * this is not the case for the given network, this function pointer
- * should be set to NULL and non-blocking sends be used.
+ * occur without a progress function regularily being triggered.
  *
  * \note While MPI does not allow users to specify negative tags, they
  * are used internally in Open MPI to provide a unique channel for
@@ -238,9 +237,8 @@ typedef int (*mca_mtl_base_module_send_fn_t)(
  * @param mode (IN)      Mode for send operation (see pml.h)
  * @param blocking (IN)  True if the call originated from a blocking 
  *                       call, but the PML decided to use a 
- *                       non-blocking operation.  This is either for
- *                       internal performance decisions or because the
- *                       blocking send function is NULL.  This is an
+ *                       non-blocking operation, likely for
+ *                       internal performance decisions This is an
  *                       optimization flag and is not needed for
  *                       correctness.
  * @param mtl_request (IN) Pointer to mtl_request.  The ompi_req field
@@ -333,6 +331,19 @@ typedef int (*mca_mtl_base_module_iprobe_fn_t)(
                           struct ompi_status_public_t *status);
 
 
+typedef int (*mca_mtl_base_module_imrecv_fn_t)(struct mca_mtl_base_module_t* mtl,
+                                               struct opal_convertor_t *convertor,
+                                               struct ompi_message_t **message,
+                                               struct mca_mtl_request_t *mtl_request);
+
+typedef int (*mca_mtl_base_module_improbe_fn_t)(struct mca_mtl_base_module_t *mtl,
+                                                struct ompi_communicator_t *comm,
+                                                int src,
+                                                int tag,
+                                                int *matched,
+                                                struct ompi_message_t **message,
+                                                struct ompi_status_public_t *status);
+
 /**
  * Cancel an existing request
  *
@@ -401,6 +412,8 @@ struct mca_mtl_base_module_t {
     mca_mtl_base_module_isend_fn_t       mtl_isend;
     mca_mtl_base_module_irecv_fn_t       mtl_irecv;
     mca_mtl_base_module_iprobe_fn_t      mtl_iprobe;
+    mca_mtl_base_module_imrecv_fn_t      mtl_imrecv;
+    mca_mtl_base_module_improbe_fn_t     mtl_improbe;
 
     /* Optional MTL functions */
     mca_mtl_base_module_cancel_fn_t      mtl_cancel;
