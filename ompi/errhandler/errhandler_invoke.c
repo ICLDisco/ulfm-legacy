@@ -126,7 +126,11 @@ int ompi_errhandler_request_invoke(int count,
        ompi_request_test(). */
     for (i = 0; i < count; ++i) {
         if (MPI_REQUEST_NULL != requests[i] &&
-            MPI_SUCCESS != requests[i]->req_status.MPI_ERROR) {
+            MPI_SUCCESS != requests[i]->req_status.MPI_ERROR ) {
+            break;
+        }
+        /* Special case for MPI_ANY_SOURCE when marked as MPI_ERR_PENDING */
+        if( requests[i]->req_any_source_pending ) {
             break;
         }
     }
@@ -135,7 +139,14 @@ int ompi_errhandler_request_invoke(int count,
         return MPI_SUCCESS;
     }
 
-    ec = ompi_errcode_get_mpi_code(requests[i]->req_status.MPI_ERROR);
+    /* Special case for MPI_ANY_SOURCE when marked as MPI_ERR_PENDING
+     * We want to call the error handler below, but we have a special
+     * error value that we want to propagate. */
+    if( requests[i]->req_any_source_pending ) {
+        ec = MPI_ERR_PENDING;
+    } else {
+        ec = ompi_errcode_get_mpi_code(requests[i]->req_status.MPI_ERROR);
+    }
     mpi_object = requests[i]->req_mpi_object;
     type = requests[i]->req_type;
 
@@ -145,10 +156,14 @@ int ompi_errhandler_request_invoke(int count,
        that had an error. */
     for (; i < count; ++i) {
         if (MPI_REQUEST_NULL != requests[i] &&
-            MPI_SUCCESS != requests[i]->req_status.MPI_ERROR) {
-            /* Ignore the error -- what are we going to do?  We're
-               already going to invoke an exception */
-            ompi_request_free(&(requests[i])); 
+            MPI_SUCCESS != requests[i]->req_status.MPI_ERROR ) {
+            /* Special case for MPI_ANY_SOURCE when marked as MPI_ERR_PENDING,
+             * This request should not be freed since it is still active. */
+            if( !requests[i]->req_any_source_pending ) {
+                /* Ignore the error -- what are we going to do?  We're
+                   already going to invoke an exception */
+                ompi_request_free(&(requests[i])); 
+            }
         } 
     }
 
