@@ -112,15 +112,19 @@ bool mca_btl_tcp_frag_send(mca_btl_tcp_frag_t* frag, int sd)
             case EWOULDBLOCK:
                 return false;
             case EFAULT:
+#if OPAL_ENABLE_FT_MPI == 0
                 BTL_ERROR(("mca_btl_tcp_frag_send: writev error (%p, %lu)\n\t%s(%lu)\n",
                     frag->iov_ptr[0].iov_base, (unsigned long) frag->iov_ptr[0].iov_len,
                     strerror(opal_socket_errno), (unsigned long) frag->iov_cnt));
+#endif /* OPAL_ENABLE_FT_MPI */
                 mca_btl_tcp_endpoint_close(frag->endpoint);
                 return false;
             default:
+#if OPAL_ENABLE_FT_MPI == 0
                 BTL_ERROR(("mca_btl_tcp_frag_send: writev failed: %s (%d)", 
                            strerror(opal_socket_errno),
                            opal_socket_errno));
+#endif /* OPAL_ENABLE_FT_MPI */
                 mca_btl_tcp_endpoint_close(frag->endpoint);
                 return false;
             }
@@ -204,15 +208,19 @@ bool mca_btl_tcp_frag_recv(mca_btl_tcp_frag_t* frag, int sd)
 	case EWOULDBLOCK:
 	    return false;
 	case EFAULT:
+#if OPAL_ENABLE_FT_MPI == 0
             BTL_ERROR(("mca_btl_tcp_frag_recv: readv error (%p, %lu)\n\t%s(%lu)\n",
                        frag->iov_ptr[0].iov_base, (unsigned long) frag->iov_ptr[0].iov_len,
                        strerror(opal_socket_errno), (unsigned long) frag->iov_cnt));
+#endif /* OPAL_ENABLE_FT_MPI */
 	    mca_btl_tcp_endpoint_close(btl_endpoint);
 	    return false;
 	default:
+#if OPAL_ENABLE_FT_MPI == 0
             BTL_ERROR(("mca_btl_tcp_frag_recv: readv failed: %s (%d)", 
                        strerror(opal_socket_errno),
                        opal_socket_errno));
+#endif /* OPAL_ENABLE_FT_MPI */
 	    mca_btl_tcp_endpoint_close(btl_endpoint);
 	    return false;
 	}

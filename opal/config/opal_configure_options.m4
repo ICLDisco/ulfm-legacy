@@ -15,7 +15,7 @@ dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009      IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
+dnl Copyright (c) 2009-2012 Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
 dnl
 dnl $COPYRIGHT$
@@ -348,6 +348,7 @@ fi
 #    - LAM (synonym for 'cr' currently)
 #    - cr
 #    - orcm
+#    - mpi
 #  /* General FT sections */
 #  #if OPAL_ENABLE_FT == 0 /* FT Disabled globaly */
 #  #if OPAL_ENABLE_FT == 1 /* FT Enabled globaly */
@@ -364,10 +365,12 @@ AC_ARG_WITH(ft,
 if test "$with_ft" = "no" -o "$opal_want_ft" = "0"; then
     opal_want_ft=0
     opal_want_ft_cr=0
+    opal_want_ft_mpi=0
     AC_MSG_RESULT([Disabled fault tolerance])
 else
     opal_want_ft=1
     opal_want_ft_cr=0
+    opal_want_ft_mpi=0
     opal_want_ft_type=none
 
     as_save_IFS=$IFS
@@ -390,6 +393,10 @@ else
             opal_want_ft_orcm=1
         elif test "$opt" = "ORCM"; then
             opal_want_ft_orcm=1
+        elif test "$opt" = "mpi"; then
+            opal_want_ft_mpi=1
+        elif test "$opt" = "MPI"; then
+            opal_want_ft_mpi=1
         else
             AC_MSG_RESULT([Unrecognized FT TYPE: $opt])
             AC_MSG_ERROR([Cannot continue])
@@ -399,6 +406,8 @@ else
         opal_want_ft_type="cr"
     elif test "$opal_want_ft_orcm" = 1; then
         opal_want_ft_type="orcm"
+    elif test "$opal_want_ft_mpi" = 1; then
+        opal_want_ft_type="mpi"
     fi
 
     AC_MSG_RESULT([Enabled $opal_want_ft_type (Specified $with_ft)])
@@ -412,8 +421,11 @@ AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT], [$opal_want_ft],
                    [Enable fault tolerance general components and logic])
 AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT_CR], [$opal_want_ft_cr],
                    [Enable fault tolerance checkpoint/restart components and logic])
+AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT_MPI], [$opal_want_ft_mpi],
+                   [Enable fault tolerance MPI components and logic])
 AM_CONDITIONAL(WANT_FT, test "$opal_want_ft" = "1")
 AM_CONDITIONAL(WANT_FT_CR,  test "$opal_want_ft_cr" = "1")
+AM_CONDITIONAL(WANT_FT_MPI, test "$opal_want_ft_mpi" = "1")
 
 #
 # Do we want to install binaries?

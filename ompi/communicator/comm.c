@@ -12,7 +12,7 @@
  * Copyright (c) 2007-2011 University of Houston. All rights reserved.
  * Copyright (c) 2007-2008 Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -143,6 +143,15 @@ int ompi_comm_set ( ompi_communicator_t **ncomm,
         newcomm->c_remote_group = newcomm->c_local_group;
         OBJ_RETAIN(newcomm->c_remote_group);
     }
+    
+#if OPAL_ENABLE_FT_MPI
+    newcomm->any_source_enabled  = true;
+    newcomm->any_source_offset   = 0;
+    newcomm->comm_revoked        = false;
+    newcomm->collectives_enabled = true;
+    newcomm->num_active_local    = newcomm->c_local_group->grp_proc_count;
+    newcomm->num_active_remote   = newcomm->c_remote_group->grp_proc_count;
+#endif /* OPAL_ENABLE_FT_MPI */
     
     /* Check how many different jobids are represented in this communicator.
        Necessary for the disconnect of dynamic communicators. */
@@ -918,7 +927,7 @@ int ompi_comm_dup ( ompi_communicator_t * comm, ompi_communicator_t **newcomm )
                           /* topo component */
                           comp->c_local_group,                    /* local group */
                           comp ->c_remote_group );                /* remote group */
-    if ( NULL == newcomm ) {
+    if ( NULL == newcomp ) {
         rc =  MPI_ERR_INTERN;
         return rc;
     }

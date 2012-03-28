@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2011 Oracle and/or its affiliates.  All rights reserved. 
- * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2011-2012 Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
@@ -2085,6 +2085,8 @@ int orte_odls_base_default_require_sync(orte_process_name_t *proc,
             free(child->rml_uri);
             child->rml_uri = NULL;
         }
+        orte_errmgr.update_state(ORTE_JOBID_INVALID, ORTE_JOB_STATE_UNDEF,
+                                 proc, ORTE_PROC_STATE_DEREGISTERED, 0, 0);
         goto CLEANUP;
     }
     
@@ -2205,6 +2207,11 @@ void orte_odls_base_default_report_abort(orte_process_name_t *proc)
         
         if (OPAL_EQUAL ==
                 orte_util_compare_name_fields(mask, proc, child->name)) { /* found it */
+            /* If it has already terminated (or been terminated), then skip */
+            if( child->state > ORTE_PROC_STATE_UNTERMINATED ) {
+                break;
+            }
+
             child->state = ORTE_PROC_STATE_CALLED_ABORT;
             /* send ack */
             OBJ_CONSTRUCT(&buffer, opal_buffer_t);
@@ -2562,7 +2569,7 @@ int orte_odls_base_default_kill_local_procs(opal_pointer_array_t *procs,
                                             orte_odls_base_child_died_fn_t child_died)
 {
     orte_odls_child_t *child;
-    opal_list_item_t *item;
+    opal_list_item_t *item = NULL, *next = NULL;
     int rc = ORTE_SUCCESS;
     opal_list_t procs_killed;
     orte_proc_t *proc, proctmp;
@@ -2607,8 +2614,13 @@ int orte_odls_base_default_kill_local_procs(opal_pointer_array_t *procs,
         }
         for (item = opal_list_get_first(&orte_local_children);
              item != opal_list_get_end(&orte_local_children);
-             item = opal_list_get_next(item)) {
+             item = next ) {
             child = (orte_odls_child_t*)item;
+            /*
+             * The errmgr might try to mutate the list of local children
+             * So protect ourselves by picking the next item here
+             */
+            next = opal_list_get_next(item);
             
             OPAL_OUTPUT_VERBOSE((5, orte_odls_globals.output,
                                  "%s odls:kill_local_proc checking child process %s",

@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -57,6 +58,11 @@ int MPI_Publish_name(char *service_name, MPI_Info info,
                                           FUNC_NAME);
         }
     }
+
+#if OPAL_ENABLE_FT_MPI
+    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, MPI_COMM_WORLD,
+                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
+#endif
 
     OPAL_CR_ENTER_LIBRARY();
 

@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2009-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -516,6 +516,8 @@ void ompi_info_do_config(bool want_all)
     char *wtime_support;
     char *symbol_visibility;
     char *ft_support;
+    char *ft_mpi_support;
+    char *ft_cr_support;
     char *crdebug_support;
     char *topology_support;
     char *vt_support;
@@ -587,11 +589,18 @@ void ompi_info_do_config(bool want_all)
         threads = strdup("no");
     }
     
-    asprintf(&ft_support, "%s (checkpoint thread: %s)", 
-             OPAL_ENABLE_FT ? "yes" : "no", OPAL_ENABLE_FT_THREAD ? "yes" : "no");;
+    asprintf(&ft_support, "%s",
+             (OPAL_ENABLE_FT ? "yes" : "no") );
+
+    asprintf(&ft_mpi_support, "%s", 
+             (OPAL_ENABLE_FT_MPI ? "yes" : "no"));
+
+    asprintf(&ft_cr_support, "%s (checkpoint thread: %s)", 
+             (OPAL_ENABLE_FT_CR ? "yes" : "no"),
+             (OPAL_ENABLE_FT_THREAD ? "yes" : "no"));
 
     asprintf(&crdebug_support, "%s",
-             OPAL_ENABLE_CRDEBUG ? "yes" : "no");
+             (OPAL_ENABLE_CRDEBUG ? "yes" : "no"));
 
     /* output values */
     ompi_info_out("Configured by", "config:user", OPAL_CONFIGURE_USER);
@@ -844,8 +853,14 @@ void ompi_info_do_config(bool want_all)
     
     ompi_info_out("MPI extensions", "options:mpi_ext", OMPI_MPIEXT_COMPONENTS);
     
-    ompi_info_out("FT Checkpoint support", "options:ft_support", ft_support);
+    ompi_info_out("Fault Tolerance support", "options:ft_support", ft_support);
     free(ft_support);
+
+    ompi_info_out("FT MPI support", "options:ft_mpi_support", ft_mpi_support);
+    free(ft_mpi_support);
+
+    ompi_info_out("FT Checkpoint/Restart", "options:ft_cr_support", ft_cr_support);
+    free(ft_cr_support);
 
     ompi_info_out("C/R Enabled Debugging", "options:crdebug_support", crdebug_support);
     free(crdebug_support);

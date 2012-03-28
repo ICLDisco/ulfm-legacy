@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -109,6 +110,11 @@ mca_coll_sync_comm_query(struct ompi_communicator_t *comm,
     /* Choose whether to use [intra|inter] */
     sync_module->super.coll_module_enable = mca_coll_sync_module_enable;
     sync_module->super.ft_event = mca_coll_sync_ft_event;
+
+#if OPAL_ENABLE_FT_MPI
+    sync_module->super.coll_agreement   = mca_coll_base_agreement;
+    sync_module->super.coll_iagreement  = mca_coll_base_iagreement;
+#endif
 
     /* The "all" versions are already synchronous.  So no need for an
        additional barrier there. */

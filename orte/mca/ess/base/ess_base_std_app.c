@@ -235,6 +235,14 @@ int orte_ess_base_app_setup(void)
         goto error;
     }
     
+#if OPAL_ENABLE_FT_MPI
+    if (ORTE_SUCCESS != (ret = orte_errmgr_base_setup_listener())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_errmgr_base_setup_listener";
+        goto error;
+    }
+#endif
+
     /* if we are an ORTE app - and not an MPI app - then
      * we need to barrier here. MPI_Init has its own barrier,
      * so we don't need to do two of them. However, if we
@@ -277,6 +285,10 @@ int orte_ess_base_app_finalize(void)
     orte_filem_base_close();
     
     orte_wait_finalize();
+
+#if OPAL_ENABLE_FT_MPI
+    orte_errmgr_base_shutdown_listener();
+#endif
 
     orte_errmgr_base_close();
 

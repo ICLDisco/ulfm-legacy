@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -52,9 +53,17 @@ int MPI_Abort(MPI_Comm comm, int errorcode)
         OMPI_ERR_INIT_FINALIZE(FUNC_NAME);
     }
 
+#if OPAL_ENABLE_FT_MPI
+    orte_show_help("help-mpi-api.txt", "mpi-abort-rts", true,
+                   ompi_comm_rank(comm), 
+                   ('\0' != comm->c_name[0]) ? comm->c_name : "<Unknown>",
+                   errorcode);
+#else
     orte_show_help("help-mpi-api.txt", "mpi-abort", true,
                    ompi_comm_rank(comm), 
                    ('\0' != comm->c_name[0]) ? comm->c_name : "<Unknown>",
                    errorcode);
+#endif
+
     return ompi_mpi_abort(comm, errorcode, true);
 }

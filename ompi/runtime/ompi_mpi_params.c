@@ -12,6 +12,7 @@
  * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -67,10 +68,24 @@ static bool show_file_mca_params = false;
 static bool show_enviro_mca_params = false;
 static bool show_override_mca_params = false;
 
+#if OPAL_ENABLE_FT_MPI
+int ompi_ftmpi_output_handle = 0;
+#endif
+
 int ompi_mpi_register_params(void)
 {
     int value;
     char *param;
+
+#if OPAL_ENABLE_FT_MPI
+    mca_base_param_reg_int_name("ompi", "ftmpi_verbose", 
+                                "Verbose level of FT MPI error path",
+                                false, false, 0, &value);
+    if( 0 < value ) {
+        ompi_ftmpi_output_handle = opal_output_open(NULL);
+        opal_output_set_verbosity(ompi_ftmpi_output_handle, value);
+    }
+#endif
 
     /* Whether we want MPI API function parameter checking or not */
 

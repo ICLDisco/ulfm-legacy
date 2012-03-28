@@ -11,6 +11,8 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+#
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -34,3 +36,8 @@ libmpi_la_SOURCES += \
         errhandler/errhandler_predefined.c \
         errhandler/errcode.c \
         errhandler/errcode-internal.c
+
+if WANT_FT_MPI
+libmpi_la_SOURCES += \
+	errhandler/errhandler_rte.c
+endif # WANT_FT_MPI

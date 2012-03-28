@@ -634,9 +634,11 @@ static void mca_btl_tcp_endpoint_complete_connect(mca_btl_base_endpoint_t* btl_e
         return;
     }
     if(so_error != 0) {
+#if OPAL_ENABLE_FT_MPI == 0
         BTL_ERROR(("connect() to %s failed: %s (%d)", 
                    opal_net_get_hostname((struct sockaddr*) &endpoint_addr),
                    strerror(so_error), so_error));
+#endif /* OPAL_ENABLE_FT_MPI */
         mca_btl_tcp_endpoint_close(btl_endpoint);
         return;
     }

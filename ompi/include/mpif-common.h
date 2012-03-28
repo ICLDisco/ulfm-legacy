@@ -11,7 +11,7 @@
 ! Copyright (c) 2004-2005 The Regents of the University of California.
 !                         All rights reserved.
 ! Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
-! Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
+! Copyright (c) 2009-2012 Oak Ridge National Labs.  All rights reserved.
 ! Copyright (c) 2012      Sandia National Laboratories. All rights reserved.
 ! $COPYRIGHT$
 !
@@ -276,6 +276,8 @@
       integer MPI_ERR_UNSUPPORTED_DATAREP
       integer MPI_ERR_UNSUPPORTED_OPERATION
       integer MPI_ERR_WIN
+      integer MPI_ERR_PROC_FAILED
+      integer MPI_ERR_INVALIDATED
 
       integer MPI_ERR_SYSRESOURCE
       integer MPI_ERR_LASTCODE
@@ -334,9 +336,11 @@
       parameter( MPI_ERR_UNSUPPORTED_DATAREP  = 51)
       parameter( MPI_ERR_UNSUPPORTED_OPERATION= 52)
       parameter( MPI_ERR_WIN                  = 53)
+      parameter( MPI_ERR_PROC_FAILED       = 54)
+      parameter( MPI_ERR_INVALIDATED          = 55)
 
       parameter( MPI_ERR_SYSRESOURCE          = -2)
-      parameter( MPI_ERR_LASTCODE             = 54)
+      parameter( MPI_ERR_LASTCODE             = 56)
 
 !
 !     comparison results

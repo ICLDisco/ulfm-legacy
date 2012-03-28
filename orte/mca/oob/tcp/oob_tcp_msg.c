@@ -261,11 +261,20 @@ static bool mca_oob_tcp_msg_recv(mca_oob_tcp_msg_t* msg, mca_oob_tcp_peer_t* pee
             else if (opal_socket_errno == EAGAIN || opal_socket_errno == EWOULDBLOCK) {
                 return false;
             }
+#if OPAL_ENABLE_FT_MPI
+            opal_output_verbose(10, mca_oob_tcp_output_handle,
+                                "%s-%s mca_oob_tcp_msg_recv: readv failed: %s (%d)", 
+                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                ORTE_NAME_PRINT(&(peer->peer_name)),
+                                strerror(opal_socket_errno),
+                                opal_socket_errno);
+#else
             opal_output(0, "%s-%s mca_oob_tcp_msg_recv: readv failed: %s (%d)", 
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                         ORTE_NAME_PRINT(&(peer->peer_name)),
                         strerror(opal_socket_errno),
                         opal_socket_errno);
+#endif /* OPAL_ENABLE_FT_MPI */
             mca_oob_tcp_peer_close(peer);
             if (NULL != mca_oob_tcp.oob_exception_callback) {
                 mca_oob_tcp.oob_exception_callback(&peer->peer_name, ORTE_RML_PEER_DISCONNECTED);

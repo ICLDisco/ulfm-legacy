@@ -286,6 +286,13 @@ int ompi_mpi_finalize(void)
         return ret;
     }
 
+#if OPAL_ENABLE_FT_MPI
+    /* finalize communicator 'revoke' handle */
+    if (OMPI_SUCCESS != (ret = ompi_comm_finalize_revoke())) {
+        return ret;
+    }
+#endif /* OPAL_ENABLE_FT_MPI */
+
     /* free pml resource */ 
     if(OMPI_SUCCESS != (ret = mca_pml_base_finalize())) { 
       return ret;

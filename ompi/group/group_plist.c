@@ -11,6 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2007 University of Houston. All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc. All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -298,4 +300,20 @@ int ompi_group_difference(ompi_group_t* group1, ompi_group_t* group2,
     *new_group = (MPI_Group)new_group_pointer;
 
     return OMPI_SUCCESS;
+}
+
+int ompi_group_peer_lookup_id(ompi_group_t *group, ompi_proc_t *proc)
+{
+    int proc_iter;
+    ompi_proc_t *loc_proc = NULL;
+
+    for(proc_iter = 0; proc_iter < group->grp_proc_count; ++proc_iter ) {
+        loc_proc = ompi_group_peer_lookup(group, proc_iter);
+        if( loc_proc == proc ) {
+            /* Found this process */
+            return proc_iter;
+        }
+    }
+
+    return -1;
 }

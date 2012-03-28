@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
@@ -620,6 +620,15 @@ static int rte_init(void)
     /* start the local sensors */
     orte_sensor.start(ORTE_PROC_MY_NAME->jobid);
     
+#if OPAL_ENABLE_FT_MPI
+    /* Start listener for the procs_abort message */
+    if (ORTE_SUCCESS != (ret = orte_errmgr_base_setup_listener())) {
+        ORTE_ERROR_LOG(ret);
+        error = "orte_errmgr_base_setup_listener";
+        goto error;
+    }
+#endif
+
     /* if a tool has launched us and is requesting event reports,
      * then set its contact info into the comm system
      */
@@ -717,6 +726,9 @@ static int rte_finalize(void)
     orte_ras_base_close();
     orte_rmaps_base_close();
     orte_plm_base_close();
+#if OPAL_ENABLE_FT_MPI
+    orte_errmgr_base_shutdown_listener();
+#endif
     orte_errmgr_base_close();
     orte_grpcomm_base_close();
 

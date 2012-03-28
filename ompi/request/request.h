@@ -109,6 +109,13 @@ struct ompi_request_t {
     ompi_request_complete_fn_t req_complete_cb; /**< Called when the request is MPI completed */
     void *req_complete_cb_data;
     ompi_mpi_object_t req_mpi_object;           /**< Pointer to MPI object that created this request */
+    /* FT Functionality uses the (req_peer) to return the peer that caused a
+     * failure, and (req_tag) to identify which operations are collective in
+     * nature.
+     */
+    int req_peer; /**< Peer rank that this request is associated with */
+    int req_tag;  /**< Tag associated with this request */
+    bool req_any_source_pending;
 };
 
 /**
@@ -362,27 +369,12 @@ static inline int ompi_request_free(ompi_request_t** request)
 #define ompi_request_wait_all   (ompi_request_functions.req_wait_all)
 #define ompi_request_wait_some  (ompi_request_functions.req_wait_some)
 
+#if OPAL_ENABLE_FT_MPI
+OMPI_DECLSPEC int ompi_request_ft_init(void);
+OMPI_DECLSPEC int ompi_request_ft_finalize(void);
+OMPI_DECLSPEC bool ompi_request_state_ok(ompi_request_t *req);
+#endif /* OPAL_ENABLE_FT_MPI */
 
-/**
- * Wait a particular request for completion
- */
-static inline void ompi_request_wait_completion(ompi_request_t *req)
-{
-    if(false == req->req_complete) {
-#if OMPI_ENABLE_PROGRESS_THREADS
-        if(opal_progress_spin(&req->req_complete)) {
-            return;
-        }
-#endif
-        OPAL_THREAD_LOCK(&ompi_request_lock);
-        ompi_request_waiting++;
-        while(false == req->req_complete) {
-            opal_condition_wait(&ompi_request_cond, &ompi_request_lock);
-        }
-        ompi_request_waiting--;
-        OPAL_THREAD_UNLOCK(&ompi_request_lock);
-    }
-}
 
 /**
  *  Signal or mark a request as complete. If with_signal is true this will
@@ -412,6 +404,36 @@ static inline int ompi_request_complete(ompi_request_t* request, bool with_signa
         opal_condition_broadcast(&ompi_request_cond);
     }
     return OMPI_SUCCESS;
+}
+
+/**
+ * Wait a particular request for completion
+ */
+static inline void ompi_request_wait_completion(ompi_request_t *req)
+{
+    if(false == req->req_complete) {
+#if OMPI_ENABLE_PROGRESS_THREADS
+        if(opal_progress_spin(&req->req_complete)) {
+            return;
+        }
+#endif
+        OPAL_THREAD_LOCK(&ompi_request_lock);
+        ompi_request_waiting++;
+        while(false == req->req_complete) {
+#if OPAL_ENABLE_FT_MPI
+            /*
+             * Check to make sure that process failure did not break the
+             * request.
+             */
+            if( !ompi_request_state_ok(req) ) {
+                break;
+            }
+#endif
+            opal_condition_wait(&ompi_request_cond, &ompi_request_lock);
+        }
+        ompi_request_waiting--;
+        OPAL_THREAD_UNLOCK(&ompi_request_lock);
+    }
 }
 
 /* In a 64-bit library with strict alignment requirements (like 64-bit

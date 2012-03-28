@@ -13,6 +13,8 @@
  * Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2010 University of Houston.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -85,6 +87,12 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(ompi_communicator_t);
 #define OMPI_COMM_CID_INTER        0x00000040
 #define OMPI_COMM_CID_INTRA_BRIDGE 0x00000080
 #define OMPI_COMM_CID_INTRA_OOB    0x00000100
+#if OPAL_ENABLE_FT_MPI
+#define OMPI_COMM_CID_INTRA_FT        0x00000200
+#define OMPI_COMM_CID_INTER_FT        0x00000400
+#define OMPI_COMM_CID_INTRA_BRIDGE_FT 0x00000800
+#define OMPI_COMM_CID_INTRA_OOB_FT    0x00001000
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /**
  * The block of CIDs allocated for MPI_COMM_WORLD
@@ -162,6 +170,24 @@ struct ompi_communicator_t {
 
     /* Collectives module interface and data */
     mca_coll_base_comm_coll_t c_coll;
+
+#if OPAL_ENABLE_FT_MPI
+    /** In MPI_ANY_SOURCE enabled? - OMPI_Comm_failure_ack */
+    bool                     any_source_enabled;
+    /** MPI_ANY_SOURCE Failed Group Offset - OMPI_Comm_failure_get_acked */
+    int                      any_source_offset;
+    /** Has this communicator been revoked - OMPI_Comm_revoke() */
+    bool                     comm_revoked;
+    /** Are collectives enabled? */
+    bool                     collectives_enabled;
+    /** Quick lookup */
+    int                      num_active_local;
+    int                      num_active_remote;
+    int                      lleader;
+    int                      rleader;
+    /* For better error reporting */
+    int                      last_failed;
+#endif /* OPAL_ENABLE_FT_MPI */
 };
 typedef struct ompi_communicator_t ompi_communicator_t;
 
@@ -326,6 +352,162 @@ static inline struct ompi_proc_t* ompi_comm_peer_lookup(ompi_communicator_t* com
     /*return comm->c_remote_group->grp_proc_pointers[peer_id];*/
     return ompi_group_peer_lookup(comm->c_remote_group,peer_id);
 }
+
+/* Determine the rank of the specified process in this communicator
+ * @return -1 If not in communicator
+ * @return >=0 If in communicator
+ */
+static inline int ompi_comm_peer_lookup_id(ompi_communicator_t* comm, ompi_proc_t *proc)
+{
+#if OPAL_ENABLE_DEBUG
+    if(NULL == proc ) {
+        opal_output(0, "ompi_comm_peer_lookup_id: invalid ompi_proc (NULL)");
+        return -1;
+    }
+#endif
+    return ompi_group_peer_lookup_id(comm->c_remote_group, proc);
+}
+
+#if OPAL_ENABLE_FT_MPI
+/*
+ * Support for MPI_ANY_SOURCE point-to-point operations
+ */
+static inline bool ompi_comm_is_any_source_enabled(ompi_communicator_t* comm)
+{
+    return (comm->any_source_enabled);
+}
+
+/*
+ * Are collectives still active on this communicator?
+ */
+static inline bool ompi_comm_are_collectives_enabled(ompi_communicator_t* comm)
+{
+    return (comm->collectives_enabled);
+}
+
+/*
+ * Has this communicator been revoked?
+ */
+static inline bool ompi_comm_is_revoked(ompi_communicator_t* comm)
+{
+    return (comm->comm_revoked);
+}
+
+/*
+ * Acknowledge failures and re-enable MPI_ANY_SOURCE
+ * Related to OMPI_Comm_failure_ack() and OMPI_Comm_failure_get_acked()
+ */
+OMPI_DECLSPEC int ompi_comm_failure_ack_internal(ompi_communicator_t* comm);
+
+/*
+ * Return the acknowledged group of failures
+ * Related to OMPI_Comm_failure_ack() and OMPI_Comm_failure_get_acked()
+ */
+OMPI_DECLSPEC int ompi_comm_failure_get_acked_internal(ompi_communicator_t* comm, ompi_group_t **group );
+
+/*
+ * Setup/Shutdown 'revoke' handler
+ */
+OMPI_DECLSPEC int ompi_comm_init_revoke(void);
+OMPI_DECLSPEC int ompi_comm_finalize_revoke(void);
+
+/*
+ * Revoke the communicator
+ */
+OMPI_DECLSPEC int ompi_comm_revoke_internal(ompi_communicator_t* comm);
+
+/*
+ * Shrink the communicator
+ */
+OMPI_DECLSPEC int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** newcomm);
+
+/*
+ * Process and Communicator State Accessors
+ */
+static inline int ompi_comm_num_active_local(ompi_communicator_t* comm)
+{
+    return (comm->num_active_local);
+}
+static inline int ompi_comm_num_active_remote(ompi_communicator_t* comm)
+{
+    return (comm->num_active_remote);
+}
+
+/*
+ * Check if the process is active
+ */
+OMPI_DECLSPEC bool ompi_comm_is_proc_active(ompi_communicator_t *comm, int peer_id, bool remote);
+
+/*
+ * Register a new process failure
+ */
+OMPI_DECLSPEC int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remote);
+
+/*
+ * MPI Interface early checks
+ */
+static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int peer_id, int *err)
+{
+    if( ompi_comm_is_revoked(comm) ) {
+        *err = MPI_ERR_INVALIDATED;
+        return false;
+    }
+    else if( !ompi_comm_is_proc_active(comm, peer_id, OMPI_COMM_IS_INTRA(comm)) ) {
+        *err = MPI_ERR_PROC_FAILED;
+        return false;
+    }
+    return true;
+}
+
+static inline bool ompi_comm_iface_coll_check(ompi_communicator_t *comm, int *err)
+{
+    if( ompi_comm_is_revoked(comm) ) {
+        *err = MPI_ERR_INVALIDATED;
+        return false;
+    }
+    else if( !ompi_comm_are_collectives_enabled(comm) ) {
+        *err = MPI_ERR_PROC_FAILED;
+        return false;
+    }
+    return true;
+}
+
+static inline bool ompi_comm_iface_create_check(ompi_communicator_t *comm, int *err)
+{
+    return ompi_comm_iface_coll_check(comm, err);
+}
+
+/*
+ * Communicator creation support collectives
+ * - Agreement style allreduce
+ */
+int ompi_comm_allreduce_intra_ft( int *inbuf, int *outbuf, 
+                                  int count, struct ompi_op_t *op, 
+                                  ompi_communicator_t *comm,
+                                  ompi_communicator_t *bridgecomm, 
+                                  void* local_leader, 
+                                  void* remote_leader, 
+                                  int send_first );
+int ompi_comm_allreduce_inter_ft( int *inbuf, int *outbuf, 
+                                  int count, struct ompi_op_t *op, 
+                                  ompi_communicator_t *intercomm,
+                                  ompi_communicator_t *bridgecomm, 
+                                  void* local_leader, 
+                                  void* remote_leader, 
+                                  int send_first );
+int ompi_comm_allreduce_intra_bridge_ft(int *inbuf, int *outbuf, 
+                                        int count, struct ompi_op_t *op, 
+                                        ompi_communicator_t *comm,
+                                        ompi_communicator_t *bcomm, 
+                                        void* lleader, void* rleader,
+                                        int send_first );
+int ompi_comm_allreduce_intra_oob_ft(int *inbuf, int *outbuf, 
+                                     int count, struct ompi_op_t *op, 
+                                     ompi_communicator_t *comm,
+                                     ompi_communicator_t *bridgecomm, 
+                                     void* lleader, void* rleader,
+                                     int send_first );
+#endif /* OPAL_ENABLE_FT_MPI */
 
 static inline bool ompi_comm_peer_invalid(ompi_communicator_t* comm, int peer_id)
 {

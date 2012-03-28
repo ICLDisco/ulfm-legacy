@@ -199,6 +199,9 @@ ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_msg_packet_t);
 /* Notify of failed processes */
 #define ORTE_RML_TAG_FAILURE_NOTICE         48
 
+/* OMPI 'revoke' message */
+#define ORTE_RML_TAG_REVOKE_NOTICE          49
+
 #define ORTE_RML_TAG_MAX                   100
 
 

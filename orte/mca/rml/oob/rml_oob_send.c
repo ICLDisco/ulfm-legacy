@@ -146,8 +146,10 @@ orte_rml_oob_send(orte_process_name_t* peer,
                                                       msg);
     if (ret < 0) {
         ORTE_ERROR_LOG(ret);
+#if OPAL_ENABLE_DEBUG
         opal_output(0, "%s attempted to send to %s: tag %d", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                                              ORTE_NAME_PRINT(&next), (int)real_tag);
+#endif /* OPAL_ENABLE_DEBUG */
         goto cleanup;
     }
 

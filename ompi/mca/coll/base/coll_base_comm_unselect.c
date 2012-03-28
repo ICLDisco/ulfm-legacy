@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -55,6 +57,10 @@ int mca_coll_base_comm_unselect(ompi_communicator_t * comm)
     CLOSE(comm, scan);
     CLOSE(comm, scatter);
     CLOSE(comm, scatterv);
+#if OPAL_ENABLE_FT_MPI
+    CLOSE(comm, agreement);
+    CLOSE(comm, iagreement);
+#endif
 
     /* All done */
     return OMPI_SUCCESS;
