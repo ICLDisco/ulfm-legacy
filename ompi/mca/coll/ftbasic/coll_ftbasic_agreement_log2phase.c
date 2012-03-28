@@ -866,7 +866,12 @@ int mca_coll_ftbasic_agreement_log_two_phase_finalize(mca_coll_ftbasic_module_t 
      * But only once per job.
      */
     log_two_phase_progress_num_active--;
-    if( log_two_phase_progress_num_active == 0 ) {
+    if( log_two_phase_progress_num_active == 0 || ompi_mpi_finalized ) {
+        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+                             "%s ftbasic: agreement) (log2phase) Finalize - Cancel Progress handler (%s)",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             (ompi_mpi_finalized ? "Finalizing" : "") ));
+
         opal_progress_unregister(mca_coll_ftbasic_agreement_log_two_phase_progress);
         opal_progress_unregister(mca_coll_ftbasic_agreement_log_two_phase_term_progress);
 
@@ -1357,11 +1362,13 @@ int mca_coll_ftbasic_agreement_log_two_phase_refresh_tree(opal_bitmap_t *local_b
 
 #if DEBUG_WITH_STR == 1
     tree_str = opal_bitmap_get_string(local_bitmap);
-
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
                          "%s ftbasic: agreement) (log2phase) Refresh Tree... [%s]",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), tree_str ));
-    free(tree_str);
+    if( NULL != tree_str ) {
+        free(tree_str);
+        tree_str = NULL;
+    }
 #else 
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
                          "%s ftbasic: agreement) (log2phase) Refresh Tree...",
@@ -1436,7 +1443,10 @@ int mca_coll_ftbasic_agreement_log_two_phase_refresh_tree(opal_bitmap_t *local_b
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
                          "%s ftbasic: agreement) (log2phase) Tree: %s",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), tree_str));
-    free(tree_str);
+    if( NULL != tree_str ) {
+        free(tree_str);
+        tree_str = NULL;
+    }
 #endif
 
     if( free_bitmap ) {
@@ -1455,6 +1465,10 @@ int mca_coll_ftbasic_agreement_log_two_phase_term_progress(void)
     ompi_communicator_t *comm = NULL;
     int max_num_comm = 0, i;
     int num_processed = 0;
+
+    if( ompi_mpi_finalized ) {
+        return 0;
+    }
 
     if( log_two_phase_inside_term_progress ) {
         return num_processed;
@@ -1504,6 +1518,10 @@ int mca_coll_ftbasic_agreement_log_two_phase_progress(void)
     int max_num_comm = 0, i;
     int num_processed = 0;
     mca_coll_ftbasic_module_t *ftbasic_module = NULL;
+
+    if( ompi_mpi_finalized ) {
+        return 0;
+    }
 
     /* Sanity check:
      * - Do not recursively enter this function from progress
@@ -2615,6 +2633,14 @@ static int log_two_phase_protocol_accumulate_list(ompi_communicator_t* comm,
                              "Child %3d: Compare [%s] to [%s]",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              remote_bitmap->rank, my_bitstr, remote_bitstr));
+        if( NULL != my_bitstr ) {
+            free(my_bitstr);
+            my_bitstr = NULL;
+        }
+        if( NULL != remote_bitstr ) {
+            free(remote_bitstr);
+            remote_bitstr = NULL;
+        }
 #endif
 
         /*

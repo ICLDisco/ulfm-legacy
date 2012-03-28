@@ -273,7 +273,7 @@ int mca_coll_ftbasic_agreement_two_phase_finalize(mca_coll_ftbasic_module_t *mod
      * But only once per job.
      */
     two_phase_progress_num_active--;
-    if( two_phase_progress_num_active == 0 || ompi_mpi_finalized) {
+    if( two_phase_progress_num_active == 0 || ompi_mpi_finalized ) {
         OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                              "%s ftbasic: agreement) (2phase) Finalize - Cancel Progress handler (%s)",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
