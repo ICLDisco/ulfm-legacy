@@ -225,6 +225,12 @@ static int ompi_request_ft_wait(ompi_request_t ** req_ptr,
 
     /* Special case for MPI_ANY_SOURCE */
     if( req->req_any_source_pending ) {
+        if( MPI_STATUS_IGNORE != status ) {
+            status->MPI_TAG    = req->req_status.MPI_TAG;
+            status->MPI_SOURCE = req->req_status.MPI_SOURCE;
+            OMPI_STATUS_SET_COUNT(&status->_ucount, &req->req_status._ucount);
+            status->_cancelled = req->req_status._cancelled;
+        }
         return MPI_ERR_PENDING;
     }
 
@@ -341,6 +347,11 @@ static int ompi_request_ft_wait_any(
                     /* Special case for MPI_ANY_SOURCE */
                     if( request->req_any_source_pending ) {
                         *index = i;
+                        if (MPI_STATUS_IGNORE != status) {
+                            int old_error = status->MPI_ERROR;
+                            OMPI_STATUS_SET(status, &request->req_status);
+                            status->MPI_ERROR = old_error;
+                        }
                         return MPI_ERR_PENDING;
                     }
                     completed = i;
