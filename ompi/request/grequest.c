@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -67,6 +68,8 @@ static void ompi_grequest_construct(ompi_grequest_t* greq)
     greq->greq_base.req_cancel   = ompi_grequest_cancel;
     greq->greq_base.req_type = OMPI_REQUEST_GEN;
     greq->greq_base.req_mpi_object.comm = &(ompi_mpi_comm_world.comm);
+    greq->greq_base.req_peer = MPI_PROC_NULL;
+    greq->greq_base.req_tag = 0;
     /* Set the function pointers to C here; the F77 MPI API will
        override this value if the gen request was created from
        Fortran */

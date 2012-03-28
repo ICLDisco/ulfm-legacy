@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -64,6 +65,11 @@ mca_coll_self_comm_query(struct ompi_communicator_t *comm,
 
         module = OBJ_NEW(mca_coll_self_module_t);
         if (NULL == module) return NULL;
+
+#if OPAL_ENABLE_FT_MPI
+        module->super.coll_agreement   = mca_coll_base_agreement;
+        module->super.coll_iagreement  = mca_coll_base_iagreement;
+#endif
 
         module->super.coll_module_enable = mca_coll_self_module_enable;
         module->super.ft_event        = mca_coll_self_ft_event;

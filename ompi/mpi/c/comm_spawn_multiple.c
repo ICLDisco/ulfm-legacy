@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -124,6 +125,11 @@ int MPI_Comm_spawn_multiple(int count, char **array_of_commands, char ***array_o
             }  
         }
     }
+
+#if OPAL_ENABLE_FT_MPI
+    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, comm,
+                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
+#endif
 
     if (rank == root) {
         if (MPI_INFO_NULL == array_of_info[0]) {

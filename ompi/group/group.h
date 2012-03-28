@@ -137,6 +137,12 @@ typedef struct ompi_predefined_group_t ompi_predefined_group_t;
 OMPI_DECLSPEC extern struct opal_pointer_array_t ompi_group_f_to_c_table;
 OMPI_DECLSPEC extern struct ompi_predefined_group_t ompi_mpi_group_null;
 
+#if OPAL_ENABLE_FT_MPI
+/*
+ * Global list of failed processes
+ */
+OMPI_DECLSPEC extern ompi_group_t *ompi_group_all_failed_procs;
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /*
  * function prototypes
@@ -186,6 +192,14 @@ int ompi_group_init(void);
  */
 int ompi_group_finalize(void);
 
+#if OPAL_ENABLE_FT_MPI
+/**
+ * Get the actual state of a rank in the group
+ */
+OMPI_DECLSPEC int ompi_group_get_rank_state(ompi_group_t *group,
+                                            int peer_id,
+                                            bool *active);
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /**
  * Get group size.
@@ -280,7 +294,7 @@ int ompi_group_translate_ranks_bmap_reverse ( ompi_group_t *group1,
  *  Prototypes for the group back-end functions. Argument lists 
  are similar to the according  C MPI functions.
  */
-int ompi_group_incl(ompi_group_t* group, int n, int *ranks, 
+OMPI_DECLSPEC int ompi_group_incl(ompi_group_t* group, int n, int *ranks, 
 		    ompi_group_t **new_group);
 int ompi_group_excl(ompi_group_t* group, int n, int *ranks,
 		    ompi_group_t **new_group);
@@ -339,6 +353,11 @@ static inline struct ompi_proc_t* ompi_group_peer_lookup(ompi_group_t *group, in
     return group->grp_proc_pointers[peer_id];
 #endif
 }
+
+/**
+ * Determine the rank of the specified process in this group
+ */
+OMPI_DECLSPEC int ompi_group_peer_lookup_id(ompi_group_t *group, ompi_proc_t *proc);
 
 /**
  *  Function to print the group info

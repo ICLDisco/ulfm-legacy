@@ -910,6 +910,14 @@ MOVEON:
     MCA_PML_CALL(add_comm(&ompi_mpi_comm_world.comm));
     MCA_PML_CALL(add_comm(&ompi_mpi_comm_self.comm));
 
+#if OPAL_ENABLE_FT_MPI
+    /* initialize communicator 'revoke' handle */
+    if (OMPI_SUCCESS != (ret = ompi_comm_init_revoke())) {
+        error = "ompi_comm_init_revoke() failed";
+        goto error;
+    }
+#endif /* OPAL_ENABLE_FT_MPI */
+
     /*
      * Dump all MCA parameters if requested
      */

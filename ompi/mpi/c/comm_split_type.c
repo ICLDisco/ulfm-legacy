@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012      Sandia National Laboratories. All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -71,6 +72,17 @@ int MPI_Comm_split_type(MPI_Comm comm, int split_type, int key,
             return OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_ARG, 
                                           FUNC_NAME);
         }
+
+#if OPAL_ENABLE_FT_MPI
+        /*
+         * An early check, so as to return early if we are using a broken
+         * communicator. This is not absolutely necessary since we will
+         * check for this, and other, error conditions during the operation.
+         */
+        if( !ompi_comm_iface_create_check(comm, &rc) ) {
+            OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
+        }
+#endif
     }
 
     OPAL_CR_ENTER_LIBRARY();

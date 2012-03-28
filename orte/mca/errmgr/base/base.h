@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -101,6 +102,22 @@ ORTE_DECLSPEC int orte_errmgr_base_migrate_job(orte_jobid_t jobid, orte_snapc_ba
 ORTE_DECLSPEC void orte_errmgr_base_proc_state_notify(orte_proc_state_t state, orte_process_name_t *proc);
 
 #endif /* OPAL_ENABLE_FT_CR */
+
+#if OPAL_ENABLE_FT_MPI
+ORTE_DECLSPEC int orte_errmgr_base_setup_listener(void);
+ORTE_DECLSPEC int orte_errmgr_base_shutdown_listener(void);
+
+/**
+ * A callback for the upper layer to register if it wants to be notified
+ * of process errors as they occur.
+ */
+typedef int (*orte_errmgr_base_app_notify_callback_fn_t) (orte_process_name_t, orte_proc_state_t);
+ORTE_DECLSPEC extern orte_errmgr_base_app_notify_callback_fn_t orte_errmgr_base_app_callback;
+
+ORTE_DECLSPEC int orte_errmgr_base_app_reg_notify_callback
+(orte_errmgr_base_app_notify_callback_fn_t new_func,
+ orte_errmgr_base_app_notify_callback_fn_t *prev_func);
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /*
  * Additional External API function declared in errmgr.h

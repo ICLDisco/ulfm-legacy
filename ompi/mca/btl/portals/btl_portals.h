@@ -125,6 +125,10 @@ struct mca_btl_portals_module_t {
 };
 typedef struct mca_btl_portals_module_t mca_btl_portals_module_t;
 
+#if OPAL_ENABLE_FT_MPI
+extern int mca_btl_portals_finalize_max_wait;
+#endif /* OPAL_ENABLE_FT_MPI */
+
 /*
  * Component functions (btl_portals_component.c)
  */

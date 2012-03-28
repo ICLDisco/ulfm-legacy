@@ -1,0 +1,42 @@
+#
+# Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+#
+# $COPYRIGHT$
+# 
+# Additional copyrights may follow
+# 
+# $HEADER$
+#
+# An Aggregate MCA Parameter Set to enable MPI Layer fault tolerance
+# capabilities.
+#
+# Usage:
+#   shell$ mpirun -am ft-enable-mpi ./app
+#
+
+#
+# OPAL Parameters
+#
+
+# ORTE Parameters
+# - Use the modified 'cm' routed component - 'rts'. It is the only one that is currently able to
+#   handle process and daemon loss.
+#
+# JJH: routed=binomial
+routed=rts
+#plm=rsh
+#rmaps=resilient
+
+# Stablization at the runtime layer
+errmgr_rts_hnp_priority=5000
+errmgr_rts_orted_priority=5000
+errmgr_rts_app_priority=5000
+
+#
+# OMPI Parameters
+# - Only fully tested with the listed btls
+# - ftbasic is the only fault aware collective component at the moment
+#
+# JJH: btl=openib,sm,self
+btl=tcp,sm,self
+coll=ftbasic

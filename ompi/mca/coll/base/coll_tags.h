@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,6 +26,7 @@
  * implementing collectives via point-to-point.
  */
 
+#define MCA_COLL_BASE_TAG_MIN -10
 #define MCA_COLL_BASE_TAG_ALLGATHER -10
 #define MCA_COLL_BASE_TAG_ALLGATHERV -11
 #define MCA_COLL_BASE_TAG_ALLREDUCE -12
@@ -40,4 +43,13 @@
 #define MCA_COLL_BASE_TAG_SCAN -23
 #define MCA_COLL_BASE_TAG_SCATTER -24
 #define MCA_COLL_BASE_TAG_SCATTERV -25
+#define MCA_COLL_BASE_TAG_MAX_PRE_AGREEMENT -25
+#if OPAL_ENABLE_FT_MPI
+#define MCA_COLL_BASE_TAG_AGREEMENT -26
+#define MCA_COLL_BASE_TAG_AGREEMENT_CATCH_UP -27
+#define MCA_COLL_BASE_TAG_AGREEMENT_CATCH_UP_REQ -28
+#define MCA_COLL_BASE_TAG_AGREEMENT_UR_ELECTED -29
+#define MCA_COLL_BASE_TAG_SHRINK -30
+#endif /* OPAL_ENABLE_FT_MPI */
+#define MCA_COLL_BASE_TAG_MAX -30
 #endif /* MCA_COLL_BASE_TAGS_H */

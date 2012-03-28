@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -35,7 +36,9 @@
 
 #include "mpi.h"
 #include "opal/class/opal_list.h"
-
+#if OPAL_ENABLE_FT_MPI
+#include "ompi/mca/coll/coll.h"
+#endif
 
 /*
  * Global functions for MCA overall collective open and close
@@ -160,6 +163,21 @@ int mca_coll_base_comm_unselect(struct ompi_communicator_t *comm);
  */
 OMPI_DECLSPEC int mca_coll_base_close(void);
 
+#if OPAL_ENABLE_FT_MPI
+/*
+ * These are dummy functions for those modules that choose not to
+ * implement these functions.
+ */
+OMPI_DECLSPEC int mca_coll_base_agreement(struct ompi_communicator_t* comm,
+                                          struct ompi_group_t **group,
+                                          int *flag,
+                                          struct mca_coll_base_module_2_0_0_t *module);
+OMPI_DECLSPEC int mca_coll_base_iagreement(struct ompi_communicator_t* comm,
+                                           struct ompi_group_t **group,
+                                           int *flag,
+                                           struct mca_coll_base_module_2_0_0_t *module,
+                                           ompi_request_t **request);
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /*
  * Globals

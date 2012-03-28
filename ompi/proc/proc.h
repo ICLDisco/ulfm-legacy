@@ -12,6 +12,7 @@
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -32,6 +33,7 @@
 #define OMPI_PROC_PROC_H
 
 #include "ompi_config.h"
+#include "ompi/constants.h"
 #include "ompi/types.h"
 #include "opal/class/opal_list.h"
 #include "opal/dss/dss_types.h"
@@ -70,10 +72,26 @@ struct ompi_proc_t {
      * actually stored in the RTE
      */
     char*                           proc_hostname;
+#if OPAL_ENABLE_FT_MPI
+    /** Is the process active? */
+    bool                            proc_active;
+#endif /* OPAL_ENABLE_FT_MPI */
 };
 typedef struct ompi_proc_t ompi_proc_t;
 OBJ_CLASS_DECLARATION(ompi_proc_t);
 
+#if OPAL_ENABLE_FT_MPI
+static inline bool ompi_proc_is_active(ompi_proc_t *proc)
+{
+    return (proc->proc_active);
+}
+
+/* Made a function, so we can do something smarter in the future */
+static inline void ompi_proc_mark_as_failed(ompi_proc_t *proc)
+{
+    proc->proc_active = false;
+}
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /**
  * @private

@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2008      University of Houston.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -74,6 +75,11 @@ int MPI_Comm_connect(char *port_name, MPI_Info info, int root,
                                         FUNC_NAME);
         }
     }
+    
+#if OPAL_ENABLE_FT_MPI
+    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, comm,
+                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
+#endif
     
     rank = ompi_comm_rank ( comm );
     if ( MPI_PARAM_CHECK ) {

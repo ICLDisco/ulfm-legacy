@@ -261,6 +261,8 @@ const char *orte_proc_state_to_str(orte_proc_state_t state)
             return "RUNNING";
         case ORTE_PROC_STATE_REGISTERED:
             return "SYNC REGISTERED";
+        case ORTE_PROC_STATE_DEREGISTERED:
+            return "SYNC DEREGISTERED";
         case ORTE_PROC_STATE_UNTERMINATED:
             return "UNTERMINATED";
         case ORTE_PROC_STATE_TERMINATED:

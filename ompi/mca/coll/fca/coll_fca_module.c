@@ -1,5 +1,6 @@
 /**
   Copyright (c) 2011 Mellanox Technologies. All rights reserved.
+  Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
   $COPYRIGHT$
 
   Additional copyrights may follow
@@ -398,6 +399,11 @@ mca_coll_fca_comm_query(struct ompi_communicator_t *comm, int *priority)
     fca_module = OBJ_NEW(mca_coll_fca_module_t);
     if (!fca_module)
         goto exit;
+
+#if OPAL_ENABLE_FT_MPI
+    fca_module->super.coll_agreement   = mca_coll_base_agreement;
+    fca_module->super.coll_iagreement  = mca_coll_base_iagreement;
+#endif
 
     fca_module->super.coll_module_enable = mca_coll_fca_module_enable;
     fca_module->super.ft_event        = mca_coll_fca_ft_event;

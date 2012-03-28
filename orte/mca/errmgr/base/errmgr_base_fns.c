@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved. 
- * Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -59,6 +59,7 @@
 #include "opal/util/argv.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
+#include "opal/class/opal_pointer_array.h"
 
 #include "orte/util/name_fns.h"
 #include "orte/util/session_dir.h"
@@ -84,6 +85,18 @@
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/errmgr/base/base.h"
 #include "orte/mca/errmgr/base/errmgr_private.h"
+
+#if OPAL_ENABLE_FT_MPI
+orte_errmgr_base_app_notify_callback_fn_t orte_errmgr_base_app_callback = NULL;
+static bool errmgr_base_listener_started = false;
+
+static void errmgr_base_notice_recv(int status,
+                                    orte_process_name_t* sender,
+                                    opal_buffer_t* buffer,
+                                    orte_rml_tag_t tag,
+                                    void* cbdata);
+static void errmgr_base_notice_recv_cmd_app(int fd, short event, void *cbdata);
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /*
  * Object stuff
@@ -736,3 +749,146 @@ orte_errmgr_fault_callback_t *orte_errmgr_base_set_fault_callback(orte_errmgr_fa
 /********************
  * Local Functions
  ********************/
+#if OPAL_ENABLE_FT_MPI
+int orte_errmgr_base_setup_listener(void)
+{
+    int ret, exit_status = ORTE_SUCCESS;
+
+    if( errmgr_base_listener_started ) {
+        return ORTE_SUCCESS;
+    }
+
+    OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+                         "%s errmgr:base: Starting listener",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
+
+    if (ORTE_SUCCESS != (ret = orte_rml.recv_buffer_nb(ORTE_NAME_WILDCARD,
+                                                       ORTE_RML_TAG_ERRMGR,
+                                                       ORTE_RML_PERSISTENT,
+                                                       errmgr_base_notice_recv,
+                                                       NULL))) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    errmgr_base_listener_started = true;
+
+ cleanup:
+    return exit_status;
+}
+
+int orte_errmgr_base_shutdown_listener(void)
+{
+    int ret, exit_status = ORTE_SUCCESS;
+
+    if( !errmgr_base_listener_started ) {
+        return ORTE_SUCCESS;
+    }
+
+    OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+                         "%s errmgr:base: Stopping listener",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
+
+    if (ORTE_SUCCESS != (ret = orte_rml.recv_cancel(ORTE_NAME_WILDCARD,
+                                                    ORTE_RML_TAG_ERRMGR))) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    errmgr_base_listener_started = false;
+
+ cleanup:
+    return exit_status;
+}
+
+static void errmgr_base_notice_recv(int status,
+                                    orte_process_name_t* sender,
+                                    opal_buffer_t* buffer,
+                                    orte_rml_tag_t tag,
+                                    void* cbdata)
+{
+    /*
+     * Do not handle here, use the event engine to queue this until we are out
+     * of the RML
+     */
+    if( ORTE_PROC_IS_HNP ) {
+        ; /* Supported in orted_comm.c */
+    } else {
+        ORTE_MESSAGE_EVENT(sender, buffer, tag, errmgr_base_notice_recv_cmd_app);
+    }
+}
+
+static void errmgr_base_notice_recv_cmd_app(int fd, short event, void *cbdata)
+{
+    int ret;
+    orte_message_event_t *mev = (orte_message_event_t*)cbdata;
+    orte_std_cntr_t count;
+    orte_proc_t *xcast_proc = NULL;
+    int num_procs, i;
+
+    /*
+     * Get the number of process failures being reported
+     */
+    count = 1;
+    if (ORTE_SUCCESS != (ret = opal_dss.unpack(mev->buffer, &(num_procs), &count, OPAL_INT))) {
+        ORTE_ERROR_LOG(ret);
+        goto cleanup;
+    }
+
+    xcast_proc = OBJ_NEW(orte_proc_t);
+    for( i = 0; i < num_procs; ++i ) {
+        count = 1;
+        if (ORTE_SUCCESS != (ret = opal_dss.unpack(mev->buffer, &(xcast_proc->name), &count, ORTE_NAME))) {
+            ORTE_ERROR_LOG(ret);
+            goto cleanup;
+        }
+
+        count = 1;
+        if (ORTE_SUCCESS != (ret = opal_dss.unpack(mev->buffer, &(xcast_proc->state), &count, ORTE_PROC_STATE))) {
+            ORTE_ERROR_LOG(ret);
+            goto cleanup;
+        }
+
+        OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+                             "%s errmgr:base: HNP told me that process %s is dead (%2d / %2d).",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_NAME_PRINT(&(xcast_proc->name)), i, num_procs ));
+
+        /*
+         * Tell the active ErrMgr component
+         */
+        if( ORTE_PROC_STATE_COMM_FAILED == xcast_proc->state ) {
+            xcast_proc->state = ORTE_PROC_STATE_TERMINATED;
+        }
+        if( ORTE_SUCCESS != (ret = orte_errmgr.update_state(xcast_proc->name.jobid,
+                                                            ORTE_JOB_STATE_UNDEF,
+                                                            &(xcast_proc->name),
+                                                            xcast_proc->state,
+                                                            0, 0 )) ) {
+            ORTE_ERROR_LOG(ret);
+            goto cleanup;
+        }
+    }
+
+ cleanup:
+    return;
+}
+
+int orte_errmgr_base_app_reg_notify_callback(orte_errmgr_base_app_notify_callback_fn_t new_func,
+                                             orte_errmgr_base_app_notify_callback_fn_t *prev_func)
+{
+    if( NULL != prev_func ) {
+        if( NULL != orte_errmgr_base_app_callback ) {
+            *prev_func = orte_errmgr_base_app_callback;
+        } else {
+            *prev_func = NULL;
+        }
+    }
+
+    orte_errmgr_base_app_callback = new_func;
+
+    return ORTE_SUCCESS;
+}
+#endif /* OPAL_ENABLE_FT_MPI */

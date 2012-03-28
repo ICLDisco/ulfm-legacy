@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -68,6 +69,8 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(mca_pml_base_recv_request_t);
                                                                          \
     OMPI_REQUEST_INIT(&(request)->req_base.req_ompi, persistent);        \
     (request)->req_base.req_ompi.req_mpi_object.comm = comm;             \
+    (request)->req_base.req_ompi.req_peer = src;                         \
+    (request)->req_base.req_ompi.req_tag = tag;                          \
     (request)->req_bytes_packed = 0;                                     \
     (request)->req_base.req_addr = addr;                                 \
     (request)->req_base.req_count = count;                               \
@@ -98,6 +101,8 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(mca_pml_base_recv_request_t);
         (request)->req_ompi.req_status.MPI_ERROR = OMPI_SUCCESS;                \
         (request)->req_ompi.req_status._ucount = 0;                             \
         (request)->req_ompi.req_status._cancelled = 0;                          \
+        (request)->req_ompi.req_mpi_object.comm     = (request)->req_comm;      \
+        (request)->req_ompi.req_peer = (request)->req_peer;                     \
                                                                                 \
         (request)->req_ompi.req_complete = false;                               \
         (request)->req_ompi.req_state = OMPI_REQUEST_ACTIVE;                    \

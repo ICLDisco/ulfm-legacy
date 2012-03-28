@@ -11,6 +11,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      University of Houston. All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -90,6 +92,10 @@ ompi_mpi_errcode_t ompi_err_spawn;
 ompi_mpi_errcode_t ompi_err_unsupported_datarep;
 ompi_mpi_errcode_t ompi_err_unsupported_operation;
 ompi_mpi_errcode_t ompi_err_win;
+#if OPAL_ENABLE_FT_MPI
+ompi_mpi_errcode_t ompi_err_proc_fail_stop;
+ompi_mpi_errcode_t ompi_err_invalidated;
+#endif
 
 static void ompi_mpi_errcode_construct(ompi_mpi_errcode_t* errcode);
 static void ompi_mpi_errcode_destruct(ompi_mpi_errcode_t* errcode);
@@ -171,9 +177,19 @@ int ompi_mpi_errcode_init (void)
     CONSTRUCT_ERRCODE( ompi_err_unsupported_datarep, MPI_ERR_UNSUPPORTED_DATAREP, "MPI_ERR_UNSUPPORTED_DATAREP: data representation not supported" );
     CONSTRUCT_ERRCODE( ompi_err_unsupported_operation, MPI_ERR_UNSUPPORTED_OPERATION, "MPI_ERR_UNSUPPORTED_OPERATION: operation not supported" );
     CONSTRUCT_ERRCODE( ompi_err_win, MPI_ERR_WIN, "MPI_ERR_WIN: invalid window" );
+#if OPAL_ENABLE_FT_MPI
+    CONSTRUCT_ERRCODE( ompi_err_proc_fail_stop,  MPI_ERR_PROC_FAILED,  "MPI_ERR_PROC_FAILED: Process Failure" );
+    CONSTRUCT_ERRCODE( ompi_err_invalidated,  MPI_ERR_INVALIDATED,  "MPI_ERR_INVALIDATED: Communication Object Invalidated" );
+#endif
 
+#if OPAL_ENABLE_FT_MPI
+    ompi_mpi_errcode_lastused = MPI_ERR_INVALIDATED;
+    ompi_mpi_errcode_lastpredefined = MPI_ERR_INVALIDATED;
+#else
     ompi_mpi_errcode_lastused = MPI_ERR_WIN;
     ompi_mpi_errcode_lastpredefined = MPI_ERR_WIN;
+#endif /* OPAL_ENABLE_FT_MPI */
+
     return OMPI_SUCCESS;
 }
 
@@ -245,6 +261,10 @@ int ompi_mpi_errcode_finalize(void)
     OBJ_DESTRUCT(&ompi_err_unsupported_datarep);
     OBJ_DESTRUCT(&ompi_err_unsupported_operation);
     OBJ_DESTRUCT(&ompi_err_win);
+#if OPAL_ENABLE_FT_MPI
+    OBJ_DESTRUCT(&ompi_err_proc_fail_stop);
+    OBJ_DESTRUCT(&ompi_err_invalidated);
+#endif
 
     OBJ_DESTRUCT(&ompi_mpi_errcodes);
     return OMPI_SUCCESS;

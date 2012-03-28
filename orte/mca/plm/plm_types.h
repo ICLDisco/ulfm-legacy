@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,27 +48,28 @@ typedef uint32_t orte_proc_state_t;
 #define ORTE_PROC_STATE_TERMINATE               0x00000008  /* process is marked for termination */
 #define ORTE_PROC_STATE_RUNNING                 0x00000010  /* daemon has locally fork'd process */
 #define ORTE_PROC_STATE_REGISTERED              0x00000020  /* process has registered for sync */
+#define ORTE_PROC_STATE_DEREGISTERED            0x00000040  /* process has deregistered after sync */
 /*
  * Define a "boundary" so we can easily and quickly determine
  * if a proc is still running or not - any value less than
  * this one means that we are not terminated
  */
-#define ORTE_PROC_STATE_UNTERMINATED            0x00000040
+#define ORTE_PROC_STATE_UNTERMINATED            0x00000080
 
-#define ORTE_PROC_STATE_TERMINATED              0x00000080  /* process has terminated and is no longer running */
-#define ORTE_PROC_STATE_KILLED_BY_CMD           0x00000100  /* process was killed by ORTE cmd */
-#define ORTE_PROC_STATE_ABORTED                 0x00000200  /* process aborted */
-#define ORTE_PROC_STATE_FAILED_TO_START         0x00000400  /* process failed to start */
-#define ORTE_PROC_STATE_ABORTED_BY_SIG          0x00000800  /* process aborted by signal */
-#define ORTE_PROC_STATE_TERM_WO_SYNC            0x00001000  /* process exit'd w/o required sync */
-#define ORTE_PROC_STATE_COMM_FAILED             0x00002000  /* process communication has failed */
-#define ORTE_PROC_STATE_SENSOR_BOUND_EXCEEDED   0x00004000  /* process exceeded a sensor limit */
-#define ORTE_PROC_STATE_CALLED_ABORT            0x00008000  /* process called "errmgr.abort" */
-#define ORTE_PROC_STATE_HEARTBEAT_FAILED        0x00010000  /* heartbeat failed to arrive */
-#define ORTE_PROC_STATE_MIGRATING               0x00020000  /* process is migrating */
-#define ORTE_PROC_STATE_CANNOT_RESTART          0x00040000  /* process failed and cannot be restarted */
-#define ORTE_PROC_STATE_TERM_NON_ZERO           0x00080000  /* process exited with a non-zero status, indicating abnormal */
-#define ORTE_PROC_STATE_RESTARTED               0x00100000  /* process restarted */
+#define ORTE_PROC_STATE_TERMINATED              0x00000100  /* process has terminated and is no longer running */
+#define ORTE_PROC_STATE_KILLED_BY_CMD           0x00000200  /* process was killed by ORTE cmd */
+#define ORTE_PROC_STATE_ABORTED                 0x00000400  /* process aborted */
+#define ORTE_PROC_STATE_FAILED_TO_START         0x00000800  /* process failed to start */
+#define ORTE_PROC_STATE_ABORTED_BY_SIG          0x00001000  /* process aborted by signal */
+#define ORTE_PROC_STATE_TERM_WO_SYNC            0x00002000  /* process exit'd w/o required sync */
+#define ORTE_PROC_STATE_COMM_FAILED             0x00004000  /* process communication has failed */
+#define ORTE_PROC_STATE_SENSOR_BOUND_EXCEEDED   0x00008000  /* process exceeded a sensor limit */
+#define ORTE_PROC_STATE_CALLED_ABORT            0x00010000  /* process called "errmgr.abort" */
+#define ORTE_PROC_STATE_HEARTBEAT_FAILED        0x00020000  /* heartbeat failed to arrive */
+#define ORTE_PROC_STATE_MIGRATING               0x00040000  /* process is migrating */
+#define ORTE_PROC_STATE_CANNOT_RESTART          0x00080000  /* process failed and cannot be restarted */
+#define ORTE_PROC_STATE_TERM_NON_ZERO           0x00100000  /* process exited with a non-zero status, indicating abnormal */
+#define ORTE_PROC_STATE_RESTARTED               0x00200000  /* process restarted */
 /*
  * Job state codes
  */

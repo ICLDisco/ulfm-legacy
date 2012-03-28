@@ -57,6 +57,9 @@ static void ompi_request_construct(ompi_request_t* req)
     req->req_complete_cb_data = NULL;
     req->req_f_to_c_index = MPI_UNDEFINED;
     req->req_mpi_object.comm = (struct ompi_communicator_t*) NULL;
+    req->req_peer = MPI_PROC_NULL;
+    req->req_tag = 0;
+    req->req_any_source_pending = false;
 }
 
 static void ompi_request_destruct(ompi_request_t* req)
@@ -124,6 +127,8 @@ int ompi_request_init(void)
     ompi_request_null.request.req_free = ompi_request_null_free;
     ompi_request_null.request.req_cancel = ompi_request_null_cancel;
     ompi_request_null.request.req_mpi_object.comm = &ompi_mpi_comm_world.comm;
+    ompi_request_null.request.req_peer = MPI_PROC_NULL;
+    ompi_request_null.request.req_any_source_pending = false;
 
     if (0 != ompi_request_null.request.req_f_to_c_index) {
         return OMPI_ERR_REQUEST;
@@ -156,6 +161,8 @@ int ompi_request_init(void)
     ompi_request_empty.req_free = ompi_request_empty_free;
     ompi_request_empty.req_cancel = ompi_request_null_cancel;
     ompi_request_empty.req_mpi_object.comm = &ompi_mpi_comm_world.comm;
+    ompi_request_empty.req_peer = MPI_PROC_NULL;
+    ompi_request_empty.req_any_source_pending = false;
 
     if (1 != ompi_request_empty.req_f_to_c_index) {
         return OMPI_ERR_REQUEST;
@@ -167,12 +174,20 @@ int ompi_request_init(void)
     ompi_status_empty._ucount = 0;
     ompi_status_empty._cancelled = 0;
 
+#if OPAL_ENABLE_FT_MPI
+    ompi_request_ft_init();
+#endif
+
     return OMPI_SUCCESS;
 }
 
 
 int ompi_request_finalize(void)
 {
+#if OPAL_ENABLE_FT_MPI
+    ompi_request_ft_finalize();
+#endif
+
     OMPI_REQUEST_FINI( &ompi_request_null.request );
     OBJ_DESTRUCT( &ompi_request_null.request );
     OMPI_REQUEST_FINI( &ompi_request_empty );

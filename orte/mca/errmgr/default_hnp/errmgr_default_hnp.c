@@ -378,6 +378,7 @@ static int update_state(orte_jobid_t job,
         }
         break;
 
+    case ORTE_PROC_STATE_DEREGISTERED:
     case ORTE_PROC_STATE_REGISTERED:
     case ORTE_PROC_STATE_RUNNING:
         update_proc(jdata, proc, state, pid, exit_code);
