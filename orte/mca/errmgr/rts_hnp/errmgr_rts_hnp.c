@@ -522,7 +522,13 @@ static int update_state(orte_jobid_t job,
     case ORTE_PROC_STATE_COMM_FAILED:
         /* is this to a daemon? */
         if (ORTE_PROC_MY_NAME->jobid != proc->jobid) {
-            /* nope - ignore it */
+
+            /* If there is only one daemon (HNP) then check for completion here */
+            if(jdata->num_daemons_reported <= 1 ) {
+                check_job_complete(jdata);  /* need to set the job state */
+            }
+
+            /* otherwise - ignore it */
             break;
         }
         /* if this is my own connection, ignore it */
