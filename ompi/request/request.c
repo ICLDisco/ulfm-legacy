@@ -27,6 +27,7 @@
 #include "ompi/request/request.h"
 #include "ompi/request/request_default.h"
 #include "ompi/constants.h"
+#include "ompi/runtime/params.h"
 
 opal_pointer_array_t             ompi_request_f_to_c_table;
 size_t                           ompi_request_waiting = 0;
@@ -175,7 +176,9 @@ int ompi_request_init(void)
     ompi_status_empty._cancelled = 0;
 
 #if OPAL_ENABLE_FT_MPI
-    ompi_request_ft_init();
+    if( ompi_ftmpi_enabled ) {
+        ompi_request_ft_init();
+    }
 #endif
 
     return OMPI_SUCCESS;
@@ -185,7 +188,9 @@ int ompi_request_init(void)
 int ompi_request_finalize(void)
 {
 #if OPAL_ENABLE_FT_MPI
-    ompi_request_ft_finalize();
+    if( ompi_ftmpi_enabled ) {
+        ompi_request_ft_finalize();
+    }
 #endif
 
     OMPI_REQUEST_FINI( &ompi_request_null.request );

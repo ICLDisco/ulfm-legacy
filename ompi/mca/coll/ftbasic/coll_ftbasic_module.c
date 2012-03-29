@@ -140,24 +140,29 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
     /*
      * Agreement operation setup
      */
-    /* Init the agreement function */
-    mca_coll_ftbasic_agreement_init(ftbasic_module);
+    if( ompi_ftmpi_enabled ) {
+        /* Init the agreement function */
+        mca_coll_ftbasic_agreement_init(ftbasic_module);
 
-    /* Choose the correct operations */
-    switch( mca_coll_ftbasic_cur_agreement_method ) {
-    case COLL_FTBASIC_ALLREDUCE:
-        ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_allreduce;
-        ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_allreduce;
-        break;
-    case COLL_FTBASIC_TWO_PHASE:
-        ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_two_phase;
-        ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_two_phase;
-        break;
-    case COLL_FTBASIC_LOG_TWO_PHASE:
-        ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_log_two_phase;
-        ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_log_two_phase;
-    default:
-        break;
+        /* Choose the correct operations */
+        switch( mca_coll_ftbasic_cur_agreement_method ) {
+        case COLL_FTBASIC_ALLREDUCE:
+            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_allreduce;
+            ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_allreduce;
+            break;
+        case COLL_FTBASIC_TWO_PHASE:
+            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_two_phase;
+            ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_two_phase;
+            break;
+        case COLL_FTBASIC_LOG_TWO_PHASE:
+            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_log_two_phase;
+            ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_log_two_phase;
+        default:
+            break;
+        }
+    } else {
+        ftbasic_module->super.coll_agreement  = mca_coll_base_agreement;
+        ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;
     }
 
     return &(ftbasic_module->super);

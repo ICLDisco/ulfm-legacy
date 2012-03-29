@@ -49,6 +49,7 @@ int mca_coll_ftbasic_priority  = 0;
 int mca_coll_ftbasic_crossover = 4;
 mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_LOG_TWO_PHASE;
 bool mca_coll_ftbasic_use_agreement_timer = false;
+bool mca_coll_ftbasic_agreement_use_progress = true;
 int mca_coll_ftbasic_agreement_log_max_len = 2;
 
 /*
@@ -153,6 +154,14 @@ ftbasic_register(void)
     }
 
     mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
+                           "agreement_progress",
+                           "(DEBUGGING ONLY) Turn on/off agreement progress (Default: on)",
+                           false, false,
+                           (int)mca_coll_ftbasic_agreement_use_progress, 
+                           &value);
+    mca_coll_ftbasic_agreement_use_progress = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
                            "max_log_length",
                            "Agreement method max log length",
                            false, false,
@@ -189,7 +198,10 @@ static void
 mca_coll_ftbasic_module_destruct(mca_coll_ftbasic_module_t *module)
 {
     /* Finalize the agreement function */
-    mca_coll_ftbasic_agreement_finalize(module);
+    if( ompi_ftmpi_enabled ) {
+        mca_coll_ftbasic_agreement_finalize(module);
+    }
+
     /* This object is managed by the agreement operation selected */
     module->agreement_info = NULL;
 

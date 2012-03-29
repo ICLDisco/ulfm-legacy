@@ -147,6 +147,7 @@ OMPI_DECLSPEC extern bool ompi_notify_init_finalize;
 
 #if OPAL_ENABLE_FT_MPI
 OMPI_DECLSPEC extern int ompi_ftmpi_output_handle;
+OMPI_DECLSPEC extern bool ompi_ftmpi_enabled;
 #endif
 
 /**

@@ -34,6 +34,7 @@
 #include "opal/class/opal_pointer_array.h"
 #include "opal/threads/condition.h"
 #include "ompi/constants.h"
+#include "ompi/runtime/params.h"
 
 BEGIN_C_DECLS
 
@@ -425,8 +426,10 @@ static inline void ompi_request_wait_completion(ompi_request_t *req)
              * Check to make sure that process failure did not break the
              * request.
              */
-            if( !ompi_request_state_ok(req) ) {
-                break;
+            if( ompi_ftmpi_enabled ) {
+                if( !ompi_request_state_ok(req) ) {
+                    break;
+                }
             }
 #endif
             opal_condition_wait(&ompi_request_cond, &ompi_request_lock);

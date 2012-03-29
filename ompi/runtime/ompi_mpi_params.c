@@ -70,6 +70,7 @@ static bool show_override_mca_params = false;
 
 #if OPAL_ENABLE_FT_MPI
 int ompi_ftmpi_output_handle = 0;
+bool ompi_ftmpi_enabled = false;
 #endif
 
 int ompi_mpi_register_params(void)
@@ -85,6 +86,11 @@ int ompi_mpi_register_params(void)
         ompi_ftmpi_output_handle = opal_output_open(NULL);
         opal_output_set_verbosity(ompi_ftmpi_output_handle, value);
     }
+
+    mca_base_param_reg_int_name("ompi", "ftmpi_enable", 
+                                "Enable the FT MPI error path",
+                                false, false, (int)ompi_ftmpi_enabled, &value);
+    ompi_ftmpi_enabled = OPAL_INT_TO_BOOL(value);
 #endif
 
     /* Whether we want MPI API function parameter checking or not */
