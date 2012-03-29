@@ -102,6 +102,12 @@ bool ompi_request_state_ok(ompi_request_t *req)
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
         return true;
     }
+    if( !ompi_ftmpi_enabled ) {
+        opal_output(0,
+                    "%s ompi_request_state_ok: Warning: FT Disabled so this function should never be called!",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
+        return true;
+    }
 #endif /* OPAL_ENABLE_DEBUG */
 
     /*

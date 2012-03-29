@@ -1205,11 +1205,11 @@ static int internal_iagreement_log_two_phase(ompi_communicator_t* comm,
                                              struct mca_coll_ftbasic_request_t *collreq)
 {
     int exit_status = OMPI_SUCCESS;
-    int rank = ompi_comm_rank(comm);
     mca_coll_ftbasic_agreement_log_entry_t *log_entry = NULL;
     mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
     mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
 #if OPAL_ENABLE_DEBUG
+    int rank = ompi_comm_rank(comm);
     int size = ompi_comm_size(comm);
 #endif
 

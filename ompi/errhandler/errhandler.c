@@ -32,7 +32,7 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/errhandler/errhandler_predefined.h"
 #include "opal/class/opal_pointer_array.h"
-
+#include "ompi/runtime/params.h"
 
 /*
  * Table for Fortran <-> C errhandler handle conversion
@@ -141,7 +141,9 @@ int ompi_errhandler_init(void)
 
 #if OPAL_ENABLE_FT_MPI
   /* Connect to the Runtime Environment Error Mgr */
-  ompi_errhandler_internal_rte_init();
+  if( ompi_ftmpi_enabled ) {
+      ompi_errhandler_internal_rte_init();
+  }
 #endif
 
   /* All done */
@@ -156,8 +158,10 @@ int ompi_errhandler_init(void)
 int ompi_errhandler_finalize(void)
 {
 #if OPAL_ENABLE_FT_MPI
-    /* Disconnect to the Runtime Environment Error Mgr */
-    ompi_errhandler_internal_rte_finalize();
+    if( ompi_ftmpi_enabled ) {
+        /* Disconnect to the Runtime Environment Error Mgr */
+        ompi_errhandler_internal_rte_finalize();
+    }
 #endif
 
     /* Forcibly release the intrinsic error handlers because in order
