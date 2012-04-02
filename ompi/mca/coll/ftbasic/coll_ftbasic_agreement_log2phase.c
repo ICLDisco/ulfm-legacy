@@ -844,7 +844,8 @@ int mca_coll_ftbasic_agreement_log_two_phase_init(mca_coll_ftbasic_module_t *mod
      * Register the termination progress function
      * But only once for the module, not each communicator
      */
-    if( log_two_phase_progress_num_active == 0 ) {
+    if( mca_coll_ftbasic_agreement_use_progress &&
+        log_two_phase_progress_num_active == 0 ) {
         log_two_phase_inside_term_progress = false;
         log_two_phase_inside_progress = false;
         opal_progress_register(mca_coll_ftbasic_agreement_log_two_phase_progress);
@@ -875,7 +876,8 @@ int mca_coll_ftbasic_agreement_log_two_phase_finalize(mca_coll_ftbasic_module_t 
      * But only once per job.
      */
     log_two_phase_progress_num_active--;
-    if( log_two_phase_progress_num_active == 0 || ompi_mpi_finalized ) {
+    if( mca_coll_ftbasic_agreement_use_progress &&
+        log_two_phase_progress_num_active == 0 || ompi_mpi_finalized ) {
         OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                              "%s ftbasic: agreement) (log2phase) Finalize - Cancel Progress handler (%s)",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
