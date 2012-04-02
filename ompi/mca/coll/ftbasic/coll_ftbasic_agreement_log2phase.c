@@ -716,6 +716,10 @@ static int log_two_phase_query_append_queue(ompi_communicator_t* comm,
                                             int seq_num,
                                             int attempt_num,
                                             mca_coll_ftbasic_agreement_log_entry_t *log_entry);
+static int log_two_phase_query_process_queue_entry(ompi_communicator_t* comm,
+                                                   mca_coll_ftbasic_module_t *ftbasic_module,
+                                                   int peer,
+                                                   int cmd);
 static int log_two_phase_query_process_all_entries(ompi_communicator_t* comm,
                                                    mca_coll_ftbasic_module_t *ftbasic_module,
                                                    mca_coll_ftbasic_agreement_log_entry_t *log_entry);
@@ -3695,6 +3699,33 @@ static int log_two_phase_query_append_queue(ompi_communicator_t* comm,
     return OMPI_SUCCESS;
 }
 
+static int log_two_phase_query_process_queue_entry(ompi_communicator_t* comm,
+                                                   mca_coll_ftbasic_module_t *ftbasic_module,
+                                                   int peer,
+                                                   int cmd)
+{
+    mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
+    log_two_phase_query_entry_t *entry = NULL;
+    opal_list_item_t *item = NULL;
+
+    for (item  = opal_list_get_first(agreement_info->query_queue);
+         item != opal_list_get_end(agreement_info->query_queue);
+         item  = opal_list_get_next(item)) {
+        entry = (log_two_phase_query_entry_t*)item;
+        if( entry->done ) {
+            continue;
+        }
+        if( peer == entry->peer ) {
+            log_two_phase_query_send_notice(comm, ftbasic_module, peer,
+                                            cmd,
+                                            entry->seq_num, entry->attempt_num);
+            entry->done = true;
+        }
+    }
+
+    return OMPI_SUCCESS;
+}
+
 static int log_two_phase_query_purge_queue(ompi_communicator_t* comm,
                                            mca_coll_ftbasic_module_t *ftbasic_module)
 {
@@ -5888,6 +5919,12 @@ static int log_two_phase_append_child(ompi_communicator_t* comm,
                                                      (sizeof(int) * agreement_tree->num_children_alloc));
     }
     agreement_tree->children_cmd[(agreement_tree->num_children)-1] = cmd;
+
+    /*
+     * If this child contacted us before via the termiantion protocol, then
+     * we delayed responding to their query. So do so now.
+     */
+    log_two_phase_query_process_queue_entry(comm, ftbasic_module, child, cmd);
 
     return OMPI_SUCCESS;
 }
