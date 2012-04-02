@@ -16,6 +16,8 @@
 #include "orte/util/name_fns.h"
 #include "orte/mca/plm/plm_types.h"
 #include "orte/mca/errmgr/errmgr.h"
+#include "orte/mca/rml/rml.h"
+#include "orte/mca/grpcomm/grpcomm.h"
 
 #include "mpi.h"
 #include "ompi/constants.h"
@@ -50,11 +52,21 @@ static char * get_local_bitmap_str(ompi_communicator_t* comm);
 #endif
 
 
+static bool comm_help_listener_started = false;
+static void comm_help_notice_recv(int status,
+                                  orte_process_name_t* sender,
+                                  opal_buffer_t* buffer,
+                                  orte_rml_tag_t tag,
+                                  void* cbdata);
+
 /*************************************
  * Global Variables
  *************************************/
 ompi_free_list_t mca_coll_ftbasic_remote_bitmap_free_list;
 int mca_coll_ftbasic_remote_bitmap_num_modules = 0;
+int mca_coll_ftbasic_agreement_num_active_nonblocking = 0;
+int mca_coll_ftbasic_agreement_help_num_asking = 0;
+int mca_coll_ftbasic_agreement_help_wait_cycles = 0;
 
 /*
  * Timing stuff
@@ -235,6 +247,8 @@ OBJ_CLASS_INSTANCE(mca_coll_ftbasic_request_t,
  *************************************/
 int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module)
 {
+    int ret;
+
     /*
      * Make the remote bitmap free list only once (shared between modules)
      */
@@ -251,6 +265,18 @@ int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module)
                                  NULL);
     }
     mca_coll_ftbasic_remote_bitmap_num_modules++;
+
+    if( !comm_help_listener_started ) {
+        ret = orte_rml.recv_buffer_nb(ORTE_NAME_WILDCARD,
+                                      ORTE_RML_TAG_COLL_AGREE_TERM,
+                                      ORTE_RML_PERSISTENT,
+                                      comm_help_notice_recv,
+                                      NULL);
+        if( OMPI_SUCCESS != ret ) {
+            return ret;
+        }
+        comm_help_listener_started = true;
+    }
 
     switch( mca_coll_ftbasic_cur_agreement_method ) {
     case COLL_FTBASIC_ALLREDUCE:
@@ -299,6 +325,7 @@ int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module)
 
 int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module)
 {
+    int ret;
 #if AGREEMENT_ENABLE_TIMING == 1
     int i;
 #endif /* AGREEMENT_ENABLE_TIMING */
@@ -331,6 +358,15 @@ int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module)
 
     mca_coll_ftbasic_remote_bitmap_num_modules--;
     if( 0 >= mca_coll_ftbasic_remote_bitmap_num_modules ) {
+        if( comm_help_listener_started ) {
+            ret = orte_rml.recv_cancel(ORTE_NAME_WILDCARD,
+                                       ORTE_RML_TAG_COLL_AGREE_TERM);
+            if( OMPI_SUCCESS != ret ) {
+                return ret;
+            }
+
+            comm_help_listener_started = false;
+        }
         OBJ_DESTRUCT(&mca_coll_ftbasic_remote_bitmap_free_list);
     }
 
@@ -495,6 +531,7 @@ int mca_coll_ftbasic_agreement_base_setup_nonblocking(ompi_communicator_t* comm,
         goto cleanup;
     }
 
+    ++mca_coll_ftbasic_agreement_num_active_nonblocking;
     AGREEMENT_START_TIMER(COLL_FTBASIC_AGREEMENT_TIMER_PROTOCOL);
 
  cleanup:
@@ -555,6 +592,7 @@ int mca_coll_ftbasic_agreement_base_finish_nonblocking(ompi_communicator_t* comm
     }
     (current_collreq->flag)  = flag;
 
+    --mca_coll_ftbasic_agreement_num_active_nonblocking;
 
     AGREEMENT_END_TIMER(COLL_FTBASIC_AGREEMENT_TIMER_TOTAL);
     /* AGREEMENT_START_TIMER(COLL_FTBASIC_AGREEMENT_TIMER_OTHER); */
@@ -786,6 +824,144 @@ static int coll_ftbasic_agreement_base_finish_common(ompi_communicator_t* comm,
     }
 
     return exit_status;
+}
+
+/*************************************
+ * Agreement Request for Assistance Deciding
+ *************************************/
+int mca_coll_ftbasic_agreement_base_term_request_help(ompi_communicator_t* comm,
+                                                      mca_coll_ftbasic_module_t *ftbasic_module)
+{
+    int ret, exit_status = OMPI_SUCCESS;
+    opal_buffer_t buffer;
+    orte_jobid_t jobid = 0;
+
+    /*
+     * Instead of constantly polling for termination requests, instead have the
+     * requestor xcast a 'wakeup' signal to all processes. This will cause them
+     * to check for requests for a period of time. This reduces the overall
+     * performance penalty.
+     * JJH: We can make this more efficient later.
+     */
+
+    /*
+     * Broadcast the 'help' signal to all other processes.
+     */
+    OBJ_CONSTRUCT(&buffer, opal_buffer_t);
+
+    if (OMPI_SUCCESS != (ret = opal_dss.pack(&buffer, ORTE_PROC_MY_NAME, 1, ORTE_NAME))) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    if (OMPI_SUCCESS != (ret = opal_dss.pack(&buffer, &(comm->c_contextid), 1, OPAL_INT))) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    jobid = orte_process_info.my_name.jobid;
+    if( OMPI_SUCCESS != (ret = orte_grpcomm.xcast(jobid, &buffer, ORTE_RML_TAG_COLL_AGREE_TERM)) ) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+ cleanup:
+    OBJ_DESTRUCT(&buffer);
+
+    return exit_status;
+}
+
+static void comm_help_notice_recv(int status,
+                                  orte_process_name_t* sender,
+                                  opal_buffer_t* buffer,
+                                  orte_rml_tag_t tag,
+                                  void* cbdata)
+{
+    int ret;
+    orte_std_cntr_t count;
+    int cid_to_help;
+    ompi_communicator_t *comm = NULL;
+    ompi_proc_t *ompi_proc_peer = NULL;
+    int proc_rank;
+    orte_process_name_t true_sender;
+
+    /*
+     * Get the true sender from the message
+     */
+    count = 1;
+    ret = opal_dss.unpack(buffer, &(true_sender), &count, ORTE_NAME);
+    if( OMPI_SUCCESS != ret ){
+        return;
+    }
+
+    /*
+     * Get the 'cid' from the message
+     */
+    count = 1;
+    ret = opal_dss.unpack(buffer, &(cid_to_help), &count, OPAL_INT);
+    if( OMPI_SUCCESS != ret ){
+        return;
+    }
+
+    OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                         "%s ftbasic: agreement) (common): Recv: %s Asked for help during agreement %3d",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&true_sender), cid_to_help ));
+
+    /*
+     * If this was my request, ignore
+     */
+    if( OPAL_EQUAL == orte_util_compare_name_fields(ORTE_NS_CMP_JOBID | ORTE_NS_CMP_VPID,
+                                                    ORTE_PROC_MY_NAME, &true_sender) ) {
+        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                             "%s ftbasic: agreement) (common): Recv: %s is self, skip",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&true_sender)));
+        return;
+    }
+
+    /*
+     * Find the communicator
+     */
+    comm = (ompi_communicator_t *)opal_pointer_array_get_item(&ompi_mpi_communicators, cid_to_help);
+    if( NULL == comm || cid_to_help != (int)(comm->c_contextid) ) {
+        opal_output(0, "%s ftbasic: agreement) (common): Error: Could not find the communicator with CID %3d",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cid_to_help );
+        return;
+    }
+
+    /*
+     * Check to make sure the sender is in this communicator
+     */
+    ompi_proc_peer = ompi_proc_find(&true_sender);
+    if( NULL == ompi_proc_peer ) {
+        opal_output(0, "%s ftbasic: agreement) (common): Error: Could not find the sender's ompi_proc_t (%s)",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&true_sender) );
+        return;
+    }
+    /* Look in the local, then the remote group for the process */
+    proc_rank = ompi_group_peer_lookup_id(comm->c_local_group, ompi_proc_peer);
+    if( proc_rank < 0 ) {
+        proc_rank = ompi_group_peer_lookup_id(comm->c_remote_group, ompi_proc_peer);
+        if( proc_rank < 0 ) {
+            /* Not in this communicator, ignore */
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                                 "%s ftbasic: agreement) (common): Recv: %s on a different communicator %3d - Ignore ",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&true_sender), cid_to_help ));
+            return;
+        }
+    }
+
+    /*
+     * Trigger the progress function to fire
+     */
+    OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                         "%s ftbasic: agreement) (common): Recv: %s Asked for help on communicator %3d",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&true_sender), cid_to_help ));
+    mca_coll_ftbasic_agreement_help_num_asking += 1;
+
+    return;
 }
 
 /*************************************

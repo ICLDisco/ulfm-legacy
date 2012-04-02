@@ -696,9 +696,49 @@ static int internal_iagreement_two_phase(ompi_communicator_t* comm,
  *************************************/
 int mca_coll_ftbasic_agreement_two_phase_term_progress(void)
 {
+    static int last_asking = 0, last_wait_limit = 1;
     ompi_communicator_t *comm = NULL;
     int max_num_comm = 0, i;
     int num_processed = 0;
+
+#if OPAL_ENABLE_DEBUG
+    /* Sanity Check */
+    if( mca_coll_ftbasic_agreement_help_num_asking < 0 ) {
+        opal_output(ompi_ftmpi_output_handle,
+                    "%s ftbasic:iagreement) (2phase) Progress: Warning: Num_Asking less than 0 (%d)! Should not happen!",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), mca_coll_ftbasic_agreement_help_num_asking);
+        return 0;
+    }
+#endif
+
+    /*
+     * Only proceed when there are outstanding requests for help
+     */
+    if( mca_coll_ftbasic_agreement_help_num_asking <= 0 ) {
+        return 0;
+    }
+
+    if( mca_coll_ftbasic_agreement_help_num_asking != last_asking ) {
+        opal_output_verbose(5, ompi_ftmpi_output_handle,
+                            "%s ftbasic: agreement) (2phase) Listener: Processing... (%d / %d / %d)",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                            mca_coll_ftbasic_agreement_help_num_asking, last_asking,
+                            mca_coll_ftbasic_agreement_help_wait_cycles );
+
+        last_asking = mca_coll_ftbasic_agreement_help_num_asking;
+        mca_coll_ftbasic_agreement_help_wait_cycles = FTBASIC_AGREEMENT_INC_WAIT_CYCLES;
+        last_wait_limit = 1;
+    }
+    else if( mca_coll_ftbasic_agreement_help_wait_cycles > 0 ) {
+        /* Throttle how often we call this operation */
+        --mca_coll_ftbasic_agreement_help_wait_cycles;
+        return 0;
+    }
+    else {
+        last_wait_limit = (last_wait_limit)%10 + 1;
+        mca_coll_ftbasic_agreement_help_wait_cycles = (FTBASIC_AGREEMENT_INC_WAIT_CYCLES*last_wait_limit);
+    }
+
 
     if( ompi_mpi_finalized ) {
         return 0;
@@ -778,6 +818,12 @@ static int mca_coll_ftbasic_agreement_two_phase_term_progress_comm(ompi_communic
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), status.MPI_SOURCE, comm->c_contextid,
                                  num_processed ));
 
+            opal_output( ompi_ftmpi_output_handle,
+                         "%s ftbasic: agreement) (2phase) Listener: "
+                         "Responding to Peer %3d on Comm %3d [Num %3d]",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), status.MPI_SOURCE, comm->c_contextid,
+                         num_processed );
+
             two_phase_term_responder(comm, status.MPI_SOURCE,
                                      (mca_coll_ftbasic_module_t*)comm->c_coll.coll_agreement_module);
         }
@@ -793,6 +839,23 @@ int mca_coll_ftbasic_agreement_two_phase_progress(void)
     int max_num_comm = 0, i;
     int num_processed = 0;
     mca_coll_ftbasic_module_t *ftbasic_module = NULL;
+
+#if OPAL_ENABLE_DEBUG
+    /* Sanity Check */
+    if( mca_coll_ftbasic_agreement_num_active_nonblocking < 0 ) {
+        opal_output(ompi_ftmpi_output_handle,
+                    "%s ftbasic:iagreement) (2phase) Progress: Warning: Num_Active less than 0 (%d)! Should not happen!",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), mca_coll_ftbasic_agreement_num_active_nonblocking );
+        return 0;
+    }
+#endif
+
+    /*
+     * Only proceed when there are outstanding nonblocking collectives
+     */
+    if( OPAL_LIKELY(mca_coll_ftbasic_agreement_num_active_nonblocking <= 0) ) {
+        return 0;
+    }
 
     if( ompi_mpi_finalized ) {
         return 0;
@@ -811,8 +874,8 @@ int mca_coll_ftbasic_agreement_two_phase_progress(void)
     two_phase_inside_progress = true;
 
     OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
-                         "%s ftbasic:iagreement) (2phase) Progress: Progressing...",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
+                         "%s ftbasic:iagreement) (2phase) Progress: Progressing... (%3d)",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), mca_coll_ftbasic_agreement_num_active_nonblocking ));
 
     /*
      * For each active communicator

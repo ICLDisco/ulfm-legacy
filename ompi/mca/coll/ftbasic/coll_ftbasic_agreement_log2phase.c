@@ -461,6 +461,7 @@ struct mca_coll_ftbasic_agreement_tree_t {
     int num_children;
     int num_children_alloc;
     int *children;
+    int *children_cmd;
     opal_bitmap_t *state_bitmap;
     int bkmrk_idx;
 };
@@ -470,29 +471,34 @@ typedef struct mca_coll_ftbasic_agreement_tree_t mca_coll_ftbasic_agreement_tree
  * Agreement 'tree' support (for Log Two Phase)
  */
 #define INIT_AGREE_TREE_STRUCT(agree_tree) {       \
-        agree_tree->root = 0;                     \
-        agree_tree->parent = 0;                   \
-        agree_tree->num_children = 0;             \
-        agree_tree->num_children_alloc = 0;       \
-        agree_tree->children = NULL;              \
-        agree_tree->state_bitmap = NULL;          \
-        agree_tree->bkmrk_idx = 0;                \
-    }
-
-#define FINALIZE_AGREE_TREE_STRUCT(agree_tree) {    \
         agree_tree->root = 0;                      \
         agree_tree->parent = 0;                    \
         agree_tree->num_children = 0;              \
         agree_tree->num_children_alloc = 0;        \
-        if( NULL != agree_tree->children ) {       \
-            free(agree_tree->children);            \
-            agree_tree->children = NULL;           \
-        }                                         \
-        if( NULL != agree_tree->state_bitmap) {    \
-            OBJ_RELEASE(agree_tree->state_bitmap); \
-            agree_tree->state_bitmap = NULL;       \
-        }                                         \
+        agree_tree->children = NULL;               \
+        agree_tree->children_cmd = NULL;           \
+        agree_tree->state_bitmap = NULL;           \
         agree_tree->bkmrk_idx = 0;                 \
+    }
+
+#define FINALIZE_AGREE_TREE_STRUCT(agree_tree) {    \
+        agree_tree->root = 0;                       \
+        agree_tree->parent = 0;                     \
+        agree_tree->num_children = 0;               \
+        agree_tree->num_children_alloc = 0;         \
+        if( NULL != agree_tree->children ) {        \
+            free(agree_tree->children);             \
+            agree_tree->children = NULL;            \
+        }                                           \
+        if( NULL != agree_tree->children_cmd ) {    \
+            free(agree_tree->children_cmd);         \
+            agree_tree->children_cmd = NULL;        \
+        }                                           \
+        if( NULL != agree_tree->state_bitmap) {     \
+            OBJ_RELEASE(agree_tree->state_bitmap);  \
+            agree_tree->state_bitmap = NULL;        \
+        }                                           \
+        agree_tree->bkmrk_idx = 0;                  \
     }
 
 /*************************************
@@ -555,20 +561,16 @@ static int log_two_phase_update_children(ompi_communicator_t* comm,
 
 static int log_two_phase_append_children(ompi_communicator_t* comm,
                                          mca_coll_ftbasic_module_t *ftbasic_module,
-                                         int *children, int num_children, bool notice_if_new);
+                                         int *children, int num_children,
+                                         int cmd);
 static int log_two_phase_append_child(ompi_communicator_t* comm,
                                       mca_coll_ftbasic_module_t *ftbasic_module,
-                                      int child, bool notice_if_new);
+                                      int child,
+                                      int cmd);
 static int log_two_phase_remove_child(ompi_communicator_t* comm,
                                       mca_coll_ftbasic_module_t *ftbasic_module,
                                       int child);
 
-static int log_two_phase_mark_need_notice(ompi_communicator_t* comm,
-                                          mca_coll_ftbasic_module_t *ftbasic_module,
-                                          int peer, bool notice);
-static bool log_two_phase_if_needs_notice(ompi_communicator_t* comm,
-                                          mca_coll_ftbasic_module_t *ftbasic_module,
-                                          int peer);
 static bool log_two_phase_if_should_skip(ompi_communicator_t* comm,
                                          mca_coll_ftbasic_module_t *ftbasic_module,
                                          int peer,
@@ -735,7 +737,8 @@ static int log_two_phase_coordinator(ompi_communicator_t* comm,
 static int log_two_phase_coordinator_progress(ompi_communicator_t* comm,
                                               mca_coll_ftbasic_module_t *ftbasic_module,
                                               int test_exit_status,
-                                              int num_failed);
+                                              int num_failed,
+                                              int *failed_ranks);
 
 
 /***************************************
@@ -749,7 +752,8 @@ static int log_two_phase_participant_parent(ompi_communicator_t* comm,
 static int log_two_phase_participant_parent_progress(ompi_communicator_t* comm,
                                                      mca_coll_ftbasic_module_t *ftbasic_module,
                                                      int test_exit_status,
-                                                     int num_failed);
+                                                     int num_failed,
+                                                     int *failed_ranks);
 
 static int log_two_phase_participant_child(ompi_communicator_t* comm,
                                            opal_bitmap_t *local_bitmap,
@@ -795,6 +799,7 @@ static int log_two_phase_test_all(ompi_communicator_t* comm,
                                   int num_reqs,
                                   bool *is_finished,
                                   int *num_failed,
+                                  int *failed_ranks[],
                                   bool return_error);
 
 
@@ -1462,9 +1467,49 @@ int mca_coll_ftbasic_agreement_log_two_phase_refresh_tree(opal_bitmap_t *local_b
  ***************************************/
 int mca_coll_ftbasic_agreement_log_two_phase_term_progress(void)
 {
+    static int last_asking = 0, last_wait_limit = 1;
     ompi_communicator_t *comm = NULL;
     int max_num_comm = 0, i;
     int num_processed = 0;
+
+#if OPAL_ENABLE_DEBUG
+    /* Sanity Check */
+    if( mca_coll_ftbasic_agreement_help_num_asking < 0 ) {
+        opal_output(ompi_ftmpi_output_handle,
+                    "%s ftbasic:iagreement) (log2phase) Progress: Warning: Num_Asking less than 0 (%d)! Should not happen!",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), mca_coll_ftbasic_agreement_help_num_asking);
+        return 0;
+    }
+#endif
+
+    /*
+     * Only proceed when there are outstanding requests for help
+     */
+    if( mca_coll_ftbasic_agreement_help_num_asking <= 0 ) {
+        return 0;
+    }
+
+    if( mca_coll_ftbasic_agreement_help_num_asking != last_asking ) {
+        opal_output_verbose(5, ompi_ftmpi_output_handle,
+                            "%s ftbasic: agreement) (log2phase) Listener: Processing... (%d / %d / %d)",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                            mca_coll_ftbasic_agreement_help_num_asking, last_asking,
+                            mca_coll_ftbasic_agreement_help_wait_cycles );
+
+        last_asking = mca_coll_ftbasic_agreement_help_num_asking;
+        mca_coll_ftbasic_agreement_help_wait_cycles = FTBASIC_AGREEMENT_INC_WAIT_CYCLES;
+        last_wait_limit = 1;
+    }
+    else if( mca_coll_ftbasic_agreement_help_wait_cycles > 0 ) {
+        /* Throttle how often we call this operation */
+        --mca_coll_ftbasic_agreement_help_wait_cycles;
+        return 0;
+    }
+    else {
+        last_wait_limit = (last_wait_limit)%10 + 1;
+        mca_coll_ftbasic_agreement_help_wait_cycles = (FTBASIC_AGREEMENT_INC_WAIT_CYCLES*last_wait_limit);
+    }
+
 
     if( ompi_mpi_finalized ) {
         return 0;
@@ -1519,6 +1564,23 @@ int mca_coll_ftbasic_agreement_log_two_phase_progress(void)
     int num_processed = 0;
     mca_coll_ftbasic_module_t *ftbasic_module = NULL;
 
+#if OPAL_ENABLE_DEBUG
+    /* Sanity Check */
+    if( mca_coll_ftbasic_agreement_num_active_nonblocking < 0 ) {
+        opal_output(ompi_ftmpi_output_handle,
+                    "%s ftbasic:iagreement) (log2phase) Progress: Warning: Num_Active less than 0 (%d)! Should not happen!",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), mca_coll_ftbasic_agreement_num_active_nonblocking );
+        return 0;
+    }
+#endif
+
+    /*
+     * Only proceed when there are outstanding nonblocking collectives
+     */
+    if( OPAL_LIKELY(mca_coll_ftbasic_agreement_num_active_nonblocking <= 0) ) {
+        return 0;
+    }
+
     if( ompi_mpi_finalized ) {
         return 0;
     }
@@ -1536,8 +1598,8 @@ int mca_coll_ftbasic_agreement_log_two_phase_progress(void)
     log_two_phase_inside_progress = true;
 
     OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
-                         "%s ftbasic:iagreement) (log2phase) Progress: Progressing...",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
+                         "%s ftbasic:iagreement) (log2phase) Progress: Progressing... (%3d)",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), mca_coll_ftbasic_agreement_num_active_nonblocking ));
 
     /*
      * For each active communicator
@@ -1642,7 +1704,8 @@ static int log_two_phase_protocol_bcast_to_children(ompi_communicator_t* comm,
                                       &loc_children, &loc_num_children, &loc_alloc);
         /* Append adopted children - Mark for notice as needed */
         log_two_phase_append_children(comm, ftbasic_module,
-                                      loc_children, loc_num_children, true);
+                                      loc_children, loc_num_children,
+                                      LOG_TWO_PHASE_QUERY_CMD_BCAST);
         loc_prev_num_children = num_prev_children + loc_num_children;
         locally_allocated_array = true;
     }
@@ -1735,37 +1798,6 @@ static int log_two_phase_protocol_bcast_to_children(ompi_communicator_t* comm,
             continue;
         }
 
-        /*
-         * If 'new' child and the first time we are interacting with it
-         * then send_oob(cmd = 'bcast')
-         */
-        if( log_two_phase_if_needs_notice(comm, ftbasic_module, loc_children[i] ) ) {
-            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                                 "%s ftbasic: agreement) (log2phase) bcast_to_children: "
-                                 "Send Notice to Child %3d.",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                 loc_children[i] ));
-
-            ret = log_two_phase_query_send_notice(comm, ftbasic_module, loc_children[i],
-                                                  LOG_TWO_PHASE_QUERY_CMD_BCAST,
-                                                  log_entry->seq_num,
-                                                  log_entry->attempt_num);
-            if( MPI_SUCCESS != ret ) {
-                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                                     "%s ftbasic: agreement) (log2phase) bcast_to_children: "
-                                     "(%3d) Failed Child %3d, adopt children.",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     of_rank, loc_children[i] ));
-                ret = log_two_phase_protocol_bcast_to_children(comm, ftbasic_module, local_bitmap,
-                                                               &loc_num_reqs, loc_children[i],
-                                                               loc_prev_num_children,
-                                                               log_entry);
-                if( of_rank == rank ) {
-                    log_two_phase_remove_child(comm, ftbasic_module, loc_children[i]);
-                }
-                continue;
-            }
-        }
 
         OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                              "%s ftbasic: agreement) (log2phase) bcast_to_children: "
@@ -2313,7 +2345,8 @@ static int log_two_phase_protocol_gather_from_children(ompi_communicator_t* comm
                                       &loc_children, &loc_num_children, &loc_alloc);
         /* Append adopted children - Mark for notice as needed */
         log_two_phase_append_children(comm, ftbasic_module,
-                                      loc_children, loc_num_children, true);
+                                      loc_children, loc_num_children,
+                                      LOG_TWO_PHASE_QUERY_CMD_GATHER);
         loc_prev_num_children = num_prev_children + loc_num_children;
 
         locally_allocated_array = true;
@@ -2404,42 +2437,12 @@ static int log_two_phase_protocol_gather_from_children(ompi_communicator_t* comm
             continue;
         }
 
-        /*
-         * If 'new' child and the first time we are interacting with it
-         * then send_oob(cmd = 'gather')
-         */
-        if( log_two_phase_if_needs_notice(comm, ftbasic_module, loc_children[i] ) ) {
-            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                                 "%s ftbasic: agreement) (log2phase) gather_from_children: "
-                                 "Send Notice to Child %3d.",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                 loc_children[i] ));
-
-            ret = log_two_phase_query_send_notice(comm, ftbasic_module, loc_children[i],
-                                                  LOG_TWO_PHASE_QUERY_CMD_GATHER,
-                                                  log_entry->seq_num,
-                                                  log_entry->attempt_num);
-            if( MPI_SUCCESS != ret ) {
-                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                                     "%s ftbasic: agreement) (log2phase) gather_from_children: "
-                                     "(%3d) Failed Child %3d, adopt children.",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     of_rank, loc_children[i] ));
-                ret = log_two_phase_protocol_gather_from_children(comm, ftbasic_module, local_bitmap,
-                                                                  &loc_num_reqs, loc_children[i], loc_prev_num_children,
-                                                                  log_entry);
-                if( of_rank == rank ) {
-                    log_two_phase_remove_child(comm, ftbasic_module, loc_children[i]);
-                }
-                continue;
-            }
-        }
 
         OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                              "%s ftbasic: agreement) (log2phase) gather_from_children: "
-                             "Recv Child %3d.",
+                             "Recv Child %3d. [%3d / %3d]",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             loc_children[i] ));
+                             loc_children[i], of_rank, rank ));
 
         REMOTE_BITMAP_GET_NEXT(ftbasic_module, remote_bitmap, size);
         remote_bitmap->rank = loc_children[i];
@@ -3274,6 +3277,12 @@ static int log_two_phase_protocol_query_parent(ompi_communicator_t* comm,
 
     log_entry->state = AGREEMENT_STATE_UNCERTAIN;
 
+    /*
+     * Broadcast that you are looking for help
+     */
+    mca_coll_ftbasic_agreement_base_term_request_help(comm, ftbasic_module);
+
+
     /**************************************
      * Determine which parent to recv from
      **************************************/
@@ -3530,10 +3539,10 @@ static int log_two_phase_protocol_query_parent(ompi_communicator_t* comm,
     }
    
  cleanup:
-   if( NULL != loc_commit_bitmap ) {
-       OBJ_RELEASE(loc_commit_bitmap);
-       loc_commit_bitmap = NULL;
-   }
+    if( NULL != loc_commit_bitmap ) {
+        OBJ_RELEASE(loc_commit_bitmap);
+        loc_commit_bitmap = NULL;
+    }
 
     return exit_status;
 }
@@ -3559,10 +3568,13 @@ static int log_two_phase_query_responder(ompi_communicator_t* comm,
                                          int peer)
 {
     int ret, exit_status = OMPI_SUCCESS;
-    int rank;
+    mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
+    mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
     ompi_status_public_t *statuses = ftbasic_module->mccb_statuses;
+    int rank, p;
     int loc_seq_num, loc_attempt_num;
     mca_coll_ftbasic_agreement_log_entry_t *log_entry = NULL;
+    bool found;
 
     rank = ompi_comm_rank(comm);
 
@@ -3597,6 +3609,7 @@ static int log_two_phase_query_responder(ompi_communicator_t* comm,
         goto cleanup;
     }
 
+
     /************************************************
      * Find this log entry
      ************************************************/
@@ -3609,10 +3622,6 @@ static int log_two_phase_query_responder(ompi_communicator_t* comm,
                          loc_seq_num, loc_attempt_num, log_entry->seq_num, log_entry->attempt_num,
                          AGREEMENT_STATE_STR(log_entry->state) ));
 
-    /*
-     * Append the child so we do not mistakenly see it as 'new' later
-     */
-    log_two_phase_append_child(comm, ftbasic_module, peer, true);
 
     /************************************************
      * If this entry was finished then send the response directly to the peer
@@ -3625,22 +3634,41 @@ static int log_two_phase_query_responder(ompi_communicator_t* comm,
         goto cleanup;
     }
     /************************************************
-     * Query suspended -> processing the queue
-     * So just add this entry to the end of the queue and
-     * it will be processed then.
-     * -or-
-     * Currently working in the protocol and will either
-     * be delt with during the protocol or afterwards.
-     * In either case add it to the queue
+     * Do we know how they should participate?
+     * - Yes: Tell them
+     * - No : Delay until we know more.
      ************************************************/
     else {
-        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                             "%s ftbasic: agreement) (log2phase) Query: Responder: "
-                             "Processing... Not decided, delay reply to peer %2d",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             peer ));
-        /* Add to the queue */
-        log_two_phase_query_append_queue(comm, ftbasic_module, peer, loc_seq_num, loc_attempt_num, log_entry);
+        /* Look for the peer in our child list */
+        found = false;
+        for(p = 0; p < agreement_tree->num_children; ++p) {
+            if( agreement_tree->children[p] == peer ) {
+                found = true;
+                break;
+            }
+        }
+        /* If we already posted something, then just tell them */
+        if( found ) {
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                                 "%s ftbasic: agreement) (log2phase) Query: Responder: "
+                                 "Processing... Already Posted a Message (%s) to peer %2d",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 (agreement_tree->children_cmd[p] == LOG_TWO_PHASE_QUERY_CMD_GATHER ? "Gather" : "Bcast"),
+                                 peer ));
+            ret = log_two_phase_query_send_notice(comm, ftbasic_module, peer,
+                                                  agreement_tree->children_cmd[p],
+                                                  loc_seq_num, loc_attempt_num);
+        }
+        /* Otherwise we do not know yet, so delay until we do */
+        else {
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                                 "%s ftbasic: agreement) (log2phase) Query: Responder: "
+                                 "Processing... Unknown how to respond, delay reply to peer %2d",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 peer ));
+            /* Add to the queue */
+            log_two_phase_query_append_queue(comm, ftbasic_module, peer, loc_seq_num, loc_attempt_num, log_entry);
+        }
     }
 
  cleanup:
@@ -3701,8 +3729,6 @@ static int log_two_phase_query_send_notice(ompi_communicator_t* comm,
 {
     int ret = OMPI_SUCCESS;
     int msg_buffer[3];
-
-    log_two_phase_mark_need_notice(comm, ftbasic_module, peer, false);
 
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ftbasic: agreement) (log2phase) send_notice: "
@@ -3773,6 +3799,7 @@ static int log_two_phase_query_recv_notice(ompi_communicator_t* comm,
                          peer,
                          LOG_QUERY_PHASE_STR(*cmd_msg),
                          *seq_num, *attempt_num ));
+
  cleanup:
     return ret;
 }
@@ -3986,6 +4013,11 @@ static int log_two_phase_term_initiator(ompi_communicator_t* comm,
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), rank));
 
     log_entry->state = AGREEMENT_STATE_UNCERTAIN;
+
+    /*
+     * Broadcast that you are looking for help
+     */
+    mca_coll_ftbasic_agreement_base_term_request_help(comm, ftbasic_module);
 
     /*
      * If the 'root' is failed then do a linear search for a decided, alive peer
@@ -4289,6 +4321,7 @@ static int log_two_phase_test_all(ompi_communicator_t* comm,
                                   int num_reqs,
                                   bool *is_finished,
                                   int *num_failed,
+                                  int *failed_ranks[],
                                   bool return_error)
 {
     int ret, exit_status = OMPI_SUCCESS;
@@ -4318,6 +4351,7 @@ static int log_two_phase_test_all(ompi_communicator_t* comm,
                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                         statuses[i].MPI_SOURCE);
                     *num_failed += 1;
+                    (*failed_ranks)[(*num_failed)-1] = statuses[i].MPI_SOURCE;
                     if( return_error ) {
                         exit_status = statuses[i].MPI_ERROR;
                     }
@@ -4330,6 +4364,7 @@ static int log_two_phase_test_all(ompi_communicator_t* comm,
                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                     statuses[i].MPI_SOURCE);
                 *num_failed += 1;
+                (*failed_ranks)[(*num_failed)-1] = statuses[i].MPI_SOURCE;
                 if( return_error ) {
                     exit_status = statuses[i].MPI_ERROR;
                 }
@@ -4355,6 +4390,7 @@ static int mca_coll_ftbasic_agreement_log_two_phase_progress_comm(ompi_communica
     mca_coll_ftbasic_agreement_log_entry_t *log_entry = NULL;
     int num_processed = 0;
     int num_failed = 0;
+    int *failed_ranks = NULL;
 
     /* Sanity check:
      * - If there is no active request, then nothing to do.
@@ -4388,11 +4424,17 @@ static int mca_coll_ftbasic_agreement_log_two_phase_progress_comm(ompi_communica
      */
     num_processed++;
     is_finished = false;
+    if( current_collreq->num_reqs > 0 ) {
+        failed_ranks = (int*)malloc(sizeof(int) * current_collreq->num_reqs);
+    } else {
+        failed_ranks = (int*)malloc(sizeof(int) );
+    }
     test_exit_status = log_two_phase_test_all(comm,
                                               ftbasic_module,
                                               current_collreq->num_reqs,
                                               &is_finished,
                                               &num_failed,
+                                              &failed_ranks,
                                               true);
     if( OMPI_SUCCESS != test_exit_status ) {
         OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -4430,7 +4472,7 @@ static int mca_coll_ftbasic_agreement_log_two_phase_progress_comm(ompi_communica
             /* Start at the end of Bcast_Req */
             ftbasic_module->agreement_info->cur_request->stage = LOG_TWO_PHASE_NB_STAGE_COORD_WAIT_BCAST_REQ;
         }
-        ret = log_two_phase_coordinator_progress(comm, ftbasic_module, test_exit_status, num_failed);
+        ret = log_two_phase_coordinator_progress(comm, ftbasic_module, test_exit_status, num_failed, failed_ranks);
     }
     /********************************
      * Participant (Parent)
@@ -4440,7 +4482,7 @@ static int mca_coll_ftbasic_agreement_log_two_phase_progress_comm(ompi_communica
             /* Start at the end of Bcast_Req */
             ftbasic_module->agreement_info->cur_request->stage = LOG_TWO_PHASE_NB_STAGE_COORD_PARENT_WAIT_BCAST_REQ;
         }
-        ret = log_two_phase_participant_parent_progress(comm, ftbasic_module, test_exit_status, num_failed);
+        ret = log_two_phase_participant_parent_progress(comm, ftbasic_module, test_exit_status, num_failed, failed_ranks);
     }
     /********************************
      * Participant (Child)
@@ -4514,23 +4556,27 @@ static int mca_coll_ftbasic_agreement_log_two_phase_progress_comm(ompi_communica
     }
 
  cleanup:
+    if( failed_ranks != NULL ) {
+        free(failed_ranks);
+        failed_ranks = NULL;
+    }
+
     return num_processed;
 }
 
 static int log_two_phase_coordinator_progress(ompi_communicator_t* comm,
                                               mca_coll_ftbasic_module_t *ftbasic_module,
                                               int test_exit_status,
-                                              int num_failed)
+                                              int num_failed,
+                                              int *failed_ranks)
 {
     int ret, exit_status = OMPI_SUCCESS;
     mca_coll_ftbasic_request_t *current_collreq = ftbasic_module->agreement_info->cur_request;
     mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
     mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
-    ompi_status_public_t *statuses = ftbasic_module->mccb_statuses;
     mca_coll_ftbasic_agreement_log_entry_t *log_entry = NULL;
     int rank, size;
-    int i, j;
-    int *failed_ranks = NULL;
+    int i;
 
     rank = ompi_comm_rank(comm);
     size = ompi_comm_size(comm);
@@ -4542,30 +4588,17 @@ static int log_two_phase_coordinator_progress(ompi_communicator_t* comm,
      * - reset 'num_reqs'
      */
     if( OMPI_SUCCESS != test_exit_status ) {
-        /* Sanity check: If this value is not set, then calculate it */
-        if( num_failed <= 0 ) {
-            num_failed = 0;
-            for( i = 0, j = 0; i < current_collreq->num_reqs; ++i ) {
-                if( MPI_SUCCESS != statuses[i].MPI_ERROR ) {
-                    ++num_failed;
-                }
-            }
-        }
-
-        /* Create a list of failed processes */
-        failed_ranks = (int*)malloc(sizeof(int) * num_failed);
-        for( i = 0, j = 0; i < current_collreq->num_reqs; ++i ) {
-            if( MPI_SUCCESS != statuses[i].MPI_ERROR ) {
+#if OPAL_ENABLE_DEBUG
+        if( NULL != failed_ranks ) {
+            for( i = 0; i < num_failed; ++i ) {
                 opal_output_verbose(5, ompi_ftmpi_output_handle,
                                     "%s ftbasic: agreement) (log2phase) Coordinator: "
                                     "Failed peer %2d",
                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                    statuses[i].MPI_SOURCE);
-                failed_ranks[j] = statuses[i].MPI_SOURCE;
-                ++j;
+                                    failed_ranks[i]);
             }
         }
-
+#endif
         /* Reset the 'num_reqs' */
         current_collreq->num_reqs = 0;
     }
@@ -4625,7 +4658,7 @@ static int log_two_phase_coordinator_progress(ompi_communicator_t* comm,
                                  "%s ftbasic:iagreement) (log2phase) Coordinator: "
                                  "Failed (%2d) - Receive Lists.",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret ));
-            exit_status = log_two_phase_coordinator_progress(comm, ftbasic_module, ret, -1);
+            exit_status = log_two_phase_coordinator_progress(comm, ftbasic_module, ret, -1, NULL);
             goto cleanup;
         }
 
@@ -4647,9 +4680,9 @@ static int log_two_phase_coordinator_progress(ompi_communicator_t* comm,
             for( i = 0; i < num_failed; ++i ) {
                 opal_output_verbose(5, ompi_ftmpi_output_handle,
                                     "%s ftbasic: agreement) (log2phase) Coordinator: "
-                                    "Proc. %3d Failed! Gather from Children...",
+                                    "Proc. %3d Failed! Gather from Children... (%3d / %3d) failed",
                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                    failed_ranks[i] );
+                                    failed_ranks[i], i, num_failed );
 
                 /* Do this operation blocking
                  * JJH TODO:
@@ -4724,7 +4757,7 @@ static int log_two_phase_coordinator_progress(ompi_communicator_t* comm,
                                  "%s ftbasic:iagreement) (log2phase) Coordinator: "
                                  "Failed (%2d) - Bcast final list.",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret ));
-            exit_status = log_two_phase_coordinator_progress(comm, ftbasic_module, ret, -1);
+            exit_status = log_two_phase_coordinator_progress(comm, ftbasic_module, ret, -1, NULL);
             goto cleanup;
         }
     }
@@ -4791,28 +4824,22 @@ static int log_two_phase_coordinator_progress(ompi_communicator_t* comm,
     }
 
  cleanup:
-    if( NULL != failed_ranks ) {
-        free(failed_ranks);
-        failed_ranks = NULL;
-    }
-
     return exit_status;
 }
 
 static int log_two_phase_participant_parent_progress(ompi_communicator_t* comm,
                                                      mca_coll_ftbasic_module_t *ftbasic_module,
                                                      int test_exit_status,
-                                                     int num_failed)
+                                                     int num_failed,
+                                                     int *failed_ranks)
 {
     int ret, exit_status = OMPI_SUCCESS;
     mca_coll_ftbasic_request_t *current_collreq = ftbasic_module->agreement_info->cur_request;
     mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
     mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
-    ompi_status_public_t *statuses = ftbasic_module->mccb_statuses;
     mca_coll_ftbasic_agreement_log_entry_t *log_entry = NULL;
     int rank, size;
-    int i, j;
-    int *failed_ranks = NULL;
+    int i;
 #if DEBUG_WITH_STR == 1
     char *tmp_bitstr = NULL;
 #endif
@@ -4827,38 +4854,15 @@ static int log_two_phase_participant_parent_progress(ompi_communicator_t* comm,
      * - reset 'num_reqs'
      */
     if( OMPI_SUCCESS != test_exit_status ) {
-        /* Sanity check: If this value is not set, then calculate it */
-        if( num_failed <= 0 ) {
-            num_failed = 0;
-            for( i = 0, j = 0; i < current_collreq->num_reqs; ++i ) {
-                if( MPI_SUCCESS != statuses[i].MPI_ERROR ) {
-                    ++num_failed;
-                }
-            }
+#if OPAL_ENABLE_DEBUG
+        for( i = 0; i < num_failed; ++i ) {
+            opal_output_verbose(5, ompi_ftmpi_output_handle,
+                                "%s ftbasic: agreement) (log2phase) Participant: (Parent) "
+                                "Failed peer %2d",
+                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                failed_ranks[i]);
         }
-
-        /*
-         * It is possible that even here 'num_failed' is 0.
-         * This is when the parent of this process failes (when acting as a child)
-         * So we know it was the parent that failed, and it is handled in the
-         * error routine for the send/recv functionality below.
-         */
-        if( num_failed != 0 ) {
-            /* Create a list of failed processes */
-            failed_ranks = (int*)malloc(sizeof(int) * num_failed);
-            for( i = 0, j = 0; i < current_collreq->num_reqs; ++i ) {
-                if( MPI_SUCCESS != statuses[i].MPI_ERROR ) {
-                    opal_output_verbose(5, ompi_ftmpi_output_handle,
-                                        "%s ftbasic: agreement) (log2phase) Participant: (Parent) "
-                                        "Failed peer %2d",
-                                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                        statuses[i].MPI_SOURCE);
-                    failed_ranks[j] = statuses[i].MPI_SOURCE;
-                    ++j;
-                }
-            }
-        }
-
+#endif
         /* Reset the 'num_reqs' */
         current_collreq->num_reqs = 0;
     }
@@ -4954,7 +4958,7 @@ static int log_two_phase_participant_parent_progress(ompi_communicator_t* comm,
                                  "%s ftbasic:iagreement) (log2phase) Participant: (Parent) "
                                  "Failed (%2d) - Receive Lists.",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret ));
-            exit_status = log_two_phase_participant_parent_progress(comm, ftbasic_module, ret, -1);
+            exit_status = log_two_phase_participant_parent_progress(comm, ftbasic_module, ret, -1, NULL);
             goto cleanup;
         }
     }
@@ -5045,7 +5049,7 @@ static int log_two_phase_participant_parent_progress(ompi_communicator_t* comm,
                                  "%s ftbasic:iagreement) (log2phase) Participant: (Parent) "
                                  "Failed (%2d) - Send list",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret ));
-            exit_status = log_two_phase_participant_parent_progress(comm, ftbasic_module, ret, -1);
+            exit_status = log_two_phase_participant_parent_progress(comm, ftbasic_module, ret, -1, NULL);
             goto cleanup;
         }
     }
@@ -5111,7 +5115,7 @@ static int log_two_phase_participant_parent_progress(ompi_communicator_t* comm,
                                  "%s ftbasic:iagreement) (log2phase) Participant: (Parent) "
                                  "Failed (%2d) - Recv list",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret ));
-            exit_status = log_two_phase_participant_parent_progress(comm, ftbasic_module, ret, -1);
+            exit_status = log_two_phase_participant_parent_progress(comm, ftbasic_module, ret, -1, NULL);
             goto cleanup;
         }
     }
@@ -5230,7 +5234,7 @@ static int log_two_phase_participant_parent_progress(ompi_communicator_t* comm,
                                  "%s ftbasic:iagreement) (log2phase) Participant: (Parent) "
                                  "Failed (%2d) - Bcast decision",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret ));
-            exit_status = log_two_phase_participant_parent_progress(comm, ftbasic_module, ret, -1);
+            exit_status = log_two_phase_participant_parent_progress(comm, ftbasic_module, ret, -1, NULL);
             goto cleanup;
         }
     }
@@ -5354,11 +5358,6 @@ static int log_two_phase_participant_parent_progress(ompi_communicator_t* comm,
 
 
  cleanup:
-    if( NULL != failed_ranks ) {
-        free(failed_ranks);
-        failed_ranks = NULL;
-    }
-
 #if DEBUG_WITH_STR == 1
     if( NULL != tmp_bitstr ) {
         free(tmp_bitstr);
@@ -5693,26 +5692,30 @@ static int mca_coll_ftbasic_agreement_log_two_phase_term_progress_comm(ompi_comm
             ret = MCA_PML_CALL(recv( &loc_cmd, 1, MPI_INT,
                                      status.MPI_SOURCE, MCA_COLL_FTBASIC_TAG_AGREEMENT_CATCH_UP_REQ,
                                      comm, &status ));
+
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                                 "%s ftbasic: agreement) (log2phase) Listener: "
+                                 "Responding to Peer %3d on Comm %3d [Num %3d] - %s",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), status.MPI_SOURCE, comm->c_contextid,
+                                 num_processed, 
+                                 (LOG_TWO_PHASE_CMD_QUERY_PROTOCOL == loc_cmd ? "Query" : "Term") ));
             if( LOG_TWO_PHASE_CMD_QUERY_PROTOCOL == loc_cmd ) {
-                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                                     "%s ftbasic: agreement) (log2phase) Listener: "
-                                     "Responding to Peer %3d on Comm %3d [Num %3d] - Query",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), status.MPI_SOURCE, comm->c_contextid,
-                                     num_processed ));
                 log_two_phase_query_responder(comm,
                                               (mca_coll_ftbasic_module_t*)comm->c_coll.coll_agreement_module,
                                               status.MPI_SOURCE);
             }
             else if( LOG_TWO_PHASE_CMD_TERM_PROTOCOL == loc_cmd ) {
-                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                                     "%s ftbasic: agreement) (log2phase) Listener: "
-                                     "Responding to Peer %3d on Comm %3d [Num %3d] - Term",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), status.MPI_SOURCE, comm->c_contextid,
-                                     num_processed ));
                 log_two_phase_term_responder(comm,
                                              (mca_coll_ftbasic_module_t*)comm->c_coll.coll_agreement_module,
                                              status.MPI_SOURCE);
             }
+
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                                 "%s ftbasic: agreement) (log2phase) Listener: "
+                                 "Responding to Peer %3d on Comm %3d [Num %3d] - %s - DONE",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), status.MPI_SOURCE, comm->c_contextid,
+                                 num_processed, 
+                                 (LOG_TWO_PHASE_CMD_QUERY_PROTOCOL == loc_cmd ? "Query" : "Term") ));
         }
     } while(flag);
 
@@ -5823,12 +5826,13 @@ static int log_two_phase_update_children(ompi_communicator_t* comm,
 
 static int log_two_phase_append_children(ompi_communicator_t* comm,
                                          mca_coll_ftbasic_module_t *ftbasic_module,
-                                         int *children, int num_children, bool notice_if_new)
+                                         int *children, int num_children,
+                                         int cmd)
 {
     int i;
 
     for(i = 0; i < num_children; ++i) {
-        log_two_phase_append_child(comm, ftbasic_module, children[i], notice_if_new);
+        log_two_phase_append_child(comm, ftbasic_module, children[i], cmd);
     }
 
     return OMPI_SUCCESS;
@@ -5836,11 +5840,12 @@ static int log_two_phase_append_children(ompi_communicator_t* comm,
 
 static int log_two_phase_append_child(ompi_communicator_t* comm,
                                       mca_coll_ftbasic_module_t *ftbasic_module,
-                                      int child, bool notice_if_new)
+                                      int child, int cmd)
 {
     mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
     mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
     int p;
+    bool resize_after_add = false;
 #if OPAL_ENABLE_DEBUG
     int rank = ompi_comm_rank(comm);
 #endif
@@ -5868,14 +5873,21 @@ static int log_two_phase_append_child(ompi_communicator_t* comm,
     /*
      * Add to the child list
      */
+    if( NULL == agreement_tree->children_cmd ) {
+        agreement_tree->children_cmd = (int*)malloc(sizeof(int) * agreement_tree->num_children_alloc);
+    }
+    else if( agreement_tree->num_children > agreement_tree->num_children_alloc ) {
+        resize_after_add = true;
+    }
     append_child_to_array(&(agreement_tree->children),
                           &(agreement_tree->num_children),
                           &(agreement_tree->num_children_alloc),
                           child);
-
-    if( notice_if_new ) {
-        log_two_phase_mark_need_notice(comm, ftbasic_module, child, true);
+    if( resize_after_add ) {
+        agreement_tree->children_cmd = (int*)realloc(agreement_tree->children_cmd,
+                                                     (sizeof(int) * agreement_tree->num_children_alloc));
     }
+    agreement_tree->children_cmd[(agreement_tree->num_children)-1] = cmd;
 
     return OMPI_SUCCESS;
 }
@@ -5909,7 +5921,7 @@ static int log_two_phase_remove_child(ompi_communicator_t* comm,
     }
 
     /*
-     * Inagreement it's entry in the remote bitmap
+     * Invalidate it's entry in the remote bitmap
      */
     for( item  = opal_list_get_first(&(ftbasic_module->agreement_info->remote_bitmaps));
          item != opal_list_get_end(&(ftbasic_module->agreement_info->remote_bitmaps));
@@ -5922,43 +5934,6 @@ static int log_two_phase_remove_child(ompi_communicator_t* comm,
     }
 
     return OMPI_SUCCESS;
-}
-
-static int log_two_phase_mark_need_notice(ompi_communicator_t* comm,
-                                          mca_coll_ftbasic_module_t *ftbasic_module,
-                                          int peer, bool notice)
-{
-    mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
-    mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
-
-    if( NULL == agreement_tree->state_bitmap ) {
-        agreement_tree->state_bitmap = OBJ_NEW(opal_bitmap_t);
-        opal_bitmap_init(agreement_tree->state_bitmap,
-                         ompi_comm_size(comm) + FTBASIC_AGREEMENT_EXTRA_BITS);
-    }
-    if( notice ) {
-        opal_bitmap_set_bit(agreement_tree->state_bitmap, peer);
-    } else {
-        opal_bitmap_clear_bit(agreement_tree->state_bitmap, peer);
-    }
-
-    return OMPI_SUCCESS;
-}
-
-static bool log_two_phase_if_needs_notice(ompi_communicator_t* comm,
-                                          mca_coll_ftbasic_module_t *ftbasic_module,
-                                          int peer)
-{
-    mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
-    mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
-
-    if( NULL == agreement_tree->state_bitmap ) {
-        return false;
-    }
-    if( !opal_bitmap_is_set_bit(agreement_tree->state_bitmap, peer) ) {
-        return false;
-    }
-    return true;
 }
 
 static bool log_two_phase_if_should_skip(ompi_communicator_t* comm,
