@@ -202,6 +202,9 @@ ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_msg_packet_t);
 /* OMPI 'revoke' message */
 #define ORTE_RML_TAG_REVOKE_NOTICE          49
 
+/* OMPI 'help' message */
+#define ORTE_RML_TAG_COLL_AGREE_TERM        50
+
 #define ORTE_RML_TAG_MAX                   100
 
 
