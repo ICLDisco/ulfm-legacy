@@ -78,10 +78,11 @@ BEGIN_C_DECLS
 
 
 struct ompi_communicator_t;
-struct ompi_group_t;
 struct ompi_datatype_t;
 struct ompi_op_t;
-
+#if OPAL_ENABLE_FT_MPI
+struct ompi_group_t;
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /* ******************************************************************** */
 
