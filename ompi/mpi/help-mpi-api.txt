@@ -3,6 +3,7 @@
 # Copyright (c) 2006      High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -23,5 +24,16 @@ MPI_ABORT was invoked on rank %d in communicator %s
 with errorcode %d.
 
 NOTE: invoking MPI_ABORT causes Open MPI to kill all MPI processes.
+You may or may not see output from other processes, depending on
+exactly when Open MPI kills them.
+#
+[mpi-abort-rts]
+MPI_ABORT was invoked on rank %d in communicator %s 
+with errorcode %d.
+
+NOTE: invoking MPI_ABORT causes Open MPI to kill all MPI processes
+in this communicator. Depending on the use of error handlers in
+this application, and how Open MPI was configured this may also
+cause Open MPI to kill all MPI processes in the job.
 You may or may not see output from other processes, depending on
 exactly when Open MPI kills them.

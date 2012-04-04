@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2007 University of Houston. All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -115,6 +116,11 @@ mca_coll_inter_comm_query(struct ompi_communicator_t *comm, int *priority)
 
     inter_module->super.coll_module_enable = mca_coll_inter_module_enable;
     inter_module->super.ft_event = NULL;
+
+#if OPAL_ENABLE_FT_MPI
+    inter_module->super.coll_agreement   = NULL;
+    inter_module->super.coll_iagreement  = NULL;
+#endif
 
     inter_module->super.coll_allgather  = mca_coll_inter_allgather_inter;
     inter_module->super.coll_allgatherv = mca_coll_inter_allgatherv_inter;

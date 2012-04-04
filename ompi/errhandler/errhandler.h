@@ -12,6 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -34,6 +36,11 @@
 #include "ompi/runtime/mpiruntime.h"
 #include "ompi/errhandler/errhandler_predefined.h"
 #include "ompi/errhandler/errcode-internal.h"
+
+#if OPAL_ENABLE_FT_MPI
+#include "orte/mca/plm/plm_types.h"
+#include "ompi/proc/proc.h"
+#endif
 
 #include "orte/types.h"
 
@@ -393,6 +400,17 @@ static inline bool ompi_errhandler_is_intrinsic(ompi_errhandler_t *errhandler)
 
     return false;
 }
+
+#if OPAL_ENABLE_FT_MPI
+/**
+ * Initialize/Finalize the connection with the Runtime Error Management
+ * mechanism to be notified of process failures.
+ */
+int ompi_errhandler_internal_rte_init(void);
+int ompi_errhandler_internal_rte_finalize(void);
+OMPI_DECLSPEC int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state);
+
+#endif /* OPAL_ENABLE_FT_MPI */
 
 END_C_DECLS
 

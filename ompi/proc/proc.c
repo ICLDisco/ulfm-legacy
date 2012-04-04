@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -73,6 +74,10 @@ void ompi_proc_construct(ompi_proc_t* proc)
 
     /* initialize this pointer to NULL */
     proc->proc_hostname = NULL;
+
+#if OPAL_ENABLE_FT_MPI
+    proc->proc_active = true;
+#endif
 }
 
 
@@ -120,6 +125,10 @@ int ompi_proc_init(void)
                 return ret;
             }
         }
+
+#if OPAL_ENABLE_FT_MPI
+        proc->proc_active = true;
+#endif
     }
 
     return OMPI_SUCCESS;

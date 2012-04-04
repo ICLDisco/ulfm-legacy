@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved. 
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -261,6 +262,8 @@ const char *orte_proc_state_to_str(orte_proc_state_t state)
             return "RUNNING";
         case ORTE_PROC_STATE_REGISTERED:
             return "SYNC REGISTERED";
+        case ORTE_PROC_STATE_DEREGISTERED:
+            return "SYNC DEREGISTERED";
         case ORTE_PROC_STATE_UNTERMINATED:
             return "UNTERMINATED";
         case ORTE_PROC_STATE_TERMINATED:

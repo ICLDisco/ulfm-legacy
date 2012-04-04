@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,6 +28,10 @@
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
+#if OPAL_ENABLE_FT_MPI
+#include "ompi/group/group.h"
+#include "ompi/communicator/communicator.h"
+#endif /* OPAL_ENABLE_FT_MPI */
 
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/base.h"
@@ -76,3 +82,25 @@ int mca_coll_base_open(void)
 
     return OMPI_SUCCESS;
 }
+
+#if OPAL_ENABLE_FT_MPI
+int mca_coll_base_agreement(struct ompi_communicator_t* comm,
+                            struct ompi_group_t **group,
+                            int *flag,
+                            struct mca_coll_base_module_2_0_0_t *module)
+{
+    return OMPI_ERR_NOT_SUPPORTED;
+}
+
+int mca_coll_base_iagreement(struct ompi_communicator_t* comm,
+                             struct ompi_group_t **group,
+                             int *flag,
+                             struct mca_coll_base_module_2_0_0_t *module,
+                             ompi_request_t **request)
+{
+    *request = MPI_REQUEST_NULL;
+
+    return OMPI_ERR_NOT_SUPPORTED;
+}
+
+#endif /* OPAL_ENABLE_FT_MPI */

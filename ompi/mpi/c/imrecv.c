@@ -63,6 +63,13 @@ int MPI_Imrecv(void *buf, int count, MPI_Datatype type,
         return MPI_SUCCESS;
      }
 
+#if OPAL_ENABLE_FT_MPI
+    /*
+     * The message and associated request will be checked by the PML, and
+     * handled approprately. SO no need to check here.
+     */
+#endif
+
     OPAL_CR_ENTER_LIBRARY();
 
     rc = MCA_PML_CALL(imrecv(buf, count, type, message, request));

@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2010      IBM Corporation.  All rights reserved.
-# Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
+# Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -27,6 +27,11 @@ dist_amca_param_DATA += \
 	amca-param-sets/ft-enable-cr \
 	amca-param-sets/ft-enable-cr-recovery
 endif # WANT_FT_CR
+
+if WANT_FT_MPI
+dist_amca_param_DATA += \
+	amca-param-sets/ft-enable-mpi
+endif # WANT_FT_MPI
 
 EXTRA_DIST = \
 	dist/make_dist_tarball \

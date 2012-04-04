@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC. 
  *                         All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -152,12 +153,14 @@ bool mca_oob_tcp_msg_send_handler(mca_oob_tcp_msg_t* msg, struct mca_oob_tcp_pee
                 return false;
             }
             else {
+#if OPAL_ENABLE_FT_MPI == 0
                 opal_output(0, "%s->%s mca_oob_tcp_msg_send_handler: writev failed: %s (%d) [sd = %d]", 
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                     ORTE_NAME_PRINT(&(peer->peer_name)), 
                     strerror(opal_socket_errno),
                     opal_socket_errno,
                     peer->peer_sd);
+#endif
                 mca_oob_tcp_peer_close(peer);
                 msg->msg_rc = ORTE_ERR_CONNECTION_FAILED;
                 return true;
@@ -261,11 +264,20 @@ static bool mca_oob_tcp_msg_recv(mca_oob_tcp_msg_t* msg, mca_oob_tcp_peer_t* pee
             else if (opal_socket_errno == EAGAIN || opal_socket_errno == EWOULDBLOCK) {
                 return false;
             }
+#if OPAL_ENABLE_FT_MPI
+            opal_output_verbose(10, mca_oob_tcp_output_handle,
+                                "%s-%s mca_oob_tcp_msg_recv: readv failed: %s (%d)", 
+                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                ORTE_NAME_PRINT(&(peer->peer_name)),
+                                strerror(opal_socket_errno),
+                                opal_socket_errno);
+#else
             opal_output(0, "%s-%s mca_oob_tcp_msg_recv: readv failed: %s (%d)", 
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                         ORTE_NAME_PRINT(&(peer->peer_name)),
                         strerror(opal_socket_errno),
                         opal_socket_errno);
+#endif /* OPAL_ENABLE_FT_MPI */
             mca_oob_tcp_peer_close(peer);
             if (NULL != mca_oob_tcp.oob_exception_callback) {
                 mca_oob_tcp.oob_exception_callback(&peer->peer_name, ORTE_RML_PEER_DISCONNECTED);

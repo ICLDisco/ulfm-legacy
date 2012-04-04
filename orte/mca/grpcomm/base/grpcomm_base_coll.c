@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2008 Los Alamos National Security, LLC. 
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -542,8 +543,11 @@ void orte_grpcomm_base_daemon_collective(orte_process_name_t *sender,
                                          opal_buffer_t *data)
 {
     orte_jobid_t jobid;
-    orte_odls_job_t *jobdat;
-    orte_routed_tree_t *child;
+    orte_job_t *orte_jdata = NULL;
+    orte_odls_child_t *odls_child = NULL;
+    orte_proc_t *proct = NULL;
+    orte_odls_job_t *jobdat = NULL;
+    orte_routed_tree_t *child = NULL;
     orte_std_cntr_t n;
     opal_list_t daemon_tree;
     opal_list_item_t *item, *next;
@@ -551,7 +555,7 @@ void orte_grpcomm_base_daemon_collective(orte_process_name_t *sender,
     opal_buffer_t buf;
     orte_process_name_t my_parent, proc;
     orte_vpid_t daemonvpid;
-    int rc;
+    int rc, i;
     int32_t numc;
     orte_rml_tag_t rmltag;
     
@@ -643,6 +647,63 @@ void orte_grpcomm_base_daemon_collective(orte_process_name_t *sender,
         while (proc.vpid < jobdat->num_procs && 0 < opal_list_get_size(&daemon_tree)) {
             ORTE_EPOCH_SET(proc.epoch,orte_ess.proc_get_epoch(&proc));
 
+            /*
+             * If this proc is dead, skip it
+             */
+            orte_jdata = orte_get_job_data_object(jobid);
+            if( NULL != orte_jdata ) {
+                for( i = 0; i < orte_jdata->procs->size; ++i ) {
+                    if (NULL == (proct = (orte_proc_t*)opal_pointer_array_get_item(orte_jdata->procs, i))) {
+                        continue;
+                    }
+                    if (proct->name.jobid != proc.jobid ||
+                        proct->name.vpid  != proc.vpid) {
+                        continue;
+                    }
+                    break;
+                }
+                if( ORTE_PROC_STATE_UNTERMINATED < proct->state ) {
+                    OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base.output,
+                                         "%s grpcomm:base:daemon_coll: COLLECTIVE job %s looking at %s "
+                                         " num_collected %d num_participating %d num_contributors %d (SKIP)",
+                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(jobid),
+                                         ORTE_NAME_PRINT(&proc),
+                                         jobdat->num_collected,
+                                         jobdat->num_participating, jobdat->num_contributors));
+                    proc.vpid++;
+                    continue;
+                }
+            } else {
+                for (item = opal_list_get_first(&orte_local_children);
+                     item != opal_list_get_end(&orte_local_children);
+                     item = opal_list_get_next(item)) {
+                    odls_child = (orte_odls_child_t*)item;
+
+                    if (OPAL_EQUAL == opal_dss.compare(&proc, odls_child->name, ORTE_NAME)) {
+                        break;
+                    }
+                    continue;
+                }
+
+                /* JJH RETURN HERE */
+                OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base.output,
+                                     "%s grpcomm:base:daemon_coll: ************** %s 0x%10x*******************",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     ORTE_NAME_PRINT(&proc), odls_child->state ));
+
+                if( ORTE_PROC_STATE_UNTERMINATED < odls_child->state ) {
+                    OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base.output,
+                                         "%s grpcomm:base:daemon_coll: COLLECTIVE job %s looking at %s "
+                                         " num_collected %d num_participating %d num_contributors %d (SKIP)",
+                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(jobid),
+                                         ORTE_NAME_PRINT(&proc),
+                                         jobdat->num_collected,
+                                         jobdat->num_participating, jobdat->num_contributors));
+                    proc.vpid++;
+                    continue;
+                }
+            }
+
             /* get the daemon that hosts this proc */
             daemonvpid = orte_ess.proc_get_daemon(&proc);
             /* is this daemon one of our children, or at least its contribution
@@ -658,6 +719,26 @@ void orte_grpcomm_base_daemon_collective(orte_process_name_t *sender,
                     /* remove this from the list so we don't double count it */
                     opal_list_remove_item(&daemon_tree, item);
                     /* done with search */
+
+                    OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base.output,
+                                         "%s grpcomm:base:daemon_coll: COLLECTIVE job %s looking at %s "
+                                         " num_collected %d num_participating %d num_contributors %d",
+                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(jobid),
+                                         ORTE_NAME_PRINT(&proc),
+                                         jobdat->num_collected,
+                                         jobdat->num_participating, jobdat->num_contributors));
+                    if( child->vpid == daemonvpid ) {
+                        OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base.output,
+                                             "%s grpcomm:base:daemon_coll: COLLECTIVE job %s looking at %s - daemon",
+                                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(jobid),
+                                             ORTE_NAME_PRINT(&proc) ));
+                    } else {
+                        OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base.output,
+                                             "%s grpcomm:base:daemon_coll: COLLECTIVE job %s looking at %s - relative",
+                                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(jobid),
+                                             ORTE_NAME_PRINT(&proc) ));
+                    }
+
                     break;
                 }
                 item = next;
@@ -667,11 +748,11 @@ void orte_grpcomm_base_daemon_collective(orte_process_name_t *sender,
     }
     
     OPAL_OUTPUT_VERBOSE((5, orte_grpcomm_base.output,
-                         "%s grpcomm:base:daemon_coll: daemon collective for job %s from %s type %ld"
+                         "%s grpcomm:base:daemon_coll: daemon collective for job %s from %s type 0x%x"
                          " num_collected %d num_participating %d num_contributors %d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_JOBID_PRINT(jobid),
                          ORTE_NAME_PRINT(sender),
-                         (long)jobdat->collective_type, jobdat->num_collected,
+                         jobdat->collective_type, jobdat->num_collected,
                          jobdat->num_participating, jobdat->num_contributors));
     
     if (jobdat->num_collected == jobdat->num_participating) {

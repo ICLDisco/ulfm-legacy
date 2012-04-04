@@ -13,6 +13,8 @@
  * Copyright (c) 2006-2010 University of Houston. All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -109,6 +111,17 @@ int ompi_comm_init(void)
        because MPI_COMM_WORLD has some predefined attributes. */
     ompi_attr_hash_init(&ompi_mpi_comm_world.comm.c_keyhash);
 
+#if OPAL_ENABLE_FT_MPI
+    ompi_mpi_comm_world.comm.any_source_enabled  = true;
+    ompi_mpi_comm_world.comm.any_source_offset   = 0;
+    ompi_mpi_comm_world.comm.comm_revoked        = false;
+    ompi_mpi_comm_world.comm.collectives_force_error = false;
+    ompi_mpi_comm_world.comm.num_active_local    = group->grp_proc_count;
+    ompi_mpi_comm_world.comm.num_active_remote   = group->grp_proc_count;
+    ompi_mpi_comm_world.comm.lleader             = 0;
+    ompi_mpi_comm_world.comm.rleader             = 0;
+#endif /* OPAL_ENABLE_FT_MPI */
+
     /* Setup MPI_COMM_SELF */
     OBJ_CONSTRUCT(&ompi_mpi_comm_self, ompi_communicator_t);
     group = OBJ_NEW(ompi_group_t);
@@ -140,6 +153,17 @@ int ompi_comm_init(void)
        predefined attributes.  If a user defines an attribute on
        MPI_COMM_SELF, the keyhash will automatically be created. */
     ompi_mpi_comm_self.comm.c_keyhash = NULL;
+
+#if OPAL_ENABLE_FT_MPI
+    ompi_mpi_comm_self.comm.any_source_enabled  = true;
+    ompi_mpi_comm_self.comm.any_source_offset   = 0;
+    ompi_mpi_comm_self.comm.comm_revoked        = false;
+    ompi_mpi_comm_self.comm.collectives_force_error = false;
+    ompi_mpi_comm_self.comm.num_active_local    = group->grp_proc_count;
+    ompi_mpi_comm_self.comm.num_active_remote   = group->grp_proc_count;
+    ompi_mpi_comm_self.comm.lleader             = 0;
+    ompi_mpi_comm_self.comm.rleader             = 0;
+#endif /* OPAL_ENABLE_FT_MPI */
 
     /* Setup MPI_COMM_NULL */
     OBJ_CONSTRUCT(&ompi_mpi_comm_null, ompi_communicator_t);
@@ -196,6 +220,17 @@ ompi_communicator_t *ompi_comm_allocate ( int local_size, int remote_size )
 
     /* fill in the inscribing hyper-cube dimensions */
     new_comm->c_cube_dim = opal_cube_dim(local_size);
+
+#if OPAL_ENABLE_FT_MPI
+    new_comm->any_source_enabled  = true;
+    new_comm->any_source_offset   = 0;
+    new_comm->comm_revoked        = false;
+    new_comm->collectives_force_error = false;
+    new_comm->num_active_local    = new_comm->c_local_group->grp_proc_count;
+    new_comm->num_active_remote   = new_comm->c_remote_group->grp_proc_count;
+    new_comm->lleader             = 0;
+    new_comm->rleader             = 0;
+#endif /* OPAL_ENABLE_FT_MPI */
 
     return new_comm;
 }
@@ -332,6 +367,17 @@ static void ompi_comm_construct(ompi_communicator_t* comm)
        we need an easy way for the coll base code to realize we've
        done this. */
     memset(&comm->c_coll, 0, sizeof(mca_coll_base_comm_coll_t));
+
+#if OPAL_ENABLE_FT_MPI
+    comm->any_source_enabled  = false;
+    comm->any_source_offset   = 0;
+    comm->comm_revoked        = true;
+    comm->collectives_force_error = true;
+    comm->num_active_local    = -1;
+    comm->num_active_remote   = -1;
+    comm->lleader             = 0;
+    comm->rleader             = 0;
+#endif /* OPAL_ENABLE_FT_MPI */
 }
 
 static void ompi_comm_destruct(ompi_communicator_t* comm)
@@ -434,6 +480,16 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
 
     }
 
+#if OPAL_ENABLE_FT_MPI
+    comm->any_source_enabled  = false;
+    comm->any_source_offset   = 0;
+    comm->comm_revoked        = true;
+    comm->collectives_force_error = true;
+    comm->num_active_local    = -1;
+    comm->num_active_remote   = -1;
+    comm->lleader             = 0;
+    comm->rleader             = 0;
+#endif /* OPAL_ENABLE_FT_MPI */
 
     return;
 }

@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -511,6 +512,9 @@ int
 mca_btl_portals_finalize(struct mca_btl_base_module_t *btl_base)
 {
     int ret;
+#if OPAL_ENABLE_FT_MPI
+    time_t start, current, last;
+#endif /* OPAL_ENABLE_FT_MPI */
 
     assert(&mca_btl_portals_module == (mca_btl_portals_module_t*) btl_base);
     OPAL_OUTPUT_VERBOSE((90, mca_btl_portals_component.portals_output,
@@ -520,10 +524,40 @@ mca_btl_portals_finalize(struct mca_btl_base_module_t *btl_base)
     assert(mca_btl_portals_module.portals_outstanding_ops  >= 0);
     
     /* finalize all communication */
+#if OPAL_ENABLE_FT_MPI
+    if( mca_btl_portals_finalize_max_wait > 0 ) {
+        start = time(NULL);
+        last  = -1;
+    }
+#endif /* OPAL_ENABLE_FT_MPI */
+
     while (mca_btl_portals_module.portals_outstanding_ops > 0) {
+#if OPAL_ENABLE_FT_MPI
+        if( mca_btl_portals_finalize_max_wait > 0 ) {
+            current = time(NULL);
+            if( (current - start) >= mca_btl_portals_finalize_max_wait ) {
+                opal_output(0,
+                            "btl:portals: Warning: Forcing termination after (%3d seconds) "
+                            "even with %2d portals_outstanding_ops (Procs = %2d)", 
+                            (current - start), mca_btl_portals_module.portals_outstanding_ops,
+                            mca_btl_portals_module.portals_num_procs);
+                break;
+            }
+            if( last < (current - start) ) {
+                last = (current - start);
+                OPAL_OUTPUT_VERBOSE((90, mca_btl_portals_component.portals_output,
+                                     "portals_outstanding_ops: %d (waiting %3d of %3d)", 
+                                     mca_btl_portals_module.portals_outstanding_ops,
+                                     (current - start), mca_btl_portals_finalize_max_wait));
+            }
+        }
+        else
+#endif /* OPAL_ENABLE_FT_MPI */
+        {
         OPAL_OUTPUT_VERBOSE((90, mca_btl_portals_component.portals_output,
                             "portals_outstanding_ops: %d", 
                             mca_btl_portals_module.portals_outstanding_ops));
+        }
         
         mca_btl_portals_component_progress();
     }

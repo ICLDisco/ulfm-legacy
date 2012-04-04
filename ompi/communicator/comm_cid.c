@@ -197,6 +197,20 @@ int ompi_comm_nextcid ( ompi_communicator_t* newcomm,
         case OMPI_COMM_CID_INTRA_OOB: 
             allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_oob;
             break;
+#if OPAL_ENABLE_FT_MPI
+        case OMPI_COMM_CID_INTRA_FT:
+            allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_ft;
+            break;
+        case OMPI_COMM_CID_INTER_FT:
+            allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_inter_ft;
+            break;
+        case OMPI_COMM_CID_INTRA_BRIDGE_FT:
+            allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_bridge_ft;
+            break;
+        case OMPI_COMM_CID_INTRA_OOB_FT:
+            allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_oob_ft;
+            break;
+#endif /* OPAL_ENABLE_FT_MPI */
         default: 
             return MPI_UNDEFINED;
             break;
@@ -424,6 +438,20 @@ int ompi_comm_activate ( ompi_communicator_t** newcomm,
         case OMPI_COMM_CID_INTRA_OOB:
             allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_oob;
             break;
+#if OPAL_ENABLE_FT_MPI
+        case OMPI_COMM_CID_INTRA_FT:
+            allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_ft;
+            break;
+        case OMPI_COMM_CID_INTER_FT:
+            allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_inter_ft;
+            break;
+        case OMPI_COMM_CID_INTRA_BRIDGE_FT:
+            allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_bridge_ft;
+            break;
+        case OMPI_COMM_CID_INTRA_OOB_FT:
+            allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_oob_ft;
+            break;
+#endif /* OPAL_ENABLE_FT_MPI */
         default:
             return MPI_UNDEFINED;
             break;

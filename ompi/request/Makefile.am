@@ -10,6 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -30,3 +31,8 @@ libmpi_la_SOURCES += \
         request/request.c \
         request/req_test.c \
         request/req_wait.c
+
+if WANT_FT_MPI
+libmpi_la_SOURCES += \
+	request/req_ft.c
+endif # WANT_FT_MPI

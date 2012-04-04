@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -69,6 +70,13 @@ int MPI_Startall(int count, MPI_Request *requests)
         }
         OMPI_ERRHANDLER_CHECK(rc, MPI_COMM_WORLD, rc, FUNC_NAME);
     }
+
+#if OPAL_ENABLE_FT_MPI
+    /*
+     * The request will check checked for process failure errors during the
+     * completion calls. So no need to check here.
+     */
+#endif
 
     OPAL_CR_ENTER_LIBRARY();
 

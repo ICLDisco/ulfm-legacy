@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -90,6 +91,11 @@ ompi_coll_tuned_comm_query(struct ompi_communicator_t *comm, int *priority)
      */
     tuned_module->super.coll_module_enable = tuned_module_enable;
     tuned_module->super.ft_event = mca_coll_tuned_ft_event;
+
+#if OPAL_ENABLE_FT_MPI
+    tuned_module->super.coll_agreement   = NULL;
+    tuned_module->super.coll_iagreement  = NULL;
+#endif
 
     /* By default stick with the fied version of the tuned collectives. Later on,
      * when the module get enabled, set the correct version based on the availability

@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2011-2012 Sandia National Laboratories. All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -70,6 +71,14 @@ int mca_pml_ob1_probe(int src,
     MCA_PML_OB1_RECV_REQUEST_START(&recvreq);
 
     ompi_request_wait_completion(&recvreq.req_recv.req_base.req_ompi);
+#if OPAL_ENABLE_FT_MPI
+    if( MPI_ANY_SOURCE == src &&
+        recvreq.req_recv.req_base.req_ompi.req_any_source_pending ) {
+        ompi_request_cancel(&recvreq.req_recv.req_base.req_ompi);
+        ompi_request_complete(&recvreq.req_recv.req_base.req_ompi, false);
+        recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_PROC_FAILED;
+    }
+#endif /* OPAL_ENABLE_FT_MPI */
     rc = recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR;
     if (NULL != status) {
         OMPI_STATUS_SET(status, &recvreq.req_recv.req_base.req_ompi.req_status);
@@ -150,7 +159,14 @@ mca_pml_ob1_mprobe(int src,
     MCA_PML_OB1_RECV_REQUEST_START(recvreq);
 
     ompi_request_wait_completion(&recvreq->req_recv.req_base.req_ompi);
-
+#if OPAL_ENABLE_FT_MPI
+    if( MPI_ANY_SOURCE == src &&
+        recvreq->req_recv.req_base.req_ompi.req_any_source_pending ) {
+        ompi_request_cancel(&recvreq->req_recv.req_base.req_ompi);
+        ompi_request_complete(&recvreq->req_recv.req_base.req_ompi, false);
+        recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_PROC_FAILED;
+    }
+#endif /* OPAL_ENABLE_FT_MPI */
     if( NULL != status ) {
         *status = recvreq->req_recv.req_base.req_ompi.req_status;
     }

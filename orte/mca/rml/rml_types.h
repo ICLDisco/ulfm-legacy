@@ -12,6 +12,7 @@
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2009-2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -198,6 +199,12 @@ ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_msg_packet_t);
 
 /* Notify of failed processes */
 #define ORTE_RML_TAG_FAILURE_NOTICE         48
+
+/* OMPI 'revoke' message */
+#define ORTE_RML_TAG_REVOKE_NOTICE          49
+
+/* OMPI 'help' message */
+#define ORTE_RML_TAG_COLL_AGREE_TERM        50
 
 #define ORTE_RML_TAG_MAX                   100
 

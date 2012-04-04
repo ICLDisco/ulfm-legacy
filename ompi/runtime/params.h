@@ -12,6 +12,7 @@
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -143,6 +144,11 @@ OMPI_DECLSPEC extern bool ompi_use_sparse_group_storage;
  * MPI_FINALIZE or not.
  */
 OMPI_DECLSPEC extern bool ompi_notify_init_finalize;
+
+#if OPAL_ENABLE_FT_MPI
+OMPI_DECLSPEC extern int ompi_ftmpi_output_handle;
+OMPI_DECLSPEC extern bool ompi_ftmpi_enabled;
+#endif
 
 /**
  * Register MCA parameters used by the MPI layer.
