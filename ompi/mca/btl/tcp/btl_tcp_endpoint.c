@@ -452,8 +452,10 @@ static int mca_btl_tcp_endpoint_recv_blocking(mca_btl_base_endpoint_t* btl_endpo
         /* socket is non-blocking so handle errors */
         if(retval < 0) {
             if(opal_socket_errno != EINTR && opal_socket_errno != EAGAIN && opal_socket_errno != EWOULDBLOCK) {
+#if OPAL_ENABLE_FT_MPI == 0
                 BTL_ERROR(("recv(%d) failed: %s (%d)",
                            btl_endpoint->endpoint_sd, strerror(opal_socket_errno), opal_socket_errno));
+#endif /* OPAL_ENABLE_FT_MPI */
                 mca_btl_tcp_endpoint_close(btl_endpoint);
                 return -1;
             }

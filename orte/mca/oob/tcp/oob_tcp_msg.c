@@ -153,12 +153,14 @@ bool mca_oob_tcp_msg_send_handler(mca_oob_tcp_msg_t* msg, struct mca_oob_tcp_pee
                 return false;
             }
             else {
+#if OPAL_ENABLE_FT_MPI == 0
                 opal_output(0, "%s->%s mca_oob_tcp_msg_send_handler: writev failed: %s (%d) [sd = %d]", 
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                     ORTE_NAME_PRINT(&(peer->peer_name)), 
                     strerror(opal_socket_errno),
                     opal_socket_errno,
                     peer->peer_sd);
+#endif
                 mca_oob_tcp_peer_close(peer);
                 msg->msg_rc = ORTE_ERR_CONNECTION_FAILED;
                 return true;
