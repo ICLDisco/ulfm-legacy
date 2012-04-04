@@ -890,8 +890,10 @@ int mca_coll_ftbasic_agreement_log_two_phase_finalize(mca_coll_ftbasic_module_t 
         log_two_phase_inside_term_progress = false;
     }
 
-    OBJ_RELEASE(loc_info);
-    module->agreement_info = NULL;
+    if( NULL != module->agreement_info ) {
+        OBJ_RELEASE(loc_info);
+        module->agreement_info = NULL;
+    }
 
     return OMPI_SUCCESS;
 }
@@ -5909,7 +5911,7 @@ static int log_two_phase_append_child(ompi_communicator_t* comm,
     if( NULL == agreement_tree->children_cmd ) {
         agreement_tree->children_cmd = (int*)malloc(sizeof(int) * agreement_tree->num_children_alloc);
     }
-    else if( agreement_tree->num_children > agreement_tree->num_children_alloc ) {
+    else if( agreement_tree->num_children >= agreement_tree->num_children_alloc ) {
         resize_after_add = true;
     }
     append_child_to_array(&(agreement_tree->children),
@@ -5917,8 +5919,8 @@ static int log_two_phase_append_child(ompi_communicator_t* comm,
                           &(agreement_tree->num_children_alloc),
                           child);
     if( resize_after_add ) {
-        agreement_tree->children_cmd = (int*)realloc(agreement_tree->children_cmd,
-                                                     (sizeof(int) * agreement_tree->num_children_alloc));
+        (agreement_tree->children_cmd) = (int*)realloc(agreement_tree->children_cmd,
+                                                       (sizeof(int) * agreement_tree->num_children_alloc));
     }
     agreement_tree->children_cmd[(agreement_tree->num_children)-1] = cmd;
 
