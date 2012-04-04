@@ -148,7 +148,7 @@ int ompi_comm_set ( ompi_communicator_t **ncomm,
     newcomm->any_source_enabled  = true;
     newcomm->any_source_offset   = 0;
     newcomm->comm_revoked        = false;
-    newcomm->collectives_enabled = true;
+    newcomm->collectives_force_error = false;
     newcomm->num_active_local    = newcomm->c_local_group->grp_proc_count;
     newcomm->num_active_remote   = newcomm->c_remote_group->grp_proc_count;
 #endif /* OPAL_ENABLE_FT_MPI */

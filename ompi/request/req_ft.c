@@ -139,7 +139,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
      * If the request is part of a collective, then the whole communicator
      * must be ok to continue. If not then return first failed process
      */
-    else if( !ompi_comm_are_collectives_enabled(req->req_mpi_object.comm) ) {
+    else if( ompi_comm_force_error_on_collectives(req->req_mpi_object.comm) ) {
         /* Return the last process known to have failed, may not have been the
          * first to cause the collectives to be disabled.
          */
