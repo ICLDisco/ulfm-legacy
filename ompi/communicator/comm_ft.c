@@ -226,7 +226,7 @@ static void comm_revoke_notice_recv(int status,
     }
     /* Revoke the communicator */
     comm->comm_revoked        = true;
-    comm->collectives_enabled = false;
+    comm->collectives_force_error = true;
     comm->any_source_enabled  = false;
 
     /*
@@ -254,7 +254,7 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
      * - Turn off ANY_SOURCE receives
      */
     comm->comm_revoked        = true;
-    comm->collectives_enabled = false;
+    comm->collectives_force_error = true;
     comm->any_source_enabled  = false;
 
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -533,7 +533,7 @@ int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remot
     /* Disable ANY_SOURCE */
     comm->any_source_enabled = false;
     /* Disable collectives */
-    comm->collectives_enabled = false;
+    comm->collectives_force_error = true;
 
     tmp_group = OBJ_NEW(ompi_group_t);
 

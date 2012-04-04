@@ -172,14 +172,14 @@ struct ompi_communicator_t {
     mca_coll_base_comm_coll_t c_coll;
 
 #if OPAL_ENABLE_FT_MPI
-    /** In MPI_ANY_SOURCE enabled? - OMPI_Comm_failure_ack */
+    /** Are MPI_ANY_SOURCE operations enabled? - OMPI_Comm_failure_ack */
     bool                     any_source_enabled;
     /** MPI_ANY_SOURCE Failed Group Offset - OMPI_Comm_failure_get_acked */
     int                      any_source_offset;
     /** Has this communicator been revoked - OMPI_Comm_revoke() */
     bool                     comm_revoked;
-    /** Are collectives enabled? */
-    bool                     collectives_enabled;
+    /** Force errors to collective pt2pt operations? */
+    bool                     collectives_force_error;
     /** Quick lookup */
     int                      num_active_local;
     int                      num_active_remote;
@@ -378,9 +378,9 @@ static inline bool ompi_comm_is_any_source_enabled(ompi_communicator_t* comm)
 /*
  * Are collectives still active on this communicator?
  */
-static inline bool ompi_comm_are_collectives_enabled(ompi_communicator_t* comm)
+static inline bool ompi_comm_force_error_on_collectives(ompi_communicator_t* comm)
 {
-    return (comm->collectives_enabled);
+    return (comm->collectives_force_error);
 }
 
 /*
@@ -463,7 +463,7 @@ static inline bool ompi_comm_iface_coll_check(ompi_communicator_t *comm, int *er
         *err = MPI_ERR_INVALIDATED;
         return false;
     }
-    else if( !ompi_comm_are_collectives_enabled(comm) ) {
+    else if( ompi_comm_force_error_on_collectives(comm) ) {
         *err = MPI_ERR_PROC_FAILED;
         return false;
     }

@@ -812,17 +812,6 @@ static int coll_ftbasic_agreement_base_finish_common(ompi_communicator_t* comm,
                              (ftbasic_module->mccb_coll_tag_agreement + MCA_COLL_FTBASIC_TAG_STEP) ));
     }
 
-    if( clear && !ompi_comm_are_collectives_enabled(comm) ) {
-        /************************************************
-         * Rebalance the communication structures
-         * Note: This is only for the 'other' collectives.
-         * this tree structure should not be used for the agreement
-         * tree. The agreement tree must be made differently.
-         ************************************************/
-        AGREEMENT_START_TIMER(COLL_FTBASIC_AGREEMENT_TIMER_REBALANCE);
-        AGREEMENT_END_TIMER(COLL_FTBASIC_AGREEMENT_TIMER_REBALANCE);
-    }
-
     return exit_status;
 }
 

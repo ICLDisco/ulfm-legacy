@@ -115,7 +115,7 @@ int ompi_comm_init(void)
     ompi_mpi_comm_world.comm.any_source_enabled  = true;
     ompi_mpi_comm_world.comm.any_source_offset   = 0;
     ompi_mpi_comm_world.comm.comm_revoked        = false;
-    ompi_mpi_comm_world.comm.collectives_enabled = true;
+    ompi_mpi_comm_world.comm.collectives_force_error = false;
     ompi_mpi_comm_world.comm.num_active_local    = group->grp_proc_count;
     ompi_mpi_comm_world.comm.num_active_remote   = group->grp_proc_count;
     ompi_mpi_comm_world.comm.lleader             = 0;
@@ -158,7 +158,7 @@ int ompi_comm_init(void)
     ompi_mpi_comm_self.comm.any_source_enabled  = true;
     ompi_mpi_comm_self.comm.any_source_offset   = 0;
     ompi_mpi_comm_self.comm.comm_revoked        = false;
-    ompi_mpi_comm_self.comm.collectives_enabled = true;
+    ompi_mpi_comm_self.comm.collectives_force_error = false;
     ompi_mpi_comm_self.comm.num_active_local    = group->grp_proc_count;
     ompi_mpi_comm_self.comm.num_active_remote   = group->grp_proc_count;
     ompi_mpi_comm_self.comm.lleader             = 0;
@@ -225,7 +225,7 @@ ompi_communicator_t *ompi_comm_allocate ( int local_size, int remote_size )
     new_comm->any_source_enabled  = true;
     new_comm->any_source_offset   = 0;
     new_comm->comm_revoked        = false;
-    new_comm->collectives_enabled = true;
+    new_comm->collectives_force_error = false;
     new_comm->num_active_local    = new_comm->c_local_group->grp_proc_count;
     new_comm->num_active_remote   = new_comm->c_remote_group->grp_proc_count;
     new_comm->lleader             = 0;
@@ -372,7 +372,7 @@ static void ompi_comm_construct(ompi_communicator_t* comm)
     comm->any_source_enabled  = false;
     comm->any_source_offset   = 0;
     comm->comm_revoked        = true;
-    comm->collectives_enabled = false;
+    comm->collectives_force_error = true;
     comm->num_active_local    = -1;
     comm->num_active_remote   = -1;
     comm->lleader             = 0;
@@ -484,7 +484,7 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
     comm->any_source_enabled  = false;
     comm->any_source_offset   = 0;
     comm->comm_revoked        = true;
-    comm->collectives_enabled = false;
+    comm->collectives_force_error = true;
     comm->num_active_local    = -1;
     comm->num_active_remote   = -1;
     comm->lleader             = 0;
