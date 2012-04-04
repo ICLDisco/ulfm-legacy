@@ -175,24 +175,12 @@ int ompi_request_init(void)
     ompi_status_empty._ucount = 0;
     ompi_status_empty._cancelled = 0;
 
-#if OPAL_ENABLE_FT_MPI
-    if( ompi_ftmpi_enabled ) {
-        ompi_request_ft_init();
-    }
-#endif
-
     return OMPI_SUCCESS;
 }
 
 
 int ompi_request_finalize(void)
 {
-#if OPAL_ENABLE_FT_MPI
-    if( ompi_ftmpi_enabled ) {
-        ompi_request_ft_finalize();
-    }
-#endif
-
     OMPI_REQUEST_FINI( &ompi_request_null.request );
     OBJ_DESTRUCT( &ompi_request_null.request );
     OMPI_REQUEST_FINI( &ompi_request_empty );

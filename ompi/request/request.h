@@ -371,8 +371,6 @@ static inline int ompi_request_free(ompi_request_t** request)
 #define ompi_request_wait_some  (ompi_request_functions.req_wait_some)
 
 #if OPAL_ENABLE_FT_MPI
-OMPI_DECLSPEC int ompi_request_ft_init(void);
-OMPI_DECLSPEC int ompi_request_ft_finalize(void);
 OMPI_DECLSPEC bool ompi_request_state_ok(ompi_request_t *req);
 #endif /* OPAL_ENABLE_FT_MPI */
 

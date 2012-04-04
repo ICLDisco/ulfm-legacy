@@ -535,8 +535,6 @@ int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remot
     /* Disable collectives */
     comm->collectives_enabled = false;
 
-    comm->last_failed = peer_id;
-
     tmp_group = OBJ_NEW(ompi_group_t);
 
     if( !remote ) {

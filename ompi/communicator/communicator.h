@@ -185,8 +185,6 @@ struct ompi_communicator_t {
     int                      num_active_remote;
     int                      lleader;
     int                      rleader;
-    /* For better error reporting */
-    int                      last_failed;
 #endif /* OPAL_ENABLE_FT_MPI */
 };
 typedef struct ompi_communicator_t ompi_communicator_t;
