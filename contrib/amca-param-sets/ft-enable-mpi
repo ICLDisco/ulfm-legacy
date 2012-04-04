@@ -27,6 +27,9 @@ routed=rts
 #plm=rsh
 #rmaps=resilient
 
+# Disable tree spawn for now
+plm_rsh_no_tree_spawn = 1
+
 # Stablization at the runtime layer
 errmgr_rts_hnp_priority=5000
 errmgr_rts_orted_priority=5000
