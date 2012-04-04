@@ -59,7 +59,9 @@
 #include "opal/util/argv.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
+#if OPAL_ENABLE_FT_MPI
 #include "opal/class/opal_pointer_array.h"
+#endif /* OPAL_ENABLE_FT_MPI */
 
 #include "orte/util/name_fns.h"
 #include "orte/util/session_dir.h"

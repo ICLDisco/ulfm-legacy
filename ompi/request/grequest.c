@@ -69,7 +69,8 @@ static void ompi_grequest_construct(ompi_grequest_t* greq)
     greq->greq_base.req_type = OMPI_REQUEST_GEN;
     greq->greq_base.req_mpi_object.comm = &(ompi_mpi_comm_world.comm);
     greq->greq_base.req_peer = MPI_PROC_NULL;
-    greq->greq_base.req_tag = 0;
+    greq->greq_base.req_tag = MPI_ANY_TAG;
+    greq->greq_base.req_any_source_pending = false;
     /* Set the function pointers to C here; the F77 MPI API will
        override this value if the gen request was created from
        Fortran */

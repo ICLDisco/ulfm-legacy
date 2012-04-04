@@ -336,7 +336,7 @@
       parameter( MPI_ERR_UNSUPPORTED_DATAREP  = 51)
       parameter( MPI_ERR_UNSUPPORTED_OPERATION= 52)
       parameter( MPI_ERR_WIN                  = 53)
-      parameter( MPI_ERR_PROC_FAILED       = 54)
+      parameter( MPI_ERR_PROC_FAILED          = 54)
       parameter( MPI_ERR_INVALIDATED          = 55)
 
       parameter( MPI_ERR_SYSRESOURCE          = -2)

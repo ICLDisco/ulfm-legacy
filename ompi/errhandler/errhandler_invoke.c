@@ -126,19 +126,22 @@ int ompi_errhandler_request_invoke(int count,
        ompi_request_test(). */
     for (i = 0; i < count; ++i) {
         if (MPI_REQUEST_NULL != requests[i] &&
-            MPI_SUCCESS != requests[i]->req_status.MPI_ERROR ) {
+            MPI_SUCCESS != requests[i]->req_status.MPI_ERROR) {
             break;
         }
+#if OPAL_ENABLE_FT_MPI
         /* Special case for MPI_ANY_SOURCE when marked as MPI_ERR_PENDING */
         if( requests[i]->req_any_source_pending ) {
             break;
         }
+#endif /* OPAL_ENABLE_FT_MPI */
     }
     /* If there were no errors, return SUCCESS */
     if (i >= count) {
         return MPI_SUCCESS;
     }
 
+#if OPAL_ENABLE_FT_MPI
     /* Special case for MPI_ANY_SOURCE when marked as MPI_ERR_PENDING
      * We want to call the error handler below, but we have a special
      * error value that we want to propagate. */
@@ -147,6 +150,9 @@ int ompi_errhandler_request_invoke(int count,
     } else {
         ec = ompi_errcode_get_mpi_code(requests[i]->req_status.MPI_ERROR);
     }
+#else
+    ec = ompi_errcode_get_mpi_code(requests[i]->req_status.MPI_ERROR);
+#endif /* OPAL_ENABLE_FT_MPI */
     mpi_object = requests[i]->req_mpi_object;
     type = requests[i]->req_type;
 
@@ -156,14 +162,18 @@ int ompi_errhandler_request_invoke(int count,
        that had an error. */
     for (; i < count; ++i) {
         if (MPI_REQUEST_NULL != requests[i] &&
-            MPI_SUCCESS != requests[i]->req_status.MPI_ERROR ) {
+            MPI_SUCCESS != requests[i]->req_status.MPI_ERROR) {
+#if OPAL_ENABLE_FT_MPI
             /* Special case for MPI_ANY_SOURCE when marked as MPI_ERR_PENDING,
              * This request should not be freed since it is still active. */
             if( !requests[i]->req_any_source_pending ) {
-                /* Ignore the error -- what are we going to do?  We're
-                   already going to invoke an exception */
                 ompi_request_free(&(requests[i])); 
             }
+#else
+            /* Ignore the error -- what are we going to do?  We're
+               already going to invoke an exception */
+            ompi_request_free(&(requests[i])); 
+#endif /* OPAL_ENABLE_FT_MPI */
         } 
     }
 

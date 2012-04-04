@@ -28,8 +28,11 @@
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
+#if OPAL_ENABLE_FT_MPI
 #include "ompi/group/group.h"
 #include "ompi/communicator/communicator.h"
+#endif /* OPAL_ENABLE_FT_MPI */
+
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/base.h"
 
