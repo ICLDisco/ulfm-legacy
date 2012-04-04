@@ -46,6 +46,18 @@ int ompi_request_default_test( ompi_request_t ** rptr,
         return OMPI_SUCCESS;
     }
 
+#if OPAL_ENABLE_FT_MPI
+    /* Check for dead requests due to process failure */
+    if( !request->req_complete ) {
+        /* Special case for MPI_ANY_SOURCE */
+        if( !ompi_request_state_ok(request) &&
+            request->req_any_source_pending ) {
+            *completed = false;
+            return MPI_ERR_PENDING;
+        }
+    }
+#endif
+
     if (request->req_complete) {
         OMPI_CRCP_REQUEST_COMPLETE(request);
 
@@ -116,6 +128,19 @@ int ompi_request_default_test_any(
             num_requests_null_inactive++;
             continue;
         }
+
+#if OPAL_ENABLE_FT_MPI
+        /* Check for dead requests due to process failure */
+        if( !request->req_complete ) {
+            /* Special case for MPI_ANY_SOURCE */
+            if( !ompi_request_state_ok(request) &&
+                request->req_any_source_pending ) {
+                *index = i;
+                *completed = false;
+                return MPI_ERR_PENDING;
+            }
+        }
+#endif /* OPAL_ENABLE_FT_MPI */
 
         if( request->req_complete ) {
             OMPI_CRCP_REQUEST_COMPLETE(request);
@@ -191,6 +216,22 @@ int ompi_request_default_test_all(
     rptr = requests;
     for (i = 0; i < count; i++, rptr++) {
         request = *rptr;
+
+#if OPAL_ENABLE_FT_MPI
+        /* Check for dead requests due to process failure */
+        if( !request->req_complete ) {
+            /* Special case for MPI_ANY_SOURCE */
+            if( !ompi_request_state_ok(request) &&
+                request->req_any_source_pending ) {
+                if (MPI_STATUSES_IGNORE != statuses) {
+                    OMPI_STATUS_SET(&statuses[i], &request->req_status);
+                    statuses[i].MPI_ERROR = MPI_ERR_PENDING;
+                }
+                *completed = false;
+                return MPI_ERR_IN_STATUS;
+            }
+        }
+#endif /* OPAL_ENABLE_FT_MPI */
 
         if( request->req_state == OMPI_REQUEST_INACTIVE ||
             request->req_complete) {
@@ -298,6 +339,16 @@ int ompi_request_default_test_some(
             num_requests_null_inactive++;
             continue;
         }
+#if OPAL_ENABLE_FT_MPI
+        /* Check for dead requests due to process failure */
+        if( !request->req_complete ) {
+            /* Special case for MPI_ANY_SOURCE - Error managed below */
+            if( !ompi_request_state_ok(request) &&
+                request->req_any_source_pending ) {
+                indices[num_requests_done++] = i;
+            }
+        }
+#endif /* OPAL_ENABLE_FT_MPI */
         if (true == request->req_complete) {
             OMPI_CRCP_REQUEST_COMPLETE(request);
             indices[num_requests_done++] = i;
@@ -324,6 +375,18 @@ int ompi_request_default_test_some(
     /* fill out completion status and free request if required */
     for( i = 0; i < num_requests_done; i++) {
         request = requests[indices[i]];
+
+#if OPAL_ENABLE_FT_MPI
+        /* Special case for MPI_ANY_SOURCE */
+        if( request->req_any_source_pending ) {
+            if (MPI_STATUSES_IGNORE != statuses) {
+                OMPI_STATUS_SET(&statuses[i], &request->req_status);
+                statuses[i].MPI_ERROR = MPI_ERR_PENDING;
+            }
+            rc = MPI_ERR_IN_STATUS;
+            continue;
+        }
+#endif /* OPAL_ENABLE_FT_MPI */
 
         if (MPI_STATUSES_IGNORE != statuses) {
             if (OMPI_REQUEST_GEN == request->req_type) {

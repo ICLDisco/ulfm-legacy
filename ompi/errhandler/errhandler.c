@@ -12,6 +12,8 @@
  *                         All rights reserved.
  * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -30,7 +32,7 @@
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/errhandler/errhandler_predefined.h"
 #include "opal/class/opal_pointer_array.h"
-
+#include "ompi/runtime/params.h"
 
 /*
  * Table for Fortran <-> C errhandler handle conversion
@@ -137,6 +139,13 @@ int ompi_errhandler_init(void)
   strncpy (ompi_mpi_errors_throw_exceptions.eh.eh_name, "MPI_ERRORS_THROW_EXCEPTIONS", 
 	   strlen("MPI_ERRORS_THROW_EXCEPTIONS")+1 );
 
+#if OPAL_ENABLE_FT_MPI
+  /* Connect to the Runtime Environment Error Mgr */
+  if( ompi_ftmpi_enabled ) {
+      ompi_errhandler_internal_rte_init();
+  }
+#endif
+
   /* All done */
 
   return OMPI_SUCCESS;
@@ -148,6 +157,13 @@ int ompi_errhandler_init(void)
  */
 int ompi_errhandler_finalize(void)
 {
+#if OPAL_ENABLE_FT_MPI
+    if( ompi_ftmpi_enabled ) {
+        /* Disconnect to the Runtime Environment Error Mgr */
+        ompi_errhandler_internal_rte_finalize();
+    }
+#endif
+
     /* Forcibly release the intrinsic error handlers because in order
        to be safe, we increase the refcount on error handlers in
        MPI_*_GET_ERRHANDLER and MPI_ERRHANDLER_GET.  If these handles

@@ -51,7 +51,8 @@
 	fi
 
 #	Try to get the ALPS resId.
-	resId=`${APSTAT} -r | ${GREP} $jid | ${AWK} '{print $1}'`
+#	resId=`${APSTAT} -r | ${GREP} $jid | ${AWK} '{print $1}'`
+    resId=`${APSTAT} -r | ${GREP} -v "^A"| ${GREP} $jid | ${AWK} '{print $1}'`
 
 #	Give up after 10 tries.
 	count=`expr $count + 1 `

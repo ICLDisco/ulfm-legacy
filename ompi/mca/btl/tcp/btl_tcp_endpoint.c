@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2008 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -451,8 +452,10 @@ static int mca_btl_tcp_endpoint_recv_blocking(mca_btl_base_endpoint_t* btl_endpo
         /* socket is non-blocking so handle errors */
         if(retval < 0) {
             if(opal_socket_errno != EINTR && opal_socket_errno != EAGAIN && opal_socket_errno != EWOULDBLOCK) {
+#if OPAL_ENABLE_FT_MPI == 0
                 BTL_ERROR(("recv(%d) failed: %s (%d)",
                            btl_endpoint->endpoint_sd, strerror(opal_socket_errno), opal_socket_errno));
+#endif /* OPAL_ENABLE_FT_MPI */
                 mca_btl_tcp_endpoint_close(btl_endpoint);
                 return -1;
             }
@@ -634,9 +637,11 @@ static void mca_btl_tcp_endpoint_complete_connect(mca_btl_base_endpoint_t* btl_e
         return;
     }
     if(so_error != 0) {
+#if OPAL_ENABLE_FT_MPI == 0
         BTL_ERROR(("connect() to %s failed: %s (%d)", 
                    opal_net_get_hostname((struct sockaddr*) &endpoint_addr),
                    strerror(so_error), so_error));
+#endif /* OPAL_ENABLE_FT_MPI */
         mca_btl_tcp_endpoint_close(btl_endpoint);
         return;
     }

@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -124,6 +125,10 @@ struct mca_btl_portals_module_t {
     ptl_md_t md_send;
 };
 typedef struct mca_btl_portals_module_t mca_btl_portals_module_t;
+
+#if OPAL_ENABLE_FT_MPI
+extern int mca_btl_portals_finalize_max_wait;
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /*
  * Component functions (btl_portals_component.c)

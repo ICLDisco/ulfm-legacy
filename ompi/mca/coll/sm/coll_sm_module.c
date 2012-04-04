@@ -13,6 +13,7 @@
  * Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010-2011 Los Alamos National Security, LLC.  
  *                         All rights reserved. 
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -201,6 +202,11 @@ mca_coll_sm_comm_query(struct ompi_communicator_t *comm, int *priority)
     if (NULL == sm_module) {
         return NULL;
     }
+
+#if OPAL_ENABLE_FT_MPI
+    sm_module->super.coll_agreement   = NULL;
+    sm_module->super.coll_iagreement  = NULL;
+#endif
 
     /* All is good -- return a module */
     sm_module->super.coll_module_enable = sm_module_enable;

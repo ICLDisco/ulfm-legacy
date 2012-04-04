@@ -16,6 +16,7 @@
  * Copyright (c) 2006      University of Houston. All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -285,6 +286,13 @@ int ompi_mpi_finalize(void)
     if (OMPI_SUCCESS != (ret = ompi_osc_base_finalize())) {
         return ret;
     }
+
+#if OPAL_ENABLE_FT_MPI
+    /* finalize communicator 'revoke' handle */
+    if (OMPI_SUCCESS != (ret = ompi_comm_finalize_revoke())) {
+        return ret;
+    }
+#endif /* OPAL_ENABLE_FT_MPI */
 
     /* free pml resource */ 
     if(OMPI_SUCCESS != (ret = mca_pml_base_finalize())) { 

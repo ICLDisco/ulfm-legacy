@@ -11,6 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007-2008 UT-Battelle, LLC
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -64,6 +66,11 @@
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 
+#if OPAL_ENABLE_FT_MPI
+#include "ompi/proc/proc.h"
+#include "ompi/request/request.h"
+#endif
+
 BEGIN_C_DECLS
 
 
@@ -73,7 +80,9 @@ BEGIN_C_DECLS
 struct ompi_communicator_t;
 struct ompi_datatype_t;
 struct ompi_op_t;
-
+#if OPAL_ENABLE_FT_MPI
+struct ompi_group_t;
+#endif /* OPAL_ENABLE_FT_MPI */
 
 /* ******************************************************************** */
 
@@ -230,6 +239,21 @@ typedef int (*mca_coll_base_module_scatterv_fn_t)
    void* rbuf, int rcount, struct ompi_datatype_t *rdtype,
    int root, struct ompi_communicator_t *comm, struct mca_coll_base_module_2_0_0_t *module);
 
+#if OPAL_ENABLE_FT_MPI
+/* Fault Tolerant Agreement - Consensus Protocol */
+typedef int (*mca_coll_base_module_agreement_fn_t)
+    (struct ompi_communicator_t* comm,
+     struct ompi_group_t **group,
+     int *flag,
+     struct mca_coll_base_module_2_0_0_t *module);
+typedef int (*mca_coll_base_module_iagreement_fn_t)
+    (struct ompi_communicator_t* comm,
+     struct ompi_group_t **group,
+     int *flag,
+     struct mca_coll_base_module_2_0_0_t *module,
+     ompi_request_t **request);
+#endif /* OPAL_ENABLE_FT_MPI */
+
 
 /**
  * Fault Tolerance Awareness function.
@@ -315,6 +339,11 @@ struct mca_coll_base_module_2_0_0_t {
     mca_coll_base_module_scatter_fn_t coll_scatter;
     mca_coll_base_module_scatterv_fn_t coll_scatterv;
 
+#if OPAL_ENABLE_FT_MPI
+    mca_coll_base_module_agreement_fn_t coll_agreement;
+    mca_coll_base_module_iagreement_fn_t coll_iagreement;
+#endif
+
     /** Fault tolerance event trigger function */
     mca_coll_base_module_ft_event_fn_t ft_event;
 };
@@ -368,6 +397,13 @@ struct mca_coll_base_comm_coll_t {
     mca_coll_base_module_2_0_0_t *coll_scatter_module;
     mca_coll_base_module_scatterv_fn_t coll_scatterv;
     mca_coll_base_module_2_0_0_t *coll_scatterv_module;
+
+#if OPAL_ENABLE_FT_MPI
+    mca_coll_base_module_agreement_fn_t coll_agreement;
+    mca_coll_base_module_2_0_0_t *coll_agreement_module;
+    mca_coll_base_module_iagreement_fn_t coll_iagreement;
+    mca_coll_base_module_2_0_0_t *coll_iagreement_module;
+#endif /* OPAL_ENABLE_FT_MPI */
 };
 typedef struct mca_coll_base_comm_coll_t mca_coll_base_comm_coll_t;
 

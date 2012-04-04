@@ -12,6 +12,7 @@
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -226,8 +227,10 @@ opal_net_islocalhost(const struct sockaddr *addr)
 #endif
 
     default:
+#if OPAL_ENABLE_FT_MPI == 0
         opal_output(0, "unhandled sa_family %d passed to opal_net_islocalhost",
                     addr->sa_family);
+#endif /* OPAL_ENABLE_FT_MPI */
         return false;
         break;
     }
@@ -283,8 +286,12 @@ opal_net_samenetwork(const struct sockaddr *addr1,
         break;
 #endif
     default:
+#if OPAL_ENABLE_FT_MPI == 0
         opal_output(0, "unhandled sa_family %d passed to opal_samenetwork",
                     addr1->sa_family);
+#else
+        ;
+#endif /* OPAL_ENABLE_FT_MPI */
     }
 
     return false;
@@ -320,9 +327,13 @@ opal_net_addr_isipv4public(const struct sockaddr *addr)
             }
             return true;
         default:
+#if OPAL_ENABLE_FT_MPI == 0
             opal_output (0,
                          "unhandled sa_family %d passed to opal_net_addr_isipv4public\n",
                          addr->sa_family);
+#else
+            ;
+#endif /* OPAL_ENABLE_FT_MPI */
     }
     
     return false;

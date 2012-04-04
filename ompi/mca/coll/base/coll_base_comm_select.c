@@ -13,6 +13,8 @@
  *                         rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -155,6 +157,10 @@ int mca_coll_base_comm_select(ompi_communicator_t * comm)
         COPY(avail->ac_module, comm, scan);
         COPY(avail->ac_module, comm, scatter);
         COPY(avail->ac_module, comm, scatterv);
+#if OPAL_ENABLE_FT_MPI
+        COPY(avail->ac_module, comm, agreement);
+        COPY(avail->ac_module, comm, iagreement);
+#endif
 
         /* release the original module reference and the list item */
         OBJ_RELEASE(avail->ac_module);
@@ -180,7 +186,12 @@ int mca_coll_base_comm_select(ompi_communicator_t * comm)
         || (NULL == comm->c_coll.coll_reduce_scatter)
         || ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_scan))
         || (NULL == comm->c_coll.coll_scatter)
-        || (NULL == comm->c_coll.coll_scatterv)) {
+        || (NULL == comm->c_coll.coll_scatterv)
+#if OPAL_ENABLE_FT_MPI
+        || (NULL == comm->c_coll.coll_agreement)
+        || (NULL == comm->c_coll.coll_iagreement)
+#endif
+        ) {
         mca_coll_base_comm_unselect(comm);
         return OMPI_ERR_NOT_FOUND;
     }

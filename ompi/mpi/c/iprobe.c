@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -72,6 +73,22 @@ int MPI_Iprobe(int source, int tag, MPI_Comm comm, int *flag, MPI_Status *status
         }
         return MPI_SUCCESS;
     }
+
+#if OPAL_ENABLE_FT_MPI
+    /*
+     * Check here for issues with the peer, so we do not have to duplicate the
+     * functionality in the PML.
+     */
+    if( !ompi_comm_iface_p2p_check_proc(comm, source, &rc) ) {
+        if (MPI_STATUS_IGNORE != status) {
+            status->MPI_SOURCE = source;
+            status->MPI_TAG    = tag;
+            status->MPI_ERROR  = rc;
+        }
+        *flag = false;
+        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
+    }
+#endif
 
     OPAL_CR_ENTER_LIBRARY();
 
