@@ -120,7 +120,6 @@ int ompi_comm_init(void)
     ompi_mpi_comm_world.comm.num_active_remote   = group->grp_proc_count;
     ompi_mpi_comm_world.comm.lleader             = 0;
     ompi_mpi_comm_world.comm.rleader             = 0;
-    ompi_mpi_comm_world.comm.last_failed         = -1;
 #endif /* OPAL_ENABLE_FT_MPI */
 
     /* Setup MPI_COMM_SELF */
@@ -164,7 +163,6 @@ int ompi_comm_init(void)
     ompi_mpi_comm_self.comm.num_active_remote   = group->grp_proc_count;
     ompi_mpi_comm_self.comm.lleader             = 0;
     ompi_mpi_comm_self.comm.rleader             = 0;
-    ompi_mpi_comm_self.comm.last_failed         = -1;
 #endif /* OPAL_ENABLE_FT_MPI */
 
     /* Setup MPI_COMM_NULL */
@@ -232,7 +230,6 @@ ompi_communicator_t *ompi_comm_allocate ( int local_size, int remote_size )
     new_comm->num_active_remote   = new_comm->c_remote_group->grp_proc_count;
     new_comm->lleader             = 0;
     new_comm->rleader             = 0;
-    new_comm->last_failed         = -1;
 #endif /* OPAL_ENABLE_FT_MPI */
 
     return new_comm;
@@ -380,7 +377,6 @@ static void ompi_comm_construct(ompi_communicator_t* comm)
     comm->num_active_remote   = -1;
     comm->lleader             = 0;
     comm->rleader             = 0;
-    comm->last_failed         = -1;
 #endif /* OPAL_ENABLE_FT_MPI */
 }
 
@@ -493,7 +489,6 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
     comm->num_active_remote   = -1;
     comm->lleader             = 0;
     comm->rleader             = 0;
-    comm->last_failed         = -1;
 #endif /* OPAL_ENABLE_FT_MPI */
 
     return;

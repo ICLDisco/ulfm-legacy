@@ -41,6 +41,19 @@ int ompi_request_default_wait(
 #if OPAL_ENABLE_FT_CR == 1
     OMPI_CRCP_REQUEST_COMPLETE(req);
 #endif
+
+#if OPAL_ENABLE_FT_MPI
+    /* Special case for MPI_ANY_SOURCE */
+    if( req->req_any_source_pending ) {
+        if( MPI_STATUS_IGNORE != status ) {
+            status->MPI_TAG    = req->req_status.MPI_TAG;
+            status->MPI_SOURCE = req->req_status.MPI_SOURCE;
+            OMPI_STATUS_SET_COUNT(&status->_ucount, &req->req_status._ucount);
+            status->_cancelled = req->req_status._cancelled;
+        }
+        return MPI_ERR_PENDING;
+    }
+#endif /* OPAL_ENABLE_FT_MPI */
         
     /* return status.  If it's a generalized request, we *have* to
        invoke the query_fn, even if the user procided STATUS_IGNORE.
@@ -149,6 +162,26 @@ int ompi_request_default_wait_any(
                 completed = i;
                 break;
             }
+
+#if OPAL_ENABLE_FT_MPI
+            if (request->req_complete != true &&
+                request->req_state == OMPI_REQUEST_ACTIVE) {
+                if( !ompi_request_state_ok(request) ) {
+                    /* Special case for MPI_ANY_SOURCE */
+                    if( request->req_any_source_pending ) {
+                        *index = i;
+                        if (MPI_STATUS_IGNORE != status) {
+                            int old_error = status->MPI_ERROR;
+                            OMPI_STATUS_SET(status, &request->req_status);
+                            status->MPI_ERROR = old_error;
+                        }
+                        return MPI_ERR_PENDING;
+                    }
+                    completed = i;
+                    break;
+                }
+            }
+#endif /* OPAL_ENABLE_FT_MPI */
         }
         if(num_requests_null_inactive == count)
             break;
@@ -278,7 +311,6 @@ int ompi_request_default_wait_all( size_t count,
              * wait until at least pending requests complete
              */
             while (pending > ompi_request_completed - start) {
-                opal_condition_wait(&ompi_request_cond, &ompi_request_lock);
                 /*
                  * Check for failed requests. If one request fails, then
                  * this operation completes in error marking the remaining
@@ -290,6 +322,30 @@ int ompi_request_default_wait_all( size_t count,
                     OPAL_THREAD_UNLOCK(&ompi_request_lock);
                     goto finish;
                 }
+#if OPAL_ENABLE_FT_MPI
+                /* Check for ANY_SOURCE requests that should be classified as
+                 * failed, but are not completed.
+                 * JJH - There are more efficient ways to do this search
+                 */
+                rptr = requests;
+                for(i = 0; i < count; ++i ) {
+                    request = *rptr++;
+                    if (request->req_complete != true &&
+                        request->req_state == OMPI_REQUEST_ACTIVE) {
+                        if( !ompi_request_state_ok(request) ) {
+                            ++failed;
+                        }
+                    }
+                }
+                /* Check failed here so that we can mark as many failed
+                 * requests as such when returning */
+                if( OPAL_UNLIKELY( 0 < failed ) ) {
+                    ompi_request_waiting--;
+                    OPAL_THREAD_UNLOCK(&ompi_request_lock);
+                    goto finish;
+                }
+#endif /* OPAL_ENABLE_FT_MPI */
+                opal_condition_wait(&ompi_request_cond, &ompi_request_lock);
             }
             /*
              * confirm that all pending operations have completed.
@@ -501,6 +557,18 @@ int ompi_request_default_wait_some(
                 num_requests_null_inactive++;
                 continue;
             }
+#if OPAL_ENABLE_FT_MPI
+            /* Check for dead requests due to process failure */
+            if( !request->req_complete ) {
+                /* Special case for MPI_ANY_SOURCE - Error managed below */
+                if( !ompi_request_state_ok(request) &&
+                    request->req_any_source_pending ) {
+                    indices[i] = 1;
+                    num_requests_done++;
+                }
+            }
+#endif /* OPAL_ENABLE_FT_MPI */
+
             if (request->req_complete == true) {
                 indices[i] = 1;
                 num_requests_done++;
@@ -546,6 +614,19 @@ finished:
 
         for (i = 0; i < num_requests_done; i++) {
             request = requests[indices[i]];
+
+#if OPAL_ENABLE_FT_MPI
+            /* Special case for MPI_ANY_SOURCE */
+            if( request->req_any_source_pending ) {
+                if (MPI_STATUSES_IGNORE != statuses) {
+                    OMPI_STATUS_SET(&statuses[i], &request->req_status);
+                    statuses[i].MPI_ERROR = MPI_ERR_PENDING;
+                }
+                rc = MPI_ERR_IN_STATUS;
+                continue;
+            }
+#endif /* OPAL_ENABLE_FT_MPI */
+
             assert( true == request->req_complete );
             /* return status */
             /* Per note above, we have to call gen request query_fn even
