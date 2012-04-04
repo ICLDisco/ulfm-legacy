@@ -877,7 +877,7 @@ int mca_coll_ftbasic_agreement_log_two_phase_finalize(mca_coll_ftbasic_module_t 
      */
     log_two_phase_progress_num_active--;
     if( mca_coll_ftbasic_agreement_use_progress &&
-        log_two_phase_progress_num_active == 0 || ompi_mpi_finalized ) {
+        (log_two_phase_progress_num_active == 0 || ompi_mpi_finalized) ) {
         OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                              "%s ftbasic: agreement) (log2phase) Finalize - Cancel Progress handler (%s)",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
