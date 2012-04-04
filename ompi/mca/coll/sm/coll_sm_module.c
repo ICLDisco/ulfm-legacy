@@ -204,8 +204,8 @@ mca_coll_sm_comm_query(struct ompi_communicator_t *comm, int *priority)
     }
 
 #if OPAL_ENABLE_FT_MPI
-    sm_module->super.coll_agreement   = mca_coll_base_agreement;
-    sm_module->super.coll_iagreement  = mca_coll_base_iagreement;
+    sm_module->super.coll_agreement   = NULL;
+    sm_module->super.coll_iagreement  = NULL;
 #endif
 
     /* All is good -- return a module */

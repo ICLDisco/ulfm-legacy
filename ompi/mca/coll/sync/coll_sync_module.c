@@ -112,8 +112,8 @@ mca_coll_sync_comm_query(struct ompi_communicator_t *comm,
     sync_module->super.ft_event = mca_coll_sync_ft_event;
 
 #if OPAL_ENABLE_FT_MPI
-    sync_module->super.coll_agreement   = mca_coll_base_agreement;
-    sync_module->super.coll_iagreement  = mca_coll_base_iagreement;
+    sync_module->super.coll_agreement   = NULL;
+    sync_module->super.coll_iagreement  = NULL;
 #endif
 
     /* The "all" versions are already synchronous.  So no need for an

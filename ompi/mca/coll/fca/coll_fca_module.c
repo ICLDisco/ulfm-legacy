@@ -401,8 +401,8 @@ mca_coll_fca_comm_query(struct ompi_communicator_t *comm, int *priority)
         goto exit;
 
 #if OPAL_ENABLE_FT_MPI
-    fca_module->super.coll_agreement   = mca_coll_base_agreement;
-    fca_module->super.coll_iagreement  = mca_coll_base_iagreement;
+    fca_module->super.coll_agreement   = NULL;
+    fca_module->super.coll_iagreement  = NULL;
 #endif
 
     fca_module->super.coll_module_enable = mca_coll_fca_module_enable;

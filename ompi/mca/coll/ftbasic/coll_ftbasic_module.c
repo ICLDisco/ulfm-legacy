@@ -84,63 +84,31 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
     ftbasic_module->super.coll_module_enable = mca_coll_ftbasic_module_enable;
     ftbasic_module->super.ft_event = mca_coll_ftbasic_ft_event;
 
-    if (OMPI_COMM_IS_INTER(comm)) {
-        ftbasic_module->super.coll_allgather  = mca_coll_ftbasic_allgather_inter;
-        ftbasic_module->super.coll_allgatherv = mca_coll_ftbasic_allgatherv_inter;
-        ftbasic_module->super.coll_allreduce  = mca_coll_ftbasic_allreduce_inter;
-        ftbasic_module->super.coll_alltoall   = mca_coll_ftbasic_alltoall_inter;
-        ftbasic_module->super.coll_alltoallv  = mca_coll_ftbasic_alltoallv_inter;
-        ftbasic_module->super.coll_alltoallw  = mca_coll_ftbasic_alltoallw_inter;
-        ftbasic_module->super.coll_barrier    = mca_coll_ftbasic_barrier_inter_lin;
-        ftbasic_module->super.coll_bcast      = mca_coll_ftbasic_bcast_lin_inter;
-        ftbasic_module->super.coll_exscan     = NULL;
-        ftbasic_module->super.coll_gather     = mca_coll_ftbasic_gather_inter;
-        ftbasic_module->super.coll_gatherv    = mca_coll_ftbasic_gatherv_inter;
-        ftbasic_module->super.coll_reduce     = mca_coll_ftbasic_reduce_lin_inter;
-        ftbasic_module->super.coll_reduce_scatter = mca_coll_ftbasic_reduce_scatter_inter;
-        ftbasic_module->super.coll_scan       = NULL;
-        ftbasic_module->super.coll_scatter    = mca_coll_ftbasic_scatter_inter;
-        ftbasic_module->super.coll_scatterv   = mca_coll_ftbasic_scatterv_inter;
-    } else if (ompi_comm_size(comm) <= mca_coll_ftbasic_crossover) {
-        ftbasic_module->super.coll_allgather  = mca_coll_ftbasic_allgather_intra;
-        ftbasic_module->super.coll_allgatherv = mca_coll_ftbasic_allgatherv_intra;
-        ftbasic_module->super.coll_allreduce  = mca_coll_ftbasic_allreduce_intra;
-        ftbasic_module->super.coll_alltoall   = mca_coll_ftbasic_alltoall_intra;
-        ftbasic_module->super.coll_alltoallv  = mca_coll_ftbasic_alltoallv_intra;
-        ftbasic_module->super.coll_alltoallw  = mca_coll_ftbasic_alltoallw_intra;
-        ftbasic_module->super.coll_barrier    = mca_coll_ftbasic_barrier_intra_lin;
-        ftbasic_module->super.coll_bcast      = mca_coll_ftbasic_bcast_lin_intra;
-        ftbasic_module->super.coll_exscan     = mca_coll_ftbasic_exscan_intra;
-        ftbasic_module->super.coll_gather     = mca_coll_ftbasic_gather_intra;
-        ftbasic_module->super.coll_gatherv    = mca_coll_ftbasic_gatherv_intra;
-        ftbasic_module->super.coll_reduce     = mca_coll_ftbasic_reduce_lin_intra;
-        ftbasic_module->super.coll_reduce_scatter = mca_coll_ftbasic_reduce_scatter_intra;
-        ftbasic_module->super.coll_scan       = mca_coll_ftbasic_scan_intra;
-        ftbasic_module->super.coll_scatter    = mca_coll_ftbasic_scatter_intra;
-        ftbasic_module->super.coll_scatterv   = mca_coll_ftbasic_scatterv_intra;
-    } else {
-        ftbasic_module->super.coll_allgather  = mca_coll_ftbasic_allgather_intra;
-        ftbasic_module->super.coll_allgatherv = mca_coll_ftbasic_allgatherv_intra;
-        ftbasic_module->super.coll_allreduce  = mca_coll_ftbasic_allreduce_intra;
-        ftbasic_module->super.coll_alltoall   = mca_coll_ftbasic_alltoall_intra;
-        ftbasic_module->super.coll_alltoallv  = mca_coll_ftbasic_alltoallv_intra;
-        ftbasic_module->super.coll_alltoallw  = mca_coll_ftbasic_alltoallw_intra;
-        ftbasic_module->super.coll_barrier    = mca_coll_ftbasic_barrier_intra_log;
-        ftbasic_module->super.coll_bcast      = mca_coll_ftbasic_bcast_log_intra;
-        ftbasic_module->super.coll_exscan     = mca_coll_ftbasic_exscan_intra;
-        ftbasic_module->super.coll_gather     = mca_coll_ftbasic_gather_intra;
-        ftbasic_module->super.coll_gatherv    = mca_coll_ftbasic_gatherv_intra;
-        ftbasic_module->super.coll_reduce     = mca_coll_ftbasic_reduce_log_intra;
-        ftbasic_module->super.coll_reduce_scatter = mca_coll_ftbasic_reduce_scatter_intra;
-        ftbasic_module->super.coll_scan       = mca_coll_ftbasic_scan_intra;
-        ftbasic_module->super.coll_scatter    = mca_coll_ftbasic_scatter_intra;
-        ftbasic_module->super.coll_scatterv   = mca_coll_ftbasic_scatterv_intra;
-    }
+    /* This component does not provide any base collectives,
+     * just the FT collectives.
+     */
+    ftbasic_module->super.coll_allgather      = NULL;
+    ftbasic_module->super.coll_allgatherv     = NULL;
+    ftbasic_module->super.coll_allreduce      = NULL;
+    ftbasic_module->super.coll_alltoall       = NULL;
+    ftbasic_module->super.coll_alltoallv      = NULL;
+    ftbasic_module->super.coll_alltoallw      = NULL;
+    ftbasic_module->super.coll_barrier        = NULL;
+    ftbasic_module->super.coll_bcast          = NULL;
+    ftbasic_module->super.coll_exscan         = NULL;
+    ftbasic_module->super.coll_gather         = NULL;
+    ftbasic_module->super.coll_gatherv        = NULL;
+    ftbasic_module->super.coll_reduce         = NULL;
+    ftbasic_module->super.coll_reduce_scatter = NULL;
+    ftbasic_module->super.coll_scan           = NULL;
+    ftbasic_module->super.coll_scatter        = NULL;
+    ftbasic_module->super.coll_scatterv       = NULL;
 
     /*
      * Agreement operation setup
+     * JJH: Intercommunicators not currently supported
      */
-    if( ompi_ftmpi_enabled ) {
+    if( ompi_ftmpi_enabled && !OMPI_COMM_IS_INTER(comm) ) {
         /* Init the agreement function */
         mca_coll_ftbasic_agreement_init(ftbasic_module);
 

@@ -118,8 +118,8 @@ mca_coll_inter_comm_query(struct ompi_communicator_t *comm, int *priority)
     inter_module->super.ft_event = NULL;
 
 #if OPAL_ENABLE_FT_MPI
-    inter_module->super.coll_agreement   = mca_coll_base_agreement;
-    inter_module->super.coll_iagreement  = mca_coll_base_iagreement;
+    inter_module->super.coll_agreement   = NULL;
+    inter_module->super.coll_iagreement  = NULL;
 #endif
 
     inter_module->super.coll_allgather  = mca_coll_inter_allgather_inter;
