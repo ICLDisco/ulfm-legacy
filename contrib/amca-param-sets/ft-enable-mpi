@@ -35,9 +35,9 @@ errmgr_rts_app_priority=5000
 #
 # OMPI Parameters
 # - Only fully tested with the listed btls
-# - ftbasic is the only fault aware collective component at the moment
+# - ftbasic provides agreement.
+#   - 'basic' is the only tested other collective set
 #
 ompi_ftmpi_enable=1
-# JJH: btl=openib,sm,self
 btl=tcp,sm,self
-coll=ftbasic
+coll=basic,ftbasic

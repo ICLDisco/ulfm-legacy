@@ -309,11 +309,11 @@ static int internal_agreement_allreduce(ompi_communicator_t* comm,
 
     tmp_bitmap = OBJ_NEW(opal_bitmap_t);
     opal_bitmap_init(tmp_bitmap, size + FTBASIC_AGREEMENT_EXTRA_BITS);
-    ret = mca_coll_ftbasic_reduce_log_intra((local_bitmap->bitmap),
-                                            (tmp_bitmap->bitmap),
-                                            packet_size, MPI_UNSIGNED_CHAR,
-                                            ftbasic_agreement_allreduce_op,
-                                            root, comm, &(ftbasic_module->super));
+    ret = comm->c_coll.coll_reduce((local_bitmap->bitmap),
+                                   (tmp_bitmap->bitmap),
+                                   packet_size, MPI_UNSIGNED_CHAR,
+                                   ftbasic_agreement_allreduce_op,
+                                   root, comm, &(ftbasic_module->super));
     opal_bitmap_copy(local_bitmap, tmp_bitmap);
     if( OMPI_SUCCESS != ret ) {
         opal_output_verbose(1, ompi_ftmpi_output_handle,
@@ -351,8 +351,8 @@ static int internal_agreement_allreduce(ompi_communicator_t* comm,
     }
 #endif
 
-    ret = mca_coll_ftbasic_bcast_log_intra( (local_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
-                                            root, comm, &(ftbasic_module->super));
+    ret = comm->c_coll.coll_bcast( (local_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
+                                   root, comm, &(ftbasic_module->super));
     if( OMPI_SUCCESS != ret ) {
         opal_output_verbose(1, ompi_ftmpi_output_handle,
                             "%s ftbasic:agreement (allreduce) Error: Bcast Failed (ret = %3d) - Abort",

@@ -93,8 +93,8 @@ ompi_coll_tuned_comm_query(struct ompi_communicator_t *comm, int *priority)
     tuned_module->super.ft_event = mca_coll_tuned_ft_event;
 
 #if OPAL_ENABLE_FT_MPI
-    tuned_module->super.coll_agreement   = mca_coll_base_agreement;
-    tuned_module->super.coll_iagreement  = mca_coll_base_iagreement;
+    tuned_module->super.coll_agreement   = NULL;
+    tuned_module->super.coll_iagreement  = NULL;
 #endif
 
     /* By default stick with the fied version of the tuned collectives. Later on,

@@ -118,8 +118,8 @@ mca_coll_hierarch_comm_query(struct ompi_communicator_t *comm, int *priority )
     }
 
 #if OPAL_ENABLE_FT_MPI
-    hierarch_module->super.coll_agreement   = mca_coll_base_agreement;
-    hierarch_module->super.coll_iagreement  = mca_coll_base_iagreement;
+    hierarch_module->super.coll_agreement   = NULL;
+    hierarch_module->super.coll_iagreement  = NULL;
 #endif
 
     hierarch_module->super.coll_module_enable = mca_coll_hierarch_module_enable;

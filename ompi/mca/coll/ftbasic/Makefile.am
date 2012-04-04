@@ -21,24 +21,8 @@ EXTRA_DIST = .windows
 
 sources = \
         coll_ftbasic.h \
-        coll_ftbasic_allgather.c \
-        coll_ftbasic_allgatherv.c \
-        coll_ftbasic_allreduce.c \
-        coll_ftbasic_alltoall.c \
-        coll_ftbasic_alltoallv.c \
-        coll_ftbasic_alltoallw.c \
-        coll_ftbasic_barrier.c \
-        coll_ftbasic_bcast.c \
         coll_ftbasic_component.c \
-        coll_ftbasic_gather.c \
-        coll_ftbasic_gatherv.c \
         coll_ftbasic_module.c \
-        coll_ftbasic_reduce.c \
-        coll_ftbasic_reduce_scatter.c \
-        coll_ftbasic_scan.c \
-        coll_ftbasic_exscan.c \
-        coll_ftbasic_scatter.c \
-        coll_ftbasic_scatterv.c \
         coll_ftbasic_agreement.c \
         coll_ftbasic_agreement.h \
         coll_ftbasic_agreement_2phase.c \

@@ -67,8 +67,8 @@ mca_coll_self_comm_query(struct ompi_communicator_t *comm,
         if (NULL == module) return NULL;
 
 #if OPAL_ENABLE_FT_MPI
-        module->super.coll_agreement   = mca_coll_base_agreement;
-        module->super.coll_iagreement  = mca_coll_base_iagreement;
+        module->super.coll_agreement   = NULL;
+        module->super.coll_iagreement  = NULL;
 #endif
 
         module->super.coll_module_enable = mca_coll_self_module_enable;
