@@ -105,8 +105,10 @@ orte_rml_oob_send(orte_process_name_t* peer,
 
     next = orte_routed.get_route(peer);
     if (next.vpid == ORTE_VPID_INVALID) {
+#if OPAL_ENABLE_FT_MPI == 0
         ORTE_ERROR_LOG(ORTE_ERR_ADDRESSEE_UNKNOWN);
         opal_output(0, "%s could not get route to %s", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(peer));
+#endif /* OPAL_ENABLE_FT_MPI */
         return ORTE_ERR_ADDRESSEE_UNKNOWN;
     }
     msg->msg_data = (struct iovec *) malloc(sizeof(struct iovec) * (count + 1));
@@ -146,6 +148,12 @@ orte_rml_oob_send(orte_process_name_t* peer,
                                                       orte_rml_send_msg_callback,
                                                       msg);
     if (ret < 0) {
+#if OPAL_ENABLE_FT_MPI
+        if( ORTE_ERR_ADDRESSEE_UNKNOWN == ret ) {
+            goto cleanup;
+        }
+#endif /* OPAL_ENABLE_FT_MPI */
+
         ORTE_ERROR_LOG(ret);
 #if OPAL_ENABLE_DEBUG
         opal_output(0, "%s attempted to send to %s: tag %d", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -196,8 +204,10 @@ orte_rml_oob_send_nb(orte_process_name_t* peer,
 
     next = orte_routed.get_route(peer);
     if (next.vpid == ORTE_VPID_INVALID) {
+#if OPAL_ENABLE_FT_MPI
         ORTE_ERROR_LOG(ORTE_ERR_ADDRESSEE_UNKNOWN);
         opal_output(0, "%s could not get route to %s", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(peer));
+#endif /* OPAL_ENABLE_FT_MPI */
         return ORTE_ERR_ADDRESSEE_UNKNOWN;
     }
 
@@ -238,6 +248,12 @@ orte_rml_oob_send_nb(orte_process_name_t* peer,
                                                       orte_rml_send_msg_callback,
                                                       msg);
     if (ret < 0) {
+#if OPAL_ENABLE_FT_MPI
+        if( ORTE_ERR_ADDRESSEE_UNKNOWN == ret ) {
+            OBJ_RELEASE(msg);
+            return ret;
+        }
+#endif /* OPAL_ENABLE_FT_MPI */
         ORTE_ERROR_LOG(ret);
         opal_output(0, "%s attempted to send to %s: tag %d", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                                              ORTE_NAME_PRINT(&next), (int)real_tag);
@@ -362,6 +378,13 @@ orte_rml_oob_send_buffer_nb(orte_process_name_t* peer,
                                                       msg);
 
     if (ret < 0) {
+#if OPAL_ENABLE_FT_MPI
+        if( ORTE_ERR_ADDRESSEE_UNKNOWN == ret ) {
+            OBJ_RELEASE(msg);
+            OBJ_RELEASE(buffer);
+            return ret;;
+        }
+#endif /* OPAL_ENABLE_FT_MPI */
         ORTE_ERROR_LOG(ret);
         opal_output(0, "%s attempted to send to %s: tag %d", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                                              ORTE_NAME_PRINT(&next), (int)real_tag);
