@@ -475,7 +475,7 @@ orte_ras_alps_read_appinfo_file(opal_list_t *nodes, char *filename,
             opal_output_verbose(5, orte_ras_base.ras_output,
                              "ras:alps:read_appinfo: got NID %d", apSlots[ix].nid);
 
-            asprintf( &hostname, "nid%d", apSlots[ix].nid );
+            asprintf( &hostname, "nid%05d", apSlots[ix].nid );
             if (NULL == hostname) {
                 ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
                 return ORTE_ERR_OUT_OF_RESOURCE;
