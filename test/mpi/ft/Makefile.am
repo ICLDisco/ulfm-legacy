@@ -17,7 +17,26 @@
 # $HEADER$
 #
 
-
 EXTRA_DIST = CMakeLists.txt
 
-SUBDIRS = environment ft
+AM_LDFLAGS = -lpthread
+
+noinst_PROGRAMS = invshrink invshrinkkill invshrinkkillrecover
+
+invshrink_SOURCES = invshrink.c
+invshrink_LDADD = \
+	$(top_builddir)/src/libmpi.la \
+	$(top_builddir)/src/libompi.la 
+invshrink_DEPENDENCIES = $(invshrink_LDADD)
+
+invshrinkkill_SOURCES = invshrinkkill.c
+invshrinkkill_LDADD = \
+	$(top_builddir)/src/libmpi.la \
+	$(top_builddir)/src/libompi.la 
+invshrinkkill_DEPENDENCIES = $(invshrinkkill_LDADD)
+
+invshrinkkillrecover_SOURCES = invshrinkkillrecover.c
+invshrinkkillrecover_LDADD = \
+	$(top_builddir)/src/libmpi.la \
+	$(top_builddir)/src/libompi.la 
+invshrinkkillrecover_DEPENDENCIES = $(invshrinkkillrecover_LDADD)
