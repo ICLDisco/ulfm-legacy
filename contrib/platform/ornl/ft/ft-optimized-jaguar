@@ -2,13 +2,15 @@ enable_dlopen=no
 enable_mem_debug=no
 enable_mem_profile=no
 enable_debug_symbols=no
+enable_debug=no
 enable_binaries=yes
 enable_heterogeneous=no
-enable_picky=yes
-enable_debug=no
+enable_picky=no
 enable_shared=no
 enable_static=yes
 enable_ipv6=no
+#enable_mpi_f77=no
+#enable_mpi_f90=no
 enable_mpi_f77=yes
 enable_mpi_f90=yes
 enable_mpi_cxx=yes
@@ -36,8 +38,9 @@ enable_io_romio=no
 with_memory_manager=ptmalloc2
 with_valgrind=no
 with_wrapper_cflags="-march=amdfam10"
-CFLAGS=-march=amdfam10
-CPPFLAGS=-march=amdfam10
+CFLAGS="-march=amdfam10"
+FFLAGS=-march=amdfam10
+#CPPFLAGS=-march=amdfam10
 #
 # FT Options
 #
