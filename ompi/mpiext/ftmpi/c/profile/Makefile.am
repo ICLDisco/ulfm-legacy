@@ -24,7 +24,7 @@ endif
 headers = defines.h
 
 nodist_libext_pmpiext_c_ftmpi_la_SOURCES = \
-	pcomm_invalidate.c \
+	pcomm_revoke.c \
 	pcomm_shrink.c \
 	pcomm_failure_ack.c \
 	pcomm_failure_get_acked.c \

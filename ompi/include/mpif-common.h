@@ -277,7 +277,7 @@
       integer MPI_ERR_UNSUPPORTED_OPERATION
       integer MPI_ERR_WIN
       integer MPI_ERR_PROC_FAILED
-      integer MPI_ERR_INVALIDATED
+      integer MPI_ERR_REVOKED_
 
       integer MPI_ERR_SYSRESOURCE
       integer MPI_ERR_LASTCODE
@@ -337,7 +337,7 @@
       parameter( MPI_ERR_UNSUPPORTED_OPERATION= 52)
       parameter( MPI_ERR_WIN                  = 53)
       parameter( MPI_ERR_PROC_FAILED          = 54)
-      parameter( MPI_ERR_INVALIDATED          = 55)
+      parameter( MPI_ERR_REVOKED              = 55)
 
       parameter( MPI_ERR_SYSRESOURCE          = -2)
       parameter( MPI_ERR_LASTCODE             = 56)
