@@ -12,7 +12,7 @@
 /********************************
  * Communicators
  ********************************/
-OMPI_DECLSPEC int OMPI_Comm_invalidate(MPI_Comm comm);
+OMPI_DECLSPEC int OMPI_Comm_revoke(MPI_Comm comm);
 
 OMPI_DECLSPEC int OMPI_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm);
 

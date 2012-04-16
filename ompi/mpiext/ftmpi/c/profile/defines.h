@@ -16,7 +16,7 @@
  * PMPI_* symbols
  */
 
-#define OMPI_Comm_invalidate POMPI_Comm_invalidate
+#define OMPI_Comm_revoke POMPI_Comm_revoke
 
 #define OMPI_Comm_shrink POMPI_Comm_shrink
 

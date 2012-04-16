@@ -14,12 +14,12 @@
 !
 ! Communicators
 !
-interface OMPI_Comm_invalidate
-    subroutine ompi_comm_invalidate(comm, ierr)
+interface OMPI_Comm_revoke
+    subroutine ompi_comm_revoke(comm, ierr)
       integer, intent(IN) :: comm
       integer, intent(OUT) :: ierr
-    end subroutine ompi_comm_invalidate
-end interface OMPI_Comm_invalidate
+    end subroutine ompi_comm_revoke
+end interface OMPI_Comm_revoke
 
 interface OMPI_Comm_shrink
     subroutine ompi_comm_shrink(comm, newcomm, ierr)

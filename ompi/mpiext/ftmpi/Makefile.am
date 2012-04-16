@@ -16,7 +16,7 @@ headers = \
 	mpiext_ftmpi_c.h
 
 sources = \
-	c/comm_invalidate.c \
+	c/comm_revoke.c \
 	c/comm_shrink.c \
 	c/comm_failure_ack.c \
 	c/comm_failure_get_acked.c \
@@ -35,7 +35,7 @@ headers += \
 	f77/ftmpi_f77_support.h
 
 f77_sources += \
-	f77/comm_invalidate_f.c \
+	f77/comm_revoke_f.c \
 	f77/comm_shrink_f.c \
 	f77/comm_failure_ack_f.c \
 	f77/comm_failure_get_acked_f.c \
