@@ -23,7 +23,7 @@
 #define OMPI_Comm_failure_ack POMPI_Comm_failure_ack
 #define OMPI_Comm_failure_get_acked POMPI_Comm_failure_get_acked
 
-#define OMPI_Comm_agreement POMPI_Comm_agreement
-#define OMPI_Comm_iagreement POMPI_Comm_iagreement
+#define OMPI_Comm_agree POMPI_Comm_agree
+#define OMPI_Comm_iagree POMPI_Comm_iagree
 
 #endif /* OMPI_MPIEXT_FTMPI_C_PROFILE_DEFINES_H */

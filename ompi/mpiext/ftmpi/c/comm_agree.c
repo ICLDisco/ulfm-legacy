@@ -15,7 +15,7 @@
 #include "ompi/proc/proc.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak OMPI_Comm_agreement = POMPI_Comm_agreement
+#pragma weak OMPI_Comm_agree = POMPI_Comm_agree
 #endif
 
 #if OMPI_PROFILING_DEFINES
@@ -24,10 +24,10 @@
 
 #include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
-static const char FUNC_NAME[] = "OMPI_Comm_agreement";
+static const char FUNC_NAME[] = "OMPI_Comm_agree";
 
 
-int OMPI_Comm_agreement(MPI_Comm comm, int *flag)
+int OMPI_Comm_agree(MPI_Comm comm, int *flag)
 {
     int rc = MPI_SUCCESS;
 
