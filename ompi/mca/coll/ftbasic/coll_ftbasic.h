@@ -68,6 +68,7 @@ BEGIN_C_DECLS
     extern bool mca_coll_ftbasic_use_agreement_timer;
     extern bool mca_coll_ftbasic_agreement_use_progress;
     extern int mca_coll_ftbasic_agreement_log_max_len;
+    extern int mca_coll_ftbasic_agreement_help_wait_cycles_inc;
 
 struct mca_coll_ftbasic_request_t;
 

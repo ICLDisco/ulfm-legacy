@@ -1505,7 +1505,7 @@ int mca_coll_ftbasic_agreement_log_two_phase_term_progress(void)
                             mca_coll_ftbasic_agreement_help_wait_cycles );
 
         last_asking = mca_coll_ftbasic_agreement_help_num_asking;
-        mca_coll_ftbasic_agreement_help_wait_cycles = FTBASIC_AGREEMENT_INC_WAIT_CYCLES;
+        mca_coll_ftbasic_agreement_help_wait_cycles = mca_coll_ftbasic_agreement_help_wait_cycles_inc;
         last_wait_limit = 1;
     }
     else if( mca_coll_ftbasic_agreement_help_wait_cycles > 0 ) {
@@ -1515,7 +1515,7 @@ int mca_coll_ftbasic_agreement_log_two_phase_term_progress(void)
     }
     else {
         last_wait_limit = (last_wait_limit)%10 + 1;
-        mca_coll_ftbasic_agreement_help_wait_cycles = (FTBASIC_AGREEMENT_INC_WAIT_CYCLES*last_wait_limit);
+        mca_coll_ftbasic_agreement_help_wait_cycles = (mca_coll_ftbasic_agreement_help_wait_cycles_inc*last_wait_limit);
     }
 
 

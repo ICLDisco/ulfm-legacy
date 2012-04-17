@@ -277,7 +277,7 @@
       integer MPI_ERR_UNSUPPORTED_OPERATION
       integer MPI_ERR_WIN
       integer MPI_ERR_PROC_FAILED
-      integer MPI_ERR_REVOKED_
+      integer MPI_ERR_REVOKED
 
       integer MPI_ERR_SYSRESOURCE
       integer MPI_ERR_LASTCODE

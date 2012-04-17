@@ -17,11 +17,16 @@
 AM_CPPFLAGS = -DOMPI_PROFILING_DEFINES=1 -DOMPI_PROFILE_LAYER=1 -DOMPI_COMPILING_F77_WRAPPERS=1
 
 noinst_LTLIBRARIES =
+if OMPI_WANT_F77_BINDINGS
 if WANT_PMPI_BINDINGS_LAYER
 noinst_LTLIBRARIES += libext_pmpiext_f77_ftmpi.la
 endif
+endif
 
-headers = defines.h
+headers = 
+nodist_libext_pmpiext_f77_ftmpi_la_SOURCES = 
+if OMPI_WANT_F77_BINDINGS
+headers += defines.h
 
 nodist_libext_pmpiext_f77_ftmpi_la_SOURCES = \
 	pcomm_revoke_f.c \
@@ -30,6 +35,7 @@ nodist_libext_pmpiext_f77_ftmpi_la_SOURCES = \
 	pcomm_failure_get_acked_f.c \
 	pcomm_agreement_f.c \
 	pcomm_iagreement_f.c
+endif
 
 #
 # Sym link in the sources from the real MPI directory
@@ -41,7 +47,7 @@ $(nodist_libext_pmpiext_f77_ftmpi_la_SOURCES):
 	fi
 
 # Conditionally install the header files
-
+if OMPI_WANT_F77_BINDINGS
 if WANT_INSTALL_HEADERS
 ompidir = $(includedir)/openmpi/ompi/mpiext/ftmpi
 ompi_HEADERS = $(headers)
@@ -50,3 +56,4 @@ endif
 # These files were created by targets above
 
 MAINTAINERCLEANFILES = $(nodist_libext_pmpiext_f77_ftmpi_la_SOURCES)
+endif
