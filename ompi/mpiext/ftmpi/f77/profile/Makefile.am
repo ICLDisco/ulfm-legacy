@@ -28,7 +28,7 @@ nodist_libext_pmpiext_f77_ftmpi_la_SOURCES =
 if OMPI_WANT_F77_BINDINGS
 headers += defines.h
 
-nodist_libext_pmpiext_f77_ftmpi_la_SOURCES = \
+nodist_libext_pmpiext_f77_ftmpi_la_SOURCES += \
 	pcomm_revoke_f.c \
 	pcomm_shrink_f.c \
 	pcomm_failure_ack_f.c \
