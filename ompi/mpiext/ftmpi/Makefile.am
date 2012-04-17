@@ -20,8 +20,8 @@ sources = \
 	c/comm_shrink.c \
 	c/comm_failure_ack.c \
 	c/comm_failure_get_acked.c \
-	c/comm_agreement.c \
-	c/comm_iagreement.c
+	c/comm_agree.c \
+	c/comm_iagree.c
 
 #
 # F77 bindings
@@ -39,8 +39,8 @@ f77_sources += \
 	f77/comm_shrink_f.c \
 	f77/comm_failure_ack_f.c \
 	f77/comm_failure_get_acked_f.c \
-	f77/comm_agreement_f.c \
-	f77/comm_iagreement_f.c
+	f77/comm_agree_f.c \
+	f77/comm_iagree_f.c
 endif
 
 #

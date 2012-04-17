@@ -33,8 +33,8 @@ nodist_libext_pmpiext_f77_ftmpi_la_SOURCES = \
 	pcomm_shrink_f.c \
 	pcomm_failure_ack_f.c \
 	pcomm_failure_get_acked_f.c \
-	pcomm_agreement_f.c \
-	pcomm_iagreement_f.c
+	pcomm_agree_f.c \
+	pcomm_iagree_f.c
 endif
 
 #

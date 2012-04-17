@@ -17,9 +17,9 @@
 
 #include "ompi/mpiext/ftmpi/f77/ftmpi_f77_support.h"
 
-F77_STAMP_FN(OMPI_Comm_iagreement_f,
-             ompi_comm_iagreement,
-             OMPI_COMM_IAGREEMENT,
+F77_STAMP_FN(OMPI_Comm_iagree_f,
+             ompi_comm_iagree,
+             OMPI_COMM_IAGREE,
              (MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *request, MPI_Fint *ierr),
              (comm, flag, request, ierr))
 
@@ -29,15 +29,15 @@ F77_STAMP_FN(OMPI_Comm_iagreement_f,
 
 #include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
-static void OMPI_Comm_iagreement_f(MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *request, MPI_Fint *ierr)
+static void OMPI_Comm_iagree_f(MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *request, MPI_Fint *ierr)
 {
     MPI_Comm c_comm = MPI_Comm_f2c(*comm);
     MPI_Request c_req;
     OMPI_LOGICAL_NAME_DECL(flag)
 
-    *ierr = OMPI_INT_2_FINT(OMPI_Comm_iagreement(c_comm,
-                                                 OMPI_LOGICAL_SINGLE_NAME_CONVERT(flag),
-                                                 &c_req));
+    *ierr = OMPI_INT_2_FINT(OMPI_Comm_iagree(c_comm,
+                                             OMPI_LOGICAL_SINGLE_NAME_CONVERT(flag),
+                                             &c_req));
 
     if (MPI_SUCCESS == OMPI_FINT_2_INT(*ierr)) {
         *request = MPI_Request_c2f(c_req);
