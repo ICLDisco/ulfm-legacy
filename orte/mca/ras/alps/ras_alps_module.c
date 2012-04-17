@@ -475,7 +475,7 @@ orte_ras_alps_read_appinfo_file(opal_list_t *nodes, char *filename,
             opal_output_verbose(5, orte_ras_base.ras_output,
                              "ras:alps:read_appinfo: got NID %d", apSlots[ix].nid);
 
-            asprintf( &hostname, "%d", apSlots[ix].nid );
+            asprintf( &hostname, "nid%05d", apSlots[ix].nid );
             if (NULL == hostname) {
                 ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
                 return ORTE_ERR_OUT_OF_RESOURCE;
@@ -489,7 +489,7 @@ orte_ras_alps_read_appinfo_file(opal_list_t *nodes, char *filename,
             } else {                        /* must be new, so add to list    */
 
                 opal_output_verbose(1, orte_ras_base.ras_output,
-                             "ras:alps:read_appinfo: added NID %d to list", apSlots[ix].nid);
+                                    "ras:alps:read_appinfo: added NID %d to list (as %s)", apSlots[ix].nid, hostname);
 
                 node = OBJ_NEW(orte_node_t);
                 node->name = hostname;
