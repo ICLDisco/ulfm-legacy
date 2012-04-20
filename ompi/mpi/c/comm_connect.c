@@ -75,11 +75,13 @@ int MPI_Comm_connect(char *port_name, MPI_Info info, int root,
                                         FUNC_NAME);
         }
     }
-    
+
+/*
 #if OPAL_ENABLE_FT_MPI
     OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, comm,
                            OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
 #endif
+*/
     
     rank = ompi_comm_rank ( comm );
     if ( MPI_PARAM_CHECK ) {

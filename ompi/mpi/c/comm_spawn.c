@@ -74,11 +74,13 @@ int MPI_Comm_spawn(char *command, char **argv, int maxprocs, MPI_Info info,
                                           FUNC_NAME);
         }
     }
-   
+
+/*
 #if OPAL_ENABLE_FT_MPI
     OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, comm,
                            OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
 #endif
+*/
    
     rank = ompi_comm_rank ( comm );
     if ( MPI_PARAM_CHECK ) {

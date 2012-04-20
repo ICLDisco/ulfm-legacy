@@ -126,10 +126,12 @@ int MPI_Comm_spawn_multiple(int count, char **array_of_commands, char ***array_o
         }
     }
 
+/*
 #if OPAL_ENABLE_FT_MPI
     OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, comm,
                            OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
 #endif
+*/
 
     if (rank == root) {
         if (MPI_INFO_NULL == array_of_info[0]) {
