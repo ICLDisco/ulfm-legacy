@@ -58,10 +58,12 @@ int MPI_Comm_disconnect(MPI_Comm *comm)
         return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_COMM, FUNC_NAME);
     }
 
+/*
 #if OPAL_ENABLE_FT_MPI
     OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, *comm,
                            OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
 #endif
+*/
 
     OPAL_CR_ENTER_LIBRARY();
 

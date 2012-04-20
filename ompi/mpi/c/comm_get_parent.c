@@ -49,10 +49,12 @@ int MPI_Comm_get_parent(MPI_Comm *parent)
         }
     }
 
+/*
 #if OPAL_ENABLE_FT_MPI
     OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, MPI_COMM_WORLD,
                            OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
 #endif
+*/
 
     /*
      * ompi_mpi_comm_parent is MPI_COMM_NULL, in case this 
