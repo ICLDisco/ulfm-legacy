@@ -120,7 +120,7 @@ int ompi_comm_init_revoke(void)
         return OMPI_SUCCESS;
     }
 
-    ret = mca_bml.bml_register(OMPI_REVOKE_BML_TAG, ompi_comm_revoke_bml_cb_fn, NULL);
+    ret = mca_bml.bml_register(MCA_BTL_TAG_FT, ompi_comm_revoke_bml_cb_fn, NULL);
     if( OMPI_SUCCESS != ret ) {
         return ret;
     }
@@ -158,7 +158,7 @@ static void ompi_comm_revoke_bml_cb_fn(
     /*
      * Parse the revoke fragment
      */
-    assert(OMPI_REVOKE_BML_TAG == tag);
+    assert(MCA_BTL_TAG_FT == tag);
     assert(1 == descriptor->des_dst_cnt);
     assert(sizeof(ompi_revoke_message_t) == descriptor->des_dst->seg_len);
     msg = (ompi_revoke_message_t*) descriptor->des_dst->seg_addr.pval;
@@ -284,12 +284,12 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
      
         msg = des->des_src->seg_addr.pval;
         msg->cid = comm->c_contextid;
-        ret = mca_bml_base_send(bml_btl, des, OMPI_REVOKE_BML_TAG);
+        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
         if(OPAL_UNLIKELY(ret != 1)) {
             mca_bml_base_free(bml_btl, des);
             OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                     "%s ompi: comm_revoke: Send: could not send a fragment to %s to revoke %3d",
-                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(proc->proc_name), comm->c_contextid ));
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), comm->c_contextid ));
             exit_status = ret;
         }
     }
