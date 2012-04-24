@@ -271,15 +271,17 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
 
         if(ompi_group_rank(grp) == i) continue;
         proc = ompi_group_peer_lookup(grp, i);
+        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                "%s ompi: comm_revoke: Send: preparing a fragment to %s to revoke %3d",
+                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), comm->c_contextid ));
+
         assert(proc->proc_bml);
-        do
-        {
-            bml_btl = mca_bml_base_btl_array_get_next(&proc->proc_bml->btl_send);
-            mca_bml_base_alloc(bml_btl, &des, MCA_BTL_NO_ORDER, 
-                               sizeof(ompi_revoke_message_t),
-                               MCA_BTL_DES_FLAGS_PRIORITY | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
-        } while(OPAL_UNLIKELY(NULL == des));
-        assert(des->des_src->seg_len == sizeof(ompi_revoke_message_t));
+        bml_btl = mca_bml_base_btl_array_get_next(&proc->proc_bml->btl_send);
+        mca_bml_base_alloc(bml_btl, &des, MCA_BTL_NO_ORDER, 
+                           sizeof(ompi_revoke_message_t),
+                           MCA_BTL_DES_FLAGS_PRIORITY | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
+        if(OPAL_UNLIKELY(NULL == des)) return OMPI_ERR_OUT_OF_RESOURCE;
+		assert(des->des_src->seg_len == sizeof(ompi_revoke_message_t));
         des->des_cbfunc = ompi_revoke_bml_complete_fn;
      
         msg = des->des_src->seg_addr.pval;
