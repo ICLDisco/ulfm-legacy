@@ -16,12 +16,12 @@ headers = \
 	mpiext_ftmpi_c.h
 
 sources = \
-	c/comm_invalidate.c \
+	c/comm_revoke.c \
 	c/comm_shrink.c \
 	c/comm_failure_ack.c \
 	c/comm_failure_get_acked.c \
-	c/comm_agreement.c \
-	c/comm_iagreement.c
+	c/comm_agree.c \
+	c/comm_iagree.c
 
 #
 # F77 bindings
@@ -35,12 +35,12 @@ headers += \
 	f77/ftmpi_f77_support.h
 
 f77_sources += \
-	f77/comm_invalidate_f.c \
+	f77/comm_revoke_f.c \
 	f77/comm_shrink_f.c \
 	f77/comm_failure_ack_f.c \
 	f77/comm_failure_get_acked_f.c \
-	f77/comm_agreement_f.c \
-	f77/comm_iagreement_f.c
+	f77/comm_agree_f.c \
+	f77/comm_iagree_f.c
 endif
 
 #
@@ -63,15 +63,19 @@ libext_mpiext_ftmpi_la_SOURCES = $(lib_sources)
 libext_mpiext_ftmpi_la_LDFLAGS = -module -avoid-version
 
 # For F77 Bindings
+if OMPI_WANT_F77_BINDINGS
 f77_lib = libext_mpiext_ftmpi_f77.la
 f77_lib_sources = $(f77_sources)
 
 libext_mpiext_ftmpi_f77_la_SOURCES = $(f77_lib_sources)
 libext_mpiext_ftmpi_f77_la_LIBADD  = $(lib_sources)
 libext_mpiext_ftmpi_f77_la_LDFLAGS = -module -avoid-version
+endif
 
-
-noinst_LTLIBRARIES = $(lib) $(f77_lib)
+noinst_LTLIBRARIES = $(lib)
+if OMPI_WANT_F77_BINDINGS
+noinst_LTLIBRARIES += $(f77_lib)
+endif
 
 ompidir = $(includedir)/openmpi/ompi/mpiext/ftmpi
 ompi_HEADERS = \

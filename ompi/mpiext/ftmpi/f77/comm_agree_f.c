@@ -16,11 +16,11 @@
 
 #include "ompi/mpiext/ftmpi/f77/ftmpi_f77_support.h"
 
-F77_STAMP_FN(OMPI_Comm_invalidate_f,
-             ompi_comm_invalidate,
-             OMPI_COMM_INVALIDATE,
-             (MPI_Fint *comm, MPI_Fint *ierr),
-             (comm, ierr))
+F77_STAMP_FN(OMPI_Comm_agree_f,
+             ompi_comm_agree,
+             OMPI_COMM_AGREE,
+             (MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr),
+             (comm, flag, ierr))
 
 #if OMPI_PROFILING_DEFINES && ! OPAL_HAVE_WEAK_SYMBOLS
 #include "ompi/mpiext/ftmpi/f77/profile/defines.h"
@@ -28,9 +28,11 @@ F77_STAMP_FN(OMPI_Comm_invalidate_f,
 
 #include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
-static void OMPI_Comm_invalidate_f(MPI_Fint *comm, MPI_Fint *ierr)
+static void OMPI_Comm_agree_f(MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr)
 {
     MPI_Comm c_comm = MPI_Comm_f2c(*comm);
+    OMPI_LOGICAL_NAME_DECL(flag)
 
-    *ierr = OMPI_INT_2_FINT(OMPI_Comm_invalidate(c_comm));
+    *ierr = OMPI_INT_2_FINT(OMPI_Comm_agree(c_comm,
+                                            OMPI_LOGICAL_SINGLE_NAME_CONVERT(flag)));
 }

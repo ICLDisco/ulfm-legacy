@@ -12,21 +12,21 @@
 /********************************
  * Communicators
  ********************************/
-OMPI_DECLSPEC int OMPI_Comm_invalidate(MPI_Comm comm);
+OMPI_DECLSPEC int OMPI_Comm_revoke(MPI_Comm comm);
 
 OMPI_DECLSPEC int OMPI_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm);
 
 OMPI_DECLSPEC int OMPI_Comm_failure_ack(MPI_Comm comm);
 OMPI_DECLSPEC int OMPI_Comm_failure_get_acked(MPI_Comm comm, MPI_Group *failedgrp);
 
-OMPI_DECLSPEC int OMPI_Comm_agreement(MPI_Comm comm, int *flag);
-OMPI_DECLSPEC int OMPI_Comm_iagreement(MPI_Comm comm, int *flag, MPI_Request *request);
+OMPI_DECLSPEC int OMPI_Comm_agree(MPI_Comm comm, int *flag);
+OMPI_DECLSPEC int OMPI_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *request);
 
 #if 0
 /********************************
  * Windows
  ********************************/
-OMPI_DECLSPEC int OMPI_Win_invalidate(MPI_Win win);
+OMPI_DECLSPEC int OMPI_Win_revoke(MPI_Win win);
 OMPI_DECLSPEC int OMPI_Win_get_failed(MPI_Win win, MPI_Group *failedgrp);
 #endif
 
@@ -34,7 +34,7 @@ OMPI_DECLSPEC int OMPI_Win_get_failed(MPI_Win win, MPI_Group *failedgrp);
 /********************************
  * I/O
  ********************************/
-OMPI_DECLSPEC int OMPI_File_invalidate(MPI_File fh);
+OMPI_DECLSPEC int OMPI_File_revoke(MPI_File fh);
 #endif
 
 #if 0

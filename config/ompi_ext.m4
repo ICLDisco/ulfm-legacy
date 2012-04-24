@@ -468,6 +468,7 @@ EOF
 
     AC_MSG_CHECKING([if MPI Extension $component has F77 bindings])
 
+    if test "$OMPI_WANT_F77_BINDINGS" = "1"; then
     if test -e "$test_header" ; then
         AC_MSG_RESULT([yes])
         enabled_f77=1
@@ -515,6 +516,9 @@ EOF
 EOF
 
     fi
+    else
+        AC_MSG_RESULT([skipped])
+    fi
 
     ###############
     # F90 Bindings
@@ -527,6 +531,7 @@ EOF
 
     AC_MSG_CHECKING([if MPI Extension $component has F90 bindings])
 
+    if test "$OMPI_WANT_F90_BINDINGS" = "1"; then
     if test -e "$test_header" ; then
         AC_MSG_RESULT([yes])
 
@@ -568,7 +573,9 @@ EOF
 
 EOF
     fi
-
+    else
+        AC_MSG_RESULT([skipped])
+    fi
 
     # Add this subdir to the mast list of all EXT component subdirs
     $2="$$2 ${component}"
