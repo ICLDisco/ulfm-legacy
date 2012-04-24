@@ -22,8 +22,8 @@ int main(int argc, char *argv[]) {
         rc = OMPI_Comm_revoke(world);
     } else {
         rc = MPI_Barrier(world);        
-        if (MPI_ERR_INVALIDATED == rc) {
-            printf("Rank %d - Barrier INVALIDATED\n", rank);
+        if (MPI_ERR_REVOKED == rc) {
+            printf("Rank %d - Barrier REVOKED\n", rank);
         } 
     }
     
