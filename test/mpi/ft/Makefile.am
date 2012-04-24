@@ -21,7 +21,13 @@ EXTRA_DIST = CMakeLists.txt
 
 AM_LDFLAGS = -lpthread
 
-noinst_PROGRAMS = invshrink invshrinkkill invshrinkkillrecover
+noinst_PROGRAMS = inv invshrink invshrinkkill invshrinkkillrecover
+
+inv_SOURCES = inv.c
+inv_LDADD = \
+	$(top_builddir)/src/libmpi.la \
+	$(top_builddir)/src/libompi.la 
+inv_DEPENDENCIES = $(inv_LDADD)
 
 invshrink_SOURCES = invshrink.c
 invshrink_LDADD = \
