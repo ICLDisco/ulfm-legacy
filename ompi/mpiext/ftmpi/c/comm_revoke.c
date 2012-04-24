@@ -15,7 +15,7 @@
 #include "ompi/proc/proc.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak OMPI_Comm_invalidate = POMPI_Comm_invalidate
+#pragma weak OMPI_Comm_revoke = POMPI_Comm_revoke
 #endif
 
 #if OMPI_PROFILING_DEFINES
@@ -24,10 +24,10 @@
 
 #include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
-static const char FUNC_NAME[] = "OMPI_Comm_invalidate";
+static const char FUNC_NAME[] = "OMPI_Comm_revoke";
 
 
-int OMPI_Comm_invalidate(MPI_Comm comm)
+int OMPI_Comm_revoke(MPI_Comm comm)
 {
     int rc = MPI_SUCCESS;
 

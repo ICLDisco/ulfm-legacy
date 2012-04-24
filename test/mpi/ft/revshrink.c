@@ -19,21 +19,32 @@ int main(int argc, char *argv[]) {
     
     /* Have rank 0 cause some trouble for later */
     if (0 == rank) {
-        rc = OMPI_Comm_invalidate(world);
+        OMPI_Comm_revoke(world);
+        OMPI_Comm_shrink(world, &tmp);
+        MPI_Comm_free(&world);
+        world = tmp;
     } else {
         rc = MPI_Barrier(world);
         
-        /* If world was invalidated, shrink world and try again */
-        if (MPI_ERR_INVALIDATED == rc) {
-            printf("Rank %d - Barrier INVALIDATED\n", rank);
+        /* If world was revoked, shrink world and try again */
+        if (MPI_ERR_REVOKED == rc) {
+            printf("Rank %d - Barrier REVOKED\n", rank);
+            OMPI_Comm_shrink(world, &tmp);
+            MPI_Comm_free(&world);
+            world = tmp;
         } 
         /* Otherwise check for a new process failure and recover
          * if necessary */
         else if (MPI_ERR_PROC_FAILED == rc) {
             printf("Rank %d - Barrier FAILED\n", rank);
-            OMPI_Comm_invalidate(world);
+            OMPI_Comm_revoke(world);
+            OMPI_Comm_shrink(world, &tmp);
+            MPI_Comm_free(&world);
+            world = tmp;
         }
     }
+
+    rc = MPI_Barrier(world);
     
     printf("Rank %d - RC = %d\n", rank, rc);
 

@@ -94,7 +94,7 @@ ompi_mpi_errcode_t ompi_err_unsupported_operation;
 ompi_mpi_errcode_t ompi_err_win;
 #if OPAL_ENABLE_FT_MPI
 ompi_mpi_errcode_t ompi_err_proc_fail_stop;
-ompi_mpi_errcode_t ompi_err_invalidated;
+ompi_mpi_errcode_t ompi_err_revoked;
 #endif
 
 static void ompi_mpi_errcode_construct(ompi_mpi_errcode_t* errcode);
@@ -179,12 +179,12 @@ int ompi_mpi_errcode_init (void)
     CONSTRUCT_ERRCODE( ompi_err_win, MPI_ERR_WIN, "MPI_ERR_WIN: invalid window" );
 #if OPAL_ENABLE_FT_MPI
     CONSTRUCT_ERRCODE( ompi_err_proc_fail_stop,  MPI_ERR_PROC_FAILED,  "MPI_ERR_PROC_FAILED: Process Failure" );
-    CONSTRUCT_ERRCODE( ompi_err_invalidated,  MPI_ERR_INVALIDATED,  "MPI_ERR_INVALIDATED: Communication Object Invalidated" );
+    CONSTRUCT_ERRCODE( ompi_err_revoked,  MPI_ERR_REVOKED,  "MPI_ERR_REVOKED: Communication Object Revoked" );
 #endif
 
 #if OPAL_ENABLE_FT_MPI
-    ompi_mpi_errcode_lastused = MPI_ERR_INVALIDATED;
-    ompi_mpi_errcode_lastpredefined = MPI_ERR_INVALIDATED;
+    ompi_mpi_errcode_lastused = MPI_ERR_REVOKED;
+    ompi_mpi_errcode_lastpredefined = MPI_ERR_REVOKED;
 #else
     ompi_mpi_errcode_lastused = MPI_ERR_WIN;
     ompi_mpi_errcode_lastpredefined = MPI_ERR_WIN;
@@ -263,7 +263,7 @@ int ompi_mpi_errcode_finalize(void)
     OBJ_DESTRUCT(&ompi_err_win);
 #if OPAL_ENABLE_FT_MPI
     OBJ_DESTRUCT(&ompi_err_proc_fail_stop);
-    OBJ_DESTRUCT(&ompi_err_invalidated);
+    OBJ_DESTRUCT(&ompi_err_revoked);
 #endif
 
     OBJ_DESTRUCT(&ompi_mpi_errcodes);

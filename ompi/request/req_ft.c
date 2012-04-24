@@ -75,7 +75,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
     if( ompi_comm_is_revoked(req->req_mpi_object.comm) &&
         (req->req_tag >= MPI_ANY_TAG || REQUEST_IS_COLLECTIVE(req) ) ) {
         /* Do not set req->req_status.MPI_SOURCE */
-        req->req_status.MPI_ERROR  = MPI_ERR_INVALIDATED;
+        req->req_status.MPI_ERROR  = MPI_ERR_REVOKED;
         if( !req->req_complete ) {
             ompi_request_cancel(req);
             ompi_request_complete(req, false);

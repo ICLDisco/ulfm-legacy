@@ -14,12 +14,12 @@
 !
 ! Communicators
 !
-interface OMPI_Comm_invalidate
-    subroutine ompi_comm_invalidate(comm, ierr)
+interface OMPI_Comm_revoke
+    subroutine ompi_comm_revoke(comm, ierr)
       integer, intent(IN) :: comm
       integer, intent(OUT) :: ierr
-    end subroutine ompi_comm_invalidate
-end interface OMPI_Comm_invalidate
+    end subroutine ompi_comm_revoke
+end interface OMPI_Comm_revoke
 
 interface OMPI_Comm_shrink
     subroutine ompi_comm_shrink(comm, newcomm, ierr)
@@ -42,19 +42,19 @@ interface OMPI_Comm_failure_get_acked
     end subroutine ompi_comm_failure_get_acked
 end interface OMPI_Comm_failure_get_acked
 
-interface OMPI_Comm_agreement
-    subroutine ompi_comm_agreement(comm, ierr)
+interface OMPI_Comm_agree
+    subroutine ompi_comm_agree(comm, ierr)
       integer, intent(IN) :: comm
       integer, intent(OUT) :: ierr
-    end subroutine ompi_comm_agreement
-end interface OMPI_Comm_agreement
+    end subroutine ompi_comm_agree
+end interface OMPI_Comm_agree
 
-interface OMPI_Comm_iagreement
-    subroutine ompi_comm_iagreement(comm, request, ierr)
+interface OMPI_Comm_iagree
+    subroutine ompi_comm_iagree(comm, request, ierr)
       integer, intent(IN) :: comm
       integer, intent(OUT) :: request, ierr
-    end subroutine ompi_comm_iagreement
-end interface OMPI_Comm_iagreement
+    end subroutine ompi_comm_iagree
+end interface OMPI_Comm_iagree
 
 !
 ! Validation: Windows

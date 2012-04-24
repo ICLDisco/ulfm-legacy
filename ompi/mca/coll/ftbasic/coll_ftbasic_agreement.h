@@ -31,7 +31,6 @@ BEGIN_C_DECLS
     extern int mca_coll_ftbasic_agreement_num_active_nonblocking;
     extern int mca_coll_ftbasic_agreement_help_num_asking;
     extern int mca_coll_ftbasic_agreement_help_wait_cycles;
-#define FTBASIC_AGREEMENT_INC_WAIT_CYCLES 10
 
     int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module);
     int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module);

@@ -447,7 +447,7 @@ OMPI_DECLSPEC int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_
 static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int peer_id, int *err)
 {
     if( ompi_comm_is_revoked(comm) ) {
-        *err = MPI_ERR_INVALIDATED;
+        *err = MPI_ERR_REVOKED;
         return false;
     }
     else if( !ompi_comm_is_proc_active(comm, peer_id, OMPI_COMM_IS_INTRA(comm)) ) {
@@ -460,7 +460,7 @@ static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int
 static inline bool ompi_comm_iface_coll_check(ompi_communicator_t *comm, int *err)
 {
     if( ompi_comm_is_revoked(comm) ) {
-        *err = MPI_ERR_INVALIDATED;
+        *err = MPI_ERR_REVOKED;
         return false;
     }
     else if( ompi_comm_force_error_on_collectives(comm) ) {

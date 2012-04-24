@@ -9,7 +9,7 @@
 #define FAIL_WINDOW 1000000
 
 int main(int argc, char *argv[]) {
-    int rank, size, rc, rnum, successes = 0, invalidates = 0, fails = 0;
+    int rank, size, rc, rnum, successes = 0, revokes = 0, fails = 0;
     MPI_Comm world, tmp;
     pid_t pid;
 
@@ -34,16 +34,16 @@ int main(int argc, char *argv[]) {
             /* If you're within the window, kill yourself */
             if ((RAND_MAX / 2) + FAIL_WINDOW > rnum 
                     && (RAND_MAX / 2) - FAIL_WINDOW < rnum ) {
-                printf("%d - Killing Self (%d successful barriers, %d invalidates, %d fails, %d communicator size)\n", rank, successes, invalidates, fails, size);
+                printf("%d - Killing Self (%d successful barriers, %d revokes, %d fails, %d communicator size)\n", rank, successes, revokes, fails, size);
                 kill(pid, 9);
             }
         }
         
         rc = MPI_Barrier(world);
         
-        /* If comm was invalidated, shrink world and try again */
-        if (MPI_ERR_INVALIDATED == rc) {
-            invalidates++;
+        /* If comm was revoked, shrink world and try again */
+        if (MPI_ERR_REVOKED == rc) {
+            revokes++;
             OMPI_Comm_shrink(world, &tmp);
             world = tmp;
         } 
@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
          * if necessary */
         else if (MPI_ERR_PROC_FAILED == rc) {
             fails++;
-            OMPI_Comm_invalidate(world);
+            OMPI_Comm_revoke(world);
             OMPI_Comm_shrink(world, &tmp);
             world = tmp;
         } else if (MPI_SUCCESS != rc) {
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
         MPI_Comm_size(world, &size);
     }
 
-    printf("%d - Finalizing (%d successful barriers, %d invalidates, %d fails, %d communicator size)\n", rank, successes, invalidates, fails, size);
+    printf("%d - Finalizing (%d successful barriers, %d revokes, %d fails, %d communicator size)\n", rank, successes, revokes, fails, size);
     
     /* We'll reach here when all but rank 0 die */
     MPI_Finalize();

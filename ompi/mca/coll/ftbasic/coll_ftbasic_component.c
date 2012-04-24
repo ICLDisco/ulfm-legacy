@@ -51,6 +51,7 @@ mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_cur_agreement_method = COLL
 bool mca_coll_ftbasic_use_agreement_timer = false;
 bool mca_coll_ftbasic_agreement_use_progress = true;
 int mca_coll_ftbasic_agreement_log_max_len = 2;
+int mca_coll_ftbasic_agreement_help_wait_cycles_inc = 10;
 
 /*
  * Local function
@@ -160,6 +161,15 @@ ftbasic_register(void)
                            (int)mca_coll_ftbasic_agreement_use_progress, 
                            &value);
     mca_coll_ftbasic_agreement_use_progress = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
+                           "progress_wait_inc",
+                           "(DEBUGGING ONLY) Length of time to wait between progress checks",
+                           false, false, mca_coll_ftbasic_agreement_help_wait_cycles_inc,
+                           &mca_coll_ftbasic_agreement_help_wait_cycles_inc);
+    if( mca_coll_ftbasic_agreement_help_wait_cycles_inc <= 0 ) {
+        mca_coll_ftbasic_agreement_help_wait_cycles_inc = 1;
+    }
 
     mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
                            "max_log_length",
