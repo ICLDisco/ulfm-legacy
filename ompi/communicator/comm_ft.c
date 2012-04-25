@@ -290,8 +290,8 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
         if(OPAL_UNLIKELY(ret != 1)) {
             mca_bml_base_free(bml_btl, des);
             OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                    "%s ompi: comm_revoke: Send: could not send a fragment to %s to revoke %3d",
-                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), comm->c_contextid ));
+                    "%s ompi: comm_revoke: Send: could not send a fragment to %s to revoke %3d (code %d)",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), comm->c_contextid, ret ));
             exit_status = ret;
         }
     }
