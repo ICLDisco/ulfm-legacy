@@ -214,7 +214,6 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
 {
     int ret, i, exit_status = OMPI_SUCCESS;
     ompi_group_t* grp;
-    opal_buffer_t buffer;
 
     /* if the communicator is already revoked, nothing to be done */
     if(comm->comm_revoked) 
@@ -239,23 +238,6 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
     /*
      * Broadcast the 'revoke' signal to all other processes.
      */
-#if 0
- KEEP THIS FOR LATER
-    OBJ_CONSTRUCT(&buffer, opal_buffer_t);
-
-    if (OMPI_SUCCESS != (ret = opal_dss.pack(&buffer, ORTE_PROC_MY_NAME, 1, ORTE_NAME))) {
-        ORTE_ERROR_LOG(ret);
-        exit_status = ret;
-        goto cleanup;
-    }
-
-    if (OMPI_SUCCESS != (ret = opal_dss.pack(&buffer, &(comm->c_contextid), 1, OPAL_INT))) {
-        ORTE_ERROR_LOG(ret);
-        exit_status = ret;
-        goto cleanup;
-    }
-#endif
-
     if(OMPI_COMM_IS_INTER(comm)) {
         ompi_group_union(comm->c_local_group, comm->c_remote_group, &grp);
     }
@@ -287,7 +269,14 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
         msg = des->des_src->seg_addr.pval;
         msg->cid = comm->c_contextid;
         ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
-        if(OPAL_UNLIKELY(ret != 1)) {
+        if(OPAL_LIKELY(ret >= 0)) {
+            if(OPAL_UNLIKELY(1 == ret)) {
+                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                        "%s ompi: comm_revoke: Send: fragment to %s to revoke %3d is gone",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), comm->c_contextid ));
+            }
+        }
+        else {
             mca_bml_base_free(bml_btl, des);
             OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                     "%s ompi: comm_revoke: Send: could not send a fragment to %s to revoke %3d (code %d)",
@@ -296,11 +285,7 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
         }
     }
     OBJ_RELEASE(grp);
-
-#if 0
- cleanup:
-    OBJ_DESTRUCT(&buffer);
-#endif
+    
     return exit_status;
 }
 
