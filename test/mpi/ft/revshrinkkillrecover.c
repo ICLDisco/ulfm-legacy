@@ -5,14 +5,14 @@
 #include <time.h>
 #include <signal.h>
 #include <unistd.h>
+#include <string.h>
 
-#define FAIL_WINDOW 10000
+#define FAIL_WINDOW 100000
 
-void recover(MPI_Comm **comm) {
-    int nprocs, *errcodes, rc;
-    char command[] = "/home/wbland/test/invshrinkkillrecover";
+void recover(MPI_Comm **comm, int rank) {
+    int nprocs, *errcodes, rc, old_size, new_size;
+    char command[] = "/home/wbland/test/revshrinkkillrecover";
     MPI_Comm intercomm, tmp_comm, *new_intra;
-    MPI_Group tmp_group;
     
     new_intra = (MPI_Comm *) malloc(sizeof(MPI_Comm));
     
@@ -21,33 +21,43 @@ void recover(MPI_Comm **comm) {
     *comm = new_intra;
     return;
 #else
-    /* Figure out how many procs failed */
-    OMPI_Comm_failure_ack(**comm);
-    OMPI_Comm_failure_get_acked(**comm, &tmp_group);
-    MPI_Group_size(tmp_group, &nprocs);
-    MPI_Group_free(&tmp_group);
-    
-    errcodes = (int *) malloc(sizeof(int) * nprocs);
+    printf("%d - Shrinking communicator\n", rank);
 
     /* Shrink the old communicator */
     OMPI_Comm_shrink(**comm, &tmp_comm);
 
+    /* Figure out how many procs failed */
+    MPI_Comm_size(**comm, &old_size);
+    MPI_Comm_size(tmp_comm, &new_size);
+
+    nprocs = old_size - new_size;
+
+    errcodes = (int *) malloc(sizeof(int) * nprocs);
+
+    if (0 == rank) {
+        printf("%d - Spawning %d processes\n", rank, nprocs);
+    }
+
+    //printf("%d : %d - %d\n", rank, old_size, new_size);
+    
     /* Spawn the new processes */
     rc = MPI_Comm_spawn(command, MPI_ARGV_NULL, nprocs, MPI_INFO_NULL, 0, tmp_comm, &intercomm, errcodes);
 
     free(errcodes);
 
-    //printf("RC: %d\n", rc);
+    if (0 == rank) {
+        printf("%d - Finished Spawn (rc = %d)\n", rank, rc);
+    }
 
     MPI_Intercomm_merge(intercomm, 0, new_intra);
     *comm = new_intra;
     return;
-    //return new_intra;
 #endif
 }
 
 int main(int argc, char *argv[]) {
-    int rank, size, rc, rnum, print = 0;
+    int rank, size, rc, rnum, print = 0, i;
+    int successes = 0, revokes = 0, fails = 0;
     MPI_Comm *world, parentcomm;
     pid_t pid;
     char *spawned;
@@ -76,7 +86,6 @@ int main(int argc, char *argv[]) {
     } else {
         /* Dup MPI_COMM_WORLD so we can continue to use the 
          * world handle if there is a failure */
-        printf("Original\n");
         MPI_Comm_dup(MPI_COMM_WORLD, world);
         spawned = strdup("original");
     }
@@ -92,38 +101,57 @@ int main(int argc, char *argv[]) {
             /* If you're within the window, just kill yourself */
             if ((RAND_MAX / 2) + FAIL_WINDOW > rnum 
                     && (RAND_MAX / 2) - FAIL_WINDOW < rnum ) {
-                printf("%d - Killing Self (%d in %d)\n", rank, rnum, (RAND_MAX / 2));
+                printf("%d - Killing Self (%d successful barriers, %d revokes, %d fails, %d communicator size)\n", 
+                                                rank, successes, revokes, fails, size);
                 fflush(stdout);
                 kill(pid, 9);
             }
         }
 
+#if 0
         if (print) {
             printf("%d - Entering Barrier (%s)\n", rank, spawned);
+
+            if (rank == 0) {
+                for (i = 0; i < size; i++) {
+                    MPI_Send(NULL, 0, MPI_INT, i, 31338, *world);
+                    printf("%d - Sent to %d\n", rank, i);
+                }
+            } else {
+                MPI_Recv(NULL, 0, MPI_INT, 0, 31338, *world, MPI_STATUS_IGNORE);
+                printf("%d - Received from 0\n", rank);
+            }
         }
+#endif
 
         rc = MPI_Barrier(*world);
 
         /* If comm was revoked, shrink world and try again */
         if (MPI_ERR_REVOKED == rc) {
             printf("%d - REVOKED\n", rank);
-            recover(&world);
+            revokes++;
+            recover(&world, rank);
             print = 1;
         } 
         /* Otherwise check for a new process failure and recover
          * if necessary */
         else if (MPI_ERR_PROC_FAILED == rc) {
             printf("%d - FAILED\n", rank);
+            fails++;
             OMPI_Comm_revoke(*world);
-            recover(&world);
+            recover(&world, rank);
             print = 1;
         } else if (MPI_SUCCESS == rc) {
+            successes++;
             print = 0;
         }
 
         //MPI_Comm_size(world, &size);
         MPI_Comm_rank(*world, &rank);
     }
+
+    printf("%d - Finalizing (%d successful barriers, %d revokes, %d fails, %d communicator size)\n", 
+                        rank, successes, revokes, fails, size);
 
     /* We'll reach here when only 0 is left */
     MPI_Finalize();
