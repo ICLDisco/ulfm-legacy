@@ -34,7 +34,8 @@ int main(int argc, char *argv[]) {
             /* If you're within the window, kill yourself */
             if ((RAND_MAX / 2) + FAIL_WINDOW > rnum 
                     && (RAND_MAX / 2) - FAIL_WINDOW < rnum ) {
-                printf("%d - Killing Self (%d successful barriers, %d revokes, %d fails, %d communicator size)\n", rank, successes, revokes, fails, size);
+                printf("%d - Killing Self (%d successful barriers, %d revokes, %d fails, %d communicator size)\n", 
+                        rank, successes, revokes, fails, size);
                 kill(pid, 9);
             }
         }
@@ -63,7 +64,8 @@ int main(int argc, char *argv[]) {
         MPI_Comm_size(world, &size);
     }
 
-    printf("%d - Finalizing (%d successful barriers, %d revokes, %d fails, %d communicator size)\n", rank, successes, revokes, fails, size);
+    printf("%d - Finalizing (%d successful barriers, %d revokes, %d fails, %d communicator size)\n", 
+            rank, successes, revokes, fails, size);
     
     /* We'll reach here when all but rank 0 die */
     MPI_Finalize();
