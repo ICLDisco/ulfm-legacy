@@ -21,22 +21,28 @@ EXTRA_DIST = CMakeLists.txt
 
 AM_LDFLAGS = -lpthread
 
-noinst_PROGRAMS = invshrink invshrinkkill invshrinkkillrecover
+noinst_PROGRAMS = revoke revokeshrink revokeshrinkkill revokeshrinkkillrecover
 
-invshrink_SOURCES = invshrink.c
-invshrink_LDADD = \
+revoke_SOURCES = revoke.c
+revoke_LDADD = \
 	$(top_builddir)/src/libmpi.la \
 	$(top_builddir)/src/libompi.la 
-invshrink_DEPENDENCIES = $(invshrink_LDADD)
+revoke_DEPENDENCIES = $(revoke_LDADD)
 
-invshrinkkill_SOURCES = invshrinkkill.c
-invshrinkkill_LDADD = \
+revokeshrink_SOURCES = revokeshrink.c
+revokeshrink_LDADD = \
 	$(top_builddir)/src/libmpi.la \
 	$(top_builddir)/src/libompi.la 
-invshrinkkill_DEPENDENCIES = $(invshrinkkill_LDADD)
+revokeshrink_DEPENDENCIES = $(revokeshrink_LDADD)
 
-invshrinkkillrecover_SOURCES = invshrinkkillrecover.c
-invshrinkkillrecover_LDADD = \
+revokeshrinkkill_SOURCES = revokeshrinkkill.c
+revokeshrinkkill_LDADD = \
 	$(top_builddir)/src/libmpi.la \
 	$(top_builddir)/src/libompi.la 
-invshrinkkillrecover_DEPENDENCIES = $(invshrinkkillrecover_LDADD)
+revokeshrinkkill_DEPENDENCIES = $(revokeshrinkkill_LDADD)
+
+revokeshrinkkillrecover_SOURCES = revokeshrinkkillrecover.c
+revokeshrinkkillrecover_LDADD = \
+	$(top_builddir)/src/libmpi.la \
+	$(top_builddir)/src/libompi.la 
+revokeshrinkkillrecover_DEPENDENCIES = $(revokeshrinkkillrecover_LDADD)
