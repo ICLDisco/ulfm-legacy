@@ -230,7 +230,7 @@ static int update_state(orte_jobid_t job,
     orte_proc_t *pptr = NULL;
     orte_exit_code_t sts;
 
-    OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+    OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                          "%s errmgr:rts_hnp: job %s reported state %s"
                          " for proc %s state %s pid %d exit_code %d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -288,7 +288,7 @@ static int update_state(orte_jobid_t job,
         /* update the state */
         jdata->state = jobstate;
 
-        OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((1, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:rts_hnp: job %s reported state %s",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_JOBID_PRINT(jdata->jobid),
@@ -533,14 +533,14 @@ static int update_state(orte_jobid_t job,
         }
         /* if this is my own connection, ignore it */
         if (ORTE_PROC_MY_NAME->vpid == proc->vpid) {
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s My own connection - ignoring it",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
             break;
         }
         /* if we have ordered orteds to terminate, record it */
         if (orte_orteds_term_ordered) {
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s Daemons terminating - recording daemon %s as gone",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(proc)));
             /* remove from dependent routes, if it is one */
@@ -560,7 +560,7 @@ static int update_state(orte_jobid_t job,
          * us it had terminated
          */
         if (orte_abnormal_term_ordered) {
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s Abort in progress - recording daemon %s as gone",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(proc)));
             /* remove from dependent routes, if it is one */
@@ -656,14 +656,14 @@ static void rts_hnp_abort(orte_jobid_t job, orte_exit_code_t exit_code)
 
     /* if we are already in progress, then ignore this call */
     if (opal_atomic_trylock(&orte_abort_inprogress_lock)) { /* returns 1 if already locked */
-        OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((1, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:rts_hnp: abort in progress, ignoring abort on job %s with status %d",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_JOBID_PRINT(job), exit_code));
         return;
     }
 
-    OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+    OPAL_OUTPUT_VERBOSE((1, mca_errmgr_rts_hnp_component.output_handle,
                          "%s errmgr:rts_hnp: abort called on job %s with status %d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_JOBID_PRINT(job), exit_code));
@@ -739,7 +739,7 @@ static void failed_start(orte_job_t *jdata)
     opal_condition_signal(&orte_odls_globals.cond);
     OPAL_THREAD_UNLOCK(&orte_odls_globals.mutex);
 
-    OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+    OPAL_OUTPUT_VERBOSE((1, mca_errmgr_rts_hnp_component.output_handle,
                          "%s errmgr:rts_hnp: job %s reported incomplete start",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_JOBID_PRINT(jdata->jobid)));
@@ -948,7 +948,7 @@ static void check_job_complete(orte_job_t *jdata)
 
     if (NULL == jdata) {
         /* just check to see if the daemons are complete */
-        OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:rts_hnp:check_job_complete - received NULL job, checking daemons",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         goto CHECK_DAEMONS;
@@ -971,7 +971,7 @@ static void check_job_complete(orte_job_t *jdata)
 
         switch (proc->state) {
         case ORTE_PROC_STATE_KILLED_BY_CMD:
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s errmgr:rts_hnp:check_job_completed proc %s killed by cmd",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_NAME_PRINT(&proc->name)));
@@ -990,7 +990,7 @@ static void check_job_complete(orte_job_t *jdata)
             goto CHECK_ALIVE;
             break;
         case ORTE_PROC_STATE_ABORTED:
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s errmgr:rts_hnp:check_job_completed proc %s aborted",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_NAME_PRINT(&proc->name)));
@@ -1005,7 +1005,7 @@ static void check_job_complete(orte_job_t *jdata)
             }
             break;
         case ORTE_PROC_STATE_FAILED_TO_START:
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s errmgr_rts_hnp:check_job_completed proc %s failed to start",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_NAME_PRINT(&proc->name)));
@@ -1020,7 +1020,7 @@ static void check_job_complete(orte_job_t *jdata)
             }
             break;
         case ORTE_PROC_STATE_ABORTED_BY_SIG:
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s errmgr:rts_hnp:check_job_completed proc %s aborted by signal",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_NAME_PRINT(&proc->name)));
@@ -1035,7 +1035,7 @@ static void check_job_complete(orte_job_t *jdata)
             }
             break;
         case ORTE_PROC_STATE_TERM_WO_SYNC:
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s errmgr:rts_hnp:check_job_completed proc %s terminated without sync",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_NAME_PRINT(&proc->name)));
@@ -1116,7 +1116,7 @@ static void check_job_complete(orte_job_t *jdata)
         default:
             if (ORTE_PROC_STATE_UNTERMINATED < proc->state &&
                 jdata->controls & ORTE_JOB_CONTROL_CONTINUOUS_OP) {
-                OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+                OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                      "%s errmgr:rts_hnp:check_job_completed proc %s terminated and continuous",
                                      ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                      ORTE_NAME_PRINT(&proc->name)));
@@ -1164,7 +1164,7 @@ static void check_job_complete(orte_job_t *jdata)
                         ORTE_VPID_PRINT(non_zero),
                         (1 == non_zero) ? "process returned\na non-zero exit code." : "processes returned\nnon-zero exit codes.");
         }
-        OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:rts_hnp:check_job_completed declared job %s normally terminated - checking all jobs",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_JOBID_PRINT(jdata->jobid)));
@@ -1193,7 +1193,7 @@ CHECK_DAEMONS:
     if (jdata == NULL || jdata->jobid == ORTE_PROC_MY_NAME->jobid) {
         if (0 == orte_routed.num_routes()) {
             /* orteds are done! */
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s orteds complete - exiting",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
             if (NULL == jdata) {
@@ -1220,7 +1220,7 @@ CHECK_DAEMONS:
             if (NULL == (node = (orte_node_t*)opal_pointer_array_get_item(map->nodes, index))) {
                 continue;
             }
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s releasing procs from node %s",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  node->name));
@@ -1234,7 +1234,7 @@ CHECK_DAEMONS:
                 }
                 node->slots_inuse--;
                 node->num_procs--;
-                OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+                OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                      "%s releasing proc %s from node %s",
                                      ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                      ORTE_NAME_PRINT(&proc->name), node->name));
@@ -1294,7 +1294,7 @@ CHECK_ALIVE:
              * just return, though, as we need to ensure we cleanout the
              * job data for the job that just completed
              */
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s errmgr:rts_hnp:check_job_completed job %s is not terminated (%d:%d)",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_JOBID_PRINT(job->jobid),
@@ -1302,7 +1302,7 @@ CHECK_ALIVE:
             one_still_alive = true;
         }
         else {
-            OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s errmgr:rts_hnp:check_job_completed job %s is terminated (%d vs %d [%s])",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                                  ORTE_JOBID_PRINT(job->jobid),
@@ -1312,13 +1312,13 @@ CHECK_ALIVE:
     }
     /* if a job is still alive, we just return */
     if (one_still_alive) {
-        OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:rts_hnp:check_job_completed at least one job is not terminated",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         return;
     }
     /* if we get here, then all jobs are done, so terminate */
-    OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+    OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                          "%s errmgr:rts_hnp:check_job_completed all jobs terminated",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
     /* set the exit status to 0 - this will only happen if it
@@ -1347,7 +1347,7 @@ CHECK_ALIVE:
     orte_jobs_complete();
     /* if I am the only daemon alive, then I can exit now */
     if (0 == orte_routed.num_routes()) {
-        OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                              "%s orteds complete - exiting",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         orte_quit();
@@ -1495,7 +1495,7 @@ static int rts_hnp_stable_global_update_state(orte_jobid_t job,
      */
     if( NULL != proc_name &&
         OPAL_EQUAL == orte_util_compare_name_fields(ORTE_NS_CMP_ALL, ORTE_PROC_MY_NAME, proc_name) ) {
-        OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:hnp(stable): Update reported on self (%s), state %s. Skip...",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_NAME_PRINT(proc_name),
@@ -1512,7 +1512,7 @@ static int rts_hnp_stable_global_update_state(orte_jobid_t job,
         jdata = orte_get_job_data_object(job);
     }
     if( NULL == jdata ) {
-        OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((1, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:hnp(stable): Error: Cannot find job %s for Process %s",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_JOBID_PRINT(job),
@@ -1527,7 +1527,7 @@ static int rts_hnp_stable_global_update_state(orte_jobid_t job,
      */
     if( jdata->num_apps == 0 &&
         OPAL_EQUAL != orte_util_compare_name_fields(ORTE_NS_CMP_JOBID, ORTE_PROC_MY_NAME, proc_name) ) {
-        OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((1, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:hnp(stable): An external tool disconnected. Ignore...",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         return ORTE_SUCCESS;
@@ -1538,7 +1538,7 @@ static int rts_hnp_stable_global_update_state(orte_jobid_t job,
      */
     if( ORTE_PROC_STATE_DEREGISTERED == state ) {
         ++num_deregistered;
-        OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((1, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:rts_hnp: %3d procs have deregistered - proc %s (%s)",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              num_deregistered,
@@ -1549,7 +1549,7 @@ static int rts_hnp_stable_global_update_state(orte_jobid_t job,
         return ORTE_SUCCESS;
     }
 
-    OPAL_OUTPUT_VERBOSE((1, orte_errmgr_base.output,
+    OPAL_OUTPUT_VERBOSE((5, mca_errmgr_rts_hnp_component.output_handle,
                          "%s errmgr:rts_hnp: Check Stable for job %s (%s), proc %s (%s) exit_code %d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_JOBID_PRINT(job),
@@ -1610,23 +1610,24 @@ static int rts_hnp_stable_process_fault_app(orte_job_t *jdata,
     int exit_status = ORTE_SUCCESS;
     orte_proc_t *xcast_proc = NULL;
     struct timeval soon;
+    bool rts_hnp_check_job = false;
 
-    OPAL_OUTPUT_VERBOSE((10, mca_errmgr_rts_hnp_component.output_handle,
+    OPAL_OUTPUT_VERBOSE((3, mca_errmgr_rts_hnp_component.output_handle,
                          "errmgr:hnp(stable):process_fault_app() "
-                         "------- Application fault reported! proc %s (0x%x) ",
+                         "------- Application fault reported! proc %s (0x%x - %s) ",
                          ORTE_NAME_PRINT(proc),
-                         state));
+                         state,
+                         orte_proc_state_to_str(state) ));
 
     rts_hnp_ignore_current_update = true;
 
     /*
-     * If that was the last process in the job, then terminate the job since
-     * it is now complete, and there is no process left to initiate recovery.
+     * If that was the last process in the job, then we need to check for job
+     * termination after processing the failure. This will also force us to
+     * check if all jobs have completed.
      */
     if( jdata->num_launched <= jdata->num_terminated ) {
-        jdata->controls ^= ORTE_JOB_CONTROL_RECOVERABLE;
-
-        OPAL_OUTPUT_VERBOSE((10, mca_errmgr_rts_hnp_component.output_handle,
+        OPAL_OUTPUT_VERBOSE((3, mca_errmgr_rts_hnp_component.output_handle,
                              "errmgr:hnp(stable):process_fault_app() "
                              "------- Terminate Job, No processes left [L %2d, R %2d, T %2d, D %2d] (0x%x)",
                              jdata->num_launched,
@@ -1634,13 +1635,10 @@ static int rts_hnp_stable_process_fault_app(orte_job_t *jdata,
                              jdata->num_terminated,
                              jdata->num_daemons_reported,
                              jdata->state));
-        /* This will trigger the HNPs default check_job() which will determine
-         * the job as finished, and cleanup the daemons.
+        /* This will trigger a check_job() at the end of this function.
+         * So as to determine if all of the jobs are finished.
          */
-        rts_hnp_ignore_current_update = false;
-
-        exit_status = ORTE_SUCCESS;
-        goto cleanup;
+        rts_hnp_check_job = true;
     }
 
     /*
@@ -1652,7 +1650,7 @@ static int rts_hnp_stable_process_fault_app(orte_job_t *jdata,
      *      with the first successful xcast.
      */
     if( 0 >= jdata->num_reported ) {
-        OPAL_OUTPUT_VERBOSE((10, mca_errmgr_rts_hnp_component.output_handle,
+        OPAL_OUTPUT_VERBOSE((3, mca_errmgr_rts_hnp_component.output_handle,
                              "errmgr:hnp(stable):process_fault_app() "
                              "------- Skip xcast, no processes reported in. (L %2d, R %2d, T %2d, D %2d] (0x%x)",
                              jdata->num_launched,
@@ -1682,6 +1680,10 @@ static int rts_hnp_stable_process_fault_app(orte_job_t *jdata,
     }
 
  cleanup:
+    if( rts_hnp_check_job ) {
+        check_job_complete(jdata);
+    }
+
     return exit_status;
 }
 
@@ -1690,11 +1692,12 @@ static void rts_hnp_stable_xcast_fn(int fd, short event, void *cbdata)
     int ret, exit_status = ORTE_SUCCESS;
     opal_pointer_array_t *swap = NULL;
     orte_proc_t *xcast_proc = NULL;
-    orte_jobid_t jobid = 0;
     opal_buffer_t buffer;
     orte_std_cntr_t i;
     void *item = NULL;
     int num_procs;
+    orte_job_t *jdata;
+    int n;
 
     /*
      * Swap the xcast list pointers
@@ -1718,9 +1721,6 @@ static void rts_hnp_stable_xcast_fn(int fd, short event, void *cbdata)
             continue;
         }
         ++num_procs;
-        if( 0 == jobid ) {
-            jobid = xcast_proc->name.jobid;
-        }
     }
 
     if (ORTE_SUCCESS != (ret = opal_dss.pack(&buffer, &(num_procs), 1, OPAL_INT))) {
@@ -1752,17 +1752,45 @@ static void rts_hnp_stable_xcast_fn(int fd, short event, void *cbdata)
 
     /*
      * xcast them out
-     * JJH: Note that this assumes that all of the procs are in the same job
+     * Need to xcast to all jobids since they may all need to know
+     * For example, in comm_spawn case there are two different jobids
      */
-    OPAL_OUTPUT_VERBOSE((10, mca_errmgr_rts_hnp_component.output_handle,
+    OPAL_OUTPUT_VERBOSE((4, mca_errmgr_rts_hnp_component.output_handle,
                          "errmgr:hnp(stable):rts_hnp_stable_xcast_fn() "
-                         "------- Notifying Job %s that %3d processes have failed",
-                         ORTE_JOBID_PRINT(jobid), num_procs));
+                         "------- Notifying all jobs that %3d processes have failed",
+                         num_procs));
 
-    if( ORTE_SUCCESS != (ret = orte_grpcomm.xcast(jobid, &buffer, ORTE_RML_TAG_ERRMGR)) ) {
-        ORTE_ERROR_LOG(ret);
-        exit_status = ret;
-        goto cleanup;
+    for( n = 0; n < orte_job_data->size; ++n ) {
+        if( NULL == (jdata = (orte_job_t*)opal_pointer_array_get_item(orte_job_data, n)) ) {
+            continue;
+        }
+        /* We can skip the daemons */
+        if( jdata->jobid == ORTE_PROC_MY_NAME->jobid ) {
+            continue;
+        }
+        /* Skip jobs that are empty */
+        if( jdata->num_launched <= jdata->num_terminated ) {
+            OPAL_OUTPUT_VERBOSE((4, mca_errmgr_rts_hnp_component.output_handle,
+                                 "errmgr:hnp(stable):rts_hnp_stable_xcast_fn() "
+                                 "------- Skip   Job %s No procs left.",
+                                 ORTE_JOBID_PRINT(jdata->jobid) ));
+            continue;
+        }
+        OPAL_OUTPUT_VERBOSE((4, mca_errmgr_rts_hnp_component.output_handle,
+                             "errmgr:hnp(stable):rts_hnp_stable_xcast_fn() "
+                             "------- Notify Job %s [L %2d, R %2d, T %2d, D %2d] (procs %2d / %2d)",
+                             ORTE_JOBID_PRINT(jdata->jobid),
+                             jdata->num_launched,
+                             jdata->num_reported,
+                             jdata->num_terminated,
+                             jdata->num_daemons_reported,
+                             jdata->num_procs,
+                             (jdata->num_procs - jdata->num_terminated) ));
+        if( ORTE_SUCCESS != (ret = orte_grpcomm.xcast(jdata->jobid, &buffer, ORTE_RML_TAG_ERRMGR)) ) {
+            ORTE_ERROR_LOG(ret);
+            exit_status = ret;
+            goto cleanup;
+        }
     }
 
  cleanup:
@@ -1816,7 +1844,7 @@ static int rts_hnp_stable_process_fault_daemon(orte_job_t *jdata,
      * make sure to signal that all the children are gone.
      */
     if( loc_proc->node->num_procs > 0 ) {
-        OPAL_OUTPUT_VERBOSE((10, orte_errmgr_base.output,
+        OPAL_OUTPUT_VERBOSE((10, mca_errmgr_rts_hnp_component.output_handle,
                              "%s errmgr:base: stabalize_runtime() "
                              "------- Daemon lost with the following processes",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
@@ -1827,7 +1855,7 @@ static int rts_hnp_stable_process_fault_daemon(orte_job_t *jdata,
                 continue;
             }
 
-            OPAL_OUTPUT_VERBOSE((10, orte_errmgr_base.output,
+            OPAL_OUTPUT_VERBOSE((10, mca_errmgr_rts_hnp_component.output_handle,
                                  "%s errmgr:base: stabalize_runtime() "
                                  "\t %s [0x%x]",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
