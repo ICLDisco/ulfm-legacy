@@ -820,9 +820,10 @@ static void update_proc(orte_job_t *jdata,
 {
     opal_list_item_t *item, *next;
     orte_odls_child_t *child;
-    orte_proc_t *proct;
+    orte_proc_t *proct = NULL, *tmp_proc = NULL;
+    orte_node_t *node = NULL;
     orte_odls_job_t *jobdat, *jdat;
-    int i;
+    int i, j;
 
     jobdat = NULL;
     for (item  = opal_list_get_first(&orte_local_jobdata);
@@ -852,13 +853,15 @@ static void update_proc(orte_job_t *jdata,
                  * If the child has been deregistered/finished then this is not
                  * an error worth reporting. Just do accounting.
                  */
+                proct = (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, child->name->vpid);
+                node = proct->node;
+
                 if( !child->fini_recvd ) {
                     child->state = state;
                     if (0 < pid) {
                         child->pid = pid;
                     }
                     child->exit_code = exit_code;
-                    proct = (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, child->name->vpid);
                     proct->state = state;
                     if (0 < pid) {
                         proct->pid = pid;
@@ -872,6 +875,30 @@ static void update_proc(orte_job_t *jdata,
                         jobdat->num_local_procs--;
                     }
                     jdata->num_terminated++;
+
+                    /*
+                     * Release resources held by this process on the node
+                     */
+                    for (j = 0; j < node->procs->size; j++) {
+                        if (NULL == (tmp_proc = (orte_proc_t*)opal_pointer_array_get_item(node->procs, j))) {
+                            continue;
+                        }
+                        /* Only act on the node with this process */
+                        if( OPAL_EQUAL == orte_util_compare_name_fields(ORTE_NS_CMP_ALL,
+                                                                        &(tmp_proc->name), &(proct->name)) ) {
+                            node->slots_inuse--;
+                            node->num_procs--;
+                            OPAL_OUTPUT_VERBOSE((4, mca_errmgr_rts_hnp_component.output_handle,
+                                                 "%s releasing proc %s from node %s - [%3d / %3d local]",
+                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                                 ORTE_NAME_PRINT(&proct->name), node->name,
+                                                 node->slots_inuse, node->num_procs));
+                            /* set the entry in the node array to NULL */
+                            opal_pointer_array_set_item(node->procs, j, NULL);
+                            /* release the proc once for the map entry */
+                            OBJ_RELEASE(tmp_proc);
+                        }
+                    }
                 } else if (ORTE_PROC_STATE_RUNNING == state) {
                     jdata->num_launched++;
                     if (jdata->num_launched == jdata->num_procs) {
@@ -910,6 +937,34 @@ static void update_proc(orte_job_t *jdata,
             proct->pid = pid;
         }
         proct->exit_code = exit_code;
+        if (ORTE_PROC_STATE_UNTERMINATED < state) {
+            /*
+             * Release resources held by this process on the node
+             */
+            node = proct->node;
+
+            for (j = 0; j < node->procs->size; j++) {
+                if (NULL == (tmp_proc = (orte_proc_t*)opal_pointer_array_get_item(node->procs, j))) {
+                    continue;
+                }
+                /* Only act on the node with this process */
+                if( OPAL_EQUAL == orte_util_compare_name_fields(ORTE_NS_CMP_ALL,
+                                                                &(tmp_proc->name), &(proct->name)) ) {
+                    node->slots_inuse--;
+                    node->num_procs--;
+                    OPAL_OUTPUT_VERBOSE((4, mca_errmgr_rts_hnp_component.output_handle,
+                                         "%s releasing proc %s from node %s - [%3d / %3d remote]",
+                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                         ORTE_NAME_PRINT(&proct->name), node->name,
+                                         node->slots_inuse, node->num_procs));
+                    /* set the entry in the node array to NULL */
+                    opal_pointer_array_set_item(node->procs, j, NULL);
+                    /* release the proc once for the map entry */
+                    OBJ_RELEASE(tmp_proc);
+                    break;
+                }
+            }
+        }
         if (ORTE_PROC_STATE_REGISTERED == state) {
             jdata->num_reported++;
             if (jdata->dyn_spawn_active &&
