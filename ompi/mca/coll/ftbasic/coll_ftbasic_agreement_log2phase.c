@@ -36,6 +36,22 @@
 #include MCA_timer_IMPLEMENTATION_HEADER
 
 /*************************************
+ * Performance Tuning Globals
+ *************************************/
+/* For blocking agreement:
+ *  0 = Nonblocking PML calls
+ *  1 = Blocking PML calls
+ */
+#define FTBASIC_AGREEMENT_PML_BLOCKING 0
+/* For PML sends:
+ * - Synchronous = possibly faster failure response
+ * - Standard    = better performance
+ */
+/* #define FTBASIC_AGREEMENT_PML_SEND_MODE MCA_PML_BASE_SEND_SYNCHRONOUS */
+#define FTBASIC_AGREEMENT_PML_SEND_MODE MCA_PML_BASE_SEND_STANDARD
+
+
+/*************************************
  * Testing Globals
  *************************************/
 #if OPAL_ENABLE_DEBUG
@@ -1666,13 +1682,18 @@ static int log_two_phase_protocol_bcast_to_children(ompi_communicator_t* comm,
     int ret, exit_status = OMPI_SUCCESS;
     int rank = ompi_comm_rank(comm);
     ompi_request_t **reqs = ftbasic_module->mccb_reqs;
-    ompi_status_public_t *statuses = ftbasic_module->mccb_statuses;
     int loc_num_reqs, i, packet_size;
     int loc_num_children = 0, loc_alloc = 0, loc_prev_num_children;
     int *loc_children = NULL;
     bool locally_allocated_array = false;
     mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
     mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
+#if FTBASIC_AGREEMENT_PML_BLOCKING == 0
+    ompi_status_public_t *statuses = ftbasic_module->mccb_statuses;
+#else
+    int num_failed_children = 0, num_failed_alloc = 0;
+    int *loc_failed_children = NULL;
+#endif /* FTBASIC_AGREEMENT_PML_BLOCKING */
 #if DEBUG_WITH_STR == 1
     char *tmp_bitstr = NULL;
 #endif
@@ -1823,8 +1844,9 @@ static int log_two_phase_protocol_bcast_to_children(ompi_communicator_t* comm,
             ret = MCA_PML_CALL(isend( NULL, 0, MPI_BYTE,
                                       loc_children[i],
                                       MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
-                                      MCA_PML_BASE_SEND_SYNCHRONOUS,
+                                      FTBASIC_AGREEMENT_PML_SEND_MODE,
                                       comm, &(reqs[loc_num_reqs]) ));
+            loc_num_reqs++;
         }
         /*
          * Otherwise this is the final list
@@ -1841,20 +1863,80 @@ static int log_two_phase_protocol_bcast_to_children(ompi_communicator_t* comm,
              * needs to post non-blocking receives for both
              */
             packet_size = local_bitmap->array_size;
-            ret = MCA_PML_CALL(isend( (local_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
-                                      loc_children[i],
-                                      MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
-                                      MCA_PML_BASE_SEND_SYNCHRONOUS,
-                                      comm, &(reqs[loc_num_reqs]) ));
+
+            /*
+             * Nonblocking request
+             */
+            if( NULL != num_reqs ) {
+                ret = MCA_PML_CALL(isend( (local_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
+                                          loc_children[i],
+                                          MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
+                                          FTBASIC_AGREEMENT_PML_SEND_MODE,
+                                          comm, &(reqs[loc_num_reqs]) ));
+                loc_num_reqs++;
+            }
+            /*
+             * Blocking request
+             * If child fails, then put on list to check later
+             */
+            else {
+#if FTBASIC_AGREEMENT_PML_BLOCKING == 1
+                ret = MCA_PML_CALL(send( (local_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
+                                         loc_children[i],
+                                         MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
+                                         FTBASIC_AGREEMENT_PML_SEND_MODE,
+                                         comm));
+                if( MPI_SUCCESS != ret ) {
+                    if( NULL != loc_failed_children ) {
+                        loc_failed_children = (int*)malloc(sizeof(int) * 1);
+                        num_failed_children = 0;
+                        num_failed_alloc = 1;
+                    }
+                    append_child_to_array(&loc_failed_children, &num_failed_children, &num_failed_alloc, loc_children[i]);
+                }
+#else
+                ret = MCA_PML_CALL(isend( (local_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
+                                          loc_children[i],
+                                          MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
+                                          FTBASIC_AGREEMENT_PML_SEND_MODE,
+                                          comm, &(reqs[loc_num_reqs]) ));
+                loc_num_reqs++;
+#endif /* FTBASIC_AGREEMENT_PML_BLOCKING */
+            }
         }
-        loc_num_reqs++;
     }
     AGREEMENT_END_TIMER(COLL_FTBASIC_AGREEMENT_TIMER_OTHER);
 
-    /*
-     * If we are not given a 'num_reqs' then just block here
-     */
     if( NULL == num_reqs ) {
+#if FTBASIC_AGREEMENT_PML_BLOCKING == 1
+        /*
+         * All failed children have their children re-broadcasted here
+         */
+        for( i = 0; i < num_failed_children; ++i ) {
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                                 "%s ftbasic: agreement) (log2phase) bcast_to_children: "
+                                 "Proc. %3d Failed! Bcast to Children...",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 loc_failed_children[i]));
+
+            /* Do this operation blocking
+             * JJH TODO:
+             * May want to do this non-blocking for large numbers of
+             * failures since the children may flood us with unexpected
+             * receives while we are waiting on other children.
+             */
+            ret = log_two_phase_protocol_bcast_to_children(comm, ftbasic_module, local_bitmap,
+                                                           NULL, loc_failed_children[i],
+                                                           loc_prev_num_children,
+                                                           log_entry);
+            if( of_rank == rank ) {
+                log_two_phase_remove_child(comm, ftbasic_module, loc_failed_children[i]);
+            }
+        }
+#else
+        /*
+         * If we are not given a 'num_reqs' then just block here
+         */
         ret = ompi_request_wait_all(loc_num_reqs, reqs, statuses);
         if( MPI_SUCCESS != ret ) {
             if( of_rank == rank ) {
@@ -1933,6 +2015,7 @@ static int log_two_phase_protocol_bcast_to_children(ompi_communicator_t* comm,
                 }
             }
         }
+#endif /* FTBASIC_AGREEMENT_PML_BLOCKING */
     }
     /*
      * If a non-blocking request then advance the num_reqs index.
@@ -1957,6 +2040,13 @@ static int log_two_phase_protocol_bcast_to_children(ompi_communicator_t* comm,
         free(loc_children);
         loc_children = NULL;
     }
+
+#if FTBASIC_AGREEMENT_PML_BLOCKING == 1
+    if( NULL != loc_failed_children ) {
+        free(loc_failed_children);
+        loc_failed_children = NULL;
+    }
+#endif
 
     return exit_status;
 }
@@ -2238,7 +2328,7 @@ static int log_two_phase_protocol_send_to_parent(ompi_communicator_t* comm,
     ret = MCA_PML_CALL(isend( (local_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
                               loc_parent,
                               MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
-                              MCA_PML_BASE_SEND_SYNCHRONOUS,
+                              FTBASIC_AGREEMENT_PML_SEND_MODE,
                               comm, &(reqs[loc_num_reqs]) ));
 
     /*
@@ -2317,6 +2407,10 @@ static int log_two_phase_protocol_gather_from_children(ompi_communicator_t* comm
     bool locally_allocated_array = false;
     mca_coll_ftbasic_agreement_logtwophase_t *agreement_info = (mca_coll_ftbasic_agreement_logtwophase_t*)(ftbasic_module->agreement_info);
     mca_coll_ftbasic_agreement_tree_t *agreement_tree = agreement_info->agreement_tree;
+#if FTBASIC_AGREEMENT_PML_BLOCKING == 1
+    int num_failed_children = 0, num_failed_alloc = 0;
+    int *loc_failed_children = NULL;
+#endif
 
     if( IS_INVALID_RANK(of_rank) ) {
         return OMPI_SUCCESS;
@@ -2456,18 +2550,76 @@ static int log_two_phase_protocol_gather_from_children(ompi_communicator_t* comm
         remote_bitmap->rank = loc_children[i];
 
         packet_size = local_bitmap->array_size;
-        ret = MCA_PML_CALL(irecv( (remote_bitmap->bitmap->bitmap),
-                                  packet_size, MPI_UNSIGNED_CHAR,
-                                  loc_children[i],
-                                  MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
-                                  comm, &(reqs[loc_num_reqs]) ));
-        loc_num_reqs++;
+        /*
+         * Nonblocking request
+         */
+        if( NULL != num_reqs ) {
+            ret = MCA_PML_CALL(irecv( (remote_bitmap->bitmap->bitmap),
+                                      packet_size, MPI_UNSIGNED_CHAR,
+                                      loc_children[i],
+                                      MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
+                                      comm, &(reqs[loc_num_reqs]) ));
+            loc_num_reqs++;
+        }
+        /*
+         * Blocking request
+         * If child fails, then put on list to check later
+         */
+        else {
+#if FTBASIC_AGREEMENT_PML_BLOCKING == 1
+            ret = MCA_PML_CALL(recv( (remote_bitmap->bitmap->bitmap),
+                                     packet_size, MPI_UNSIGNED_CHAR,
+                                     loc_children[i],
+                                     MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
+                                     comm, &(statuses[0]) ));
+            if( MPI_SUCCESS != ret ) {
+                if( NULL != loc_failed_children ) {
+                    loc_failed_children = (int*)malloc(sizeof(int) * 1);
+                    num_failed_children = 0;
+                    num_failed_alloc = 1;
+                }
+                append_child_to_array(&loc_failed_children, &num_failed_children, &num_failed_alloc, loc_children[i]);
+            }
+#else
+            ret = MCA_PML_CALL(irecv( (remote_bitmap->bitmap->bitmap),
+                                      packet_size, MPI_UNSIGNED_CHAR,
+                                      loc_children[i],
+                                      MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
+                                      comm, &(reqs[loc_num_reqs]) ));
+            loc_num_reqs++;
+#endif /* FTBASIC_AGREEMENT_PML_BLOCKING */
+        }
     }
 
-    /*
-     * If we are not given a 'num_reqs' then just block here
-     */
     if( NULL == num_reqs ) {
+#if FTBASIC_AGREEMENT_PML_BLOCKING == 1
+        /*
+         * All failed children have their children re-gathered here
+         */
+        for( i = 0; i < num_failed_children; ++i ) {
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                                 "%s ftbasic: agreement) (log2phase) gather_from_children: "
+                                 "Proc. %3d Failed! Gather from Children... [%3d : %3d]",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 loc_failed_children[i], rank, of_rank));
+
+            /* Do this operation blocking
+             * JJH TODO:
+             * May want to do this non-blocking for large numbers of
+             * failures since the children may flood us with unexpected
+             * receives while we are waiting on other children.
+             */
+            ret = log_two_phase_protocol_gather_from_children(comm, ftbasic_module, local_bitmap,
+                                                              NULL, loc_failed_children[i], loc_prev_num_children,
+                                                              log_entry);
+            if( of_rank == rank ) {
+                log_two_phase_remove_child(comm, ftbasic_module, loc_failed_children[i]);
+            }
+        }
+#else
+        /*
+         * If we are not given a 'num_reqs' then just block here
+         */
         ret = ompi_request_wait_all(loc_num_reqs, reqs, statuses);
 
         if( MPI_SUCCESS != ret ) {
@@ -2545,6 +2697,7 @@ static int log_two_phase_protocol_gather_from_children(ompi_communicator_t* comm
                 }
             }
         }
+#endif /* FTBASIC_AGREEMENT_PML_BLOCKING */
     }
     /*
      * If a non-blocking request then advance the num_reqs index.
@@ -2562,6 +2715,12 @@ static int log_two_phase_protocol_gather_from_children(ompi_communicator_t* comm
         free(loc_children);
         loc_children = NULL;
     }
+#if FTBASIC_AGREEMENT_PML_BLOCKING == 1
+    if( NULL != loc_failed_children ) {
+        free(loc_failed_children);
+        loc_failed_children = NULL;
+    }
+#endif
 
     return exit_status;
 }
@@ -3449,7 +3608,7 @@ static int log_two_phase_protocol_query_parent(ompi_communicator_t* comm,
         ret = MCA_PML_CALL(send( (local_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
                                  loc_parent,
                                  MCA_COLL_FTBASIC_TAG_AGREEMENT(ftbasic_module),
-                                 MCA_PML_BASE_SEND_SYNCHRONOUS,
+                                 FTBASIC_AGREEMENT_PML_SEND_MODE,
                                  comm ));
         if( MPI_SUCCESS != ret ) {
             goto error;
@@ -3780,7 +3939,7 @@ static int log_two_phase_query_send_notice(ompi_communicator_t* comm,
     ret = MCA_PML_CALL(send( &(msg_buffer), 3, MPI_INT,
                              peer,
                              MCA_COLL_FTBASIC_TAG_AGREEMENT_CATCH_UP,
-                             MCA_PML_BASE_SEND_SYNCHRONOUS,
+                             FTBASIC_AGREEMENT_PML_SEND_MODE,
                              comm));
     if( OMPI_SUCCESS != ret ) {
         OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -3934,7 +4093,7 @@ static int log_two_phase_query_process_entry(ompi_communicator_t* comm,
             ret = MCA_PML_CALL(send( (log_entry->commit_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
                                      peer,
                                      MCA_COLL_FTBASIC_TAG_AGREEMENT_CATCH_UP,
-                                     MCA_PML_BASE_SEND_SYNCHRONOUS,
+                                     FTBASIC_AGREEMENT_PML_SEND_MODE,
                                      comm));
             if (MPI_SUCCESS != ret) {
                 opal_output_verbose(1, ompi_ftmpi_output_handle,
@@ -3988,7 +4147,7 @@ static int log_two_phase_query_process_entry(ompi_communicator_t* comm,
             ret = MCA_PML_CALL(send( (log_entry->commit_bitmap->bitmap), packet_size, MPI_UNSIGNED_CHAR,
                                      peer,
                                      MCA_COLL_FTBASIC_TAG_AGREEMENT_CATCH_UP,
-                                     MCA_PML_BASE_SEND_SYNCHRONOUS,
+                                     FTBASIC_AGREEMENT_PML_SEND_MODE,
                                      comm));
             if (MPI_SUCCESS != ret) {
                 opal_output_verbose(1, ompi_ftmpi_output_handle,
