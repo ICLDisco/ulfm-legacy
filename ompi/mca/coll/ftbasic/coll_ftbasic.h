@@ -105,6 +105,9 @@ OBJ_CLASS_DECLARATION(mca_coll_ftbasic_agreement_t);
 struct mca_coll_ftbasic_module_t {
     mca_coll_base_module_t super;
 
+    /* Communicator Type */
+    bool is_intercomm;
+
     /* Array of requests */
     ompi_request_t **mccb_reqs;
     int mccb_num_reqs;

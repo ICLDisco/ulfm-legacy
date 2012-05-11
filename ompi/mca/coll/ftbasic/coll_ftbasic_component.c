@@ -192,6 +192,8 @@ ftbasic_register(void)
 static void
 mca_coll_ftbasic_module_construct(mca_coll_ftbasic_module_t *module)
 {
+    module->is_intercomm = false;
+
     module->mccb_reqs = NULL;
     module->mccb_num_reqs = 0;
 
@@ -207,10 +209,13 @@ mca_coll_ftbasic_module_construct(mca_coll_ftbasic_module_t *module)
 static void
 mca_coll_ftbasic_module_destruct(mca_coll_ftbasic_module_t *module)
 {
+
     /* Finalize the agreement function */
-    if( ompi_ftmpi_enabled ) {
+    if( ompi_ftmpi_enabled && !module->is_intercomm ) {
         mca_coll_ftbasic_agreement_finalize(module);
     }
+
+    module->is_intercomm = false;
 
     /* This object is managed by the agreement operation selected */
     module->agreement_info = NULL;
