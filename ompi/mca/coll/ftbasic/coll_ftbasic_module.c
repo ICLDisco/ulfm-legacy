@@ -64,23 +64,36 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
 
     *priority = mca_coll_ftbasic_priority;
 
-    /* Allocate the data that hangs off the communicator */
+    ftbasic_module->is_intercomm = OMPI_COMM_IS_INTER(comm);
 
-    if (OMPI_COMM_IS_INTER(comm)) {
-        size = ompi_comm_remote_size(comm);
+    /*
+     * Allocate the data that hangs off the communicator
+     * JJH: Intercommunicators not currently supported
+     */
+    if( ompi_ftmpi_enabled && !OMPI_COMM_IS_INTER(comm) ) {
+        if (OMPI_COMM_IS_INTER(comm)) {
+            size = ompi_comm_remote_size(comm);
+        } else {
+            size = ompi_comm_size(comm);
+        }
+        ftbasic_module->mccb_num_reqs = size * 2;
+        ftbasic_module->mccb_reqs = (ompi_request_t**) 
+            malloc(sizeof(ompi_request_t *) * ftbasic_module->mccb_num_reqs);
+
+        ftbasic_module->mccb_num_statuses = size * 2; /* x2 for alltoall */
+        ftbasic_module->mccb_statuses = (ompi_status_public_t*)
+            malloc(sizeof(ompi_status_public_t) * ftbasic_module->mccb_num_statuses);
     } else {
-        size = ompi_comm_size(comm);
+        ftbasic_module->mccb_num_reqs = 0;
+        ftbasic_module->mccb_reqs = NULL;
+        ftbasic_module->mccb_num_statuses = 0;
+        ftbasic_module->mccb_statuses = NULL;
     }
-    ftbasic_module->mccb_num_reqs = size * 2;
-    ftbasic_module->mccb_reqs = (ompi_request_t**) 
-        malloc(sizeof(ompi_request_t *) * ftbasic_module->mccb_num_reqs);
 
-    ftbasic_module->mccb_num_statuses = size * 2; /* x2 for alltoall */
-    ftbasic_module->mccb_statuses = (ompi_status_public_t*)
-        malloc(sizeof(ompi_status_public_t) * ftbasic_module->mccb_num_statuses);
-
-    /* Choose whether to use [intra|inter], and [linear|log]-based
-     * algorithms. */
+    /*
+     * Choose whether to use [intra|inter], and [linear|log]-based
+     * algorithms.
+     */
     ftbasic_module->super.coll_module_enable = mca_coll_ftbasic_module_enable;
     ftbasic_module->super.ft_event = mca_coll_ftbasic_ft_event;
 
