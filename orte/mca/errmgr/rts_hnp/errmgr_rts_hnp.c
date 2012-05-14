@@ -1729,8 +1729,13 @@ static int rts_hnp_stable_process_fault_app(orte_job_t *jdata,
         stable_xcast_timer_active = true;
 
         opal_event_evtimer_set(opal_event_base, stable_xcast_timer_event, rts_hnp_stable_xcast_fn, NULL);
-        soon.tv_sec  = errmgr_rts_hnp_proc_fail_xcast_delay;
-        soon.tv_usec = 0;
+        if( errmgr_rts_hnp_proc_fail_xcast_delay > 0 ) {
+            soon.tv_sec  = errmgr_rts_hnp_proc_fail_xcast_delay;
+            soon.tv_usec = 0;
+        } else {
+            soon.tv_sec  = 0;
+            soon.tv_usec = 1;
+        }
         opal_event_evtimer_add(stable_xcast_timer_event, &soon);
     }
 

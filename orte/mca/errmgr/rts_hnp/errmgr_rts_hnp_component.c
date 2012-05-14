@@ -94,8 +94,8 @@ static int rts_hnp_open(void)
                            false, false,
                            1, &val);
     errmgr_rts_hnp_proc_fail_xcast_delay = val;
-    if( errmgr_rts_hnp_proc_fail_xcast_delay <= 0 ) {
-        errmgr_rts_hnp_proc_fail_xcast_delay = 1;
+    if( errmgr_rts_hnp_proc_fail_xcast_delay < 0 ) {
+        errmgr_rts_hnp_proc_fail_xcast_delay = 0;
     }
 
     opal_output_verbose(10, mca_errmgr_rts_hnp_component.output_handle,
