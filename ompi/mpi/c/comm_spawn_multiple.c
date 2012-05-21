@@ -71,6 +71,11 @@ int MPI_Comm_spawn_multiple(int count, char **array_of_commands, char ***array_o
         if ( NULL == intercomm ) {
             return OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_ARG, FUNC_NAME);
         }
+#if OPAL_ENABLE_FT_MPI
+        if( !ompi_comm_iface_coll_check(comm, &rc) ) {
+            return OMPI_ERRHANDLER_INVOKE(comm, rc, FUNC_NAME);
+        }
+#endif
     }
    
     rank = ompi_comm_rank ( comm );
@@ -125,13 +130,6 @@ int MPI_Comm_spawn_multiple(int count, char **array_of_commands, char ***array_o
             }  
         }
     }
-
-/*
-#if OPAL_ENABLE_FT_MPI
-    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, comm,
-                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
-#endif
-*/
 
     if (rank == root) {
         if (MPI_INFO_NULL == array_of_info[0]) {

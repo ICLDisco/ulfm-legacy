@@ -72,13 +72,6 @@ int MPI_Comm_join(int fd, MPI_Comm *intercomm)
         }
     }
 
-/*
-#if OPAL_ENABLE_FT_MPI
-    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, MPI_COMM_WORLD,
-                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
-#endif
-*/
-
     OPAL_CR_ENTER_LIBRARY();
 
     /* open a port using the specified tag */
