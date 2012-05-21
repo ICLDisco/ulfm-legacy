@@ -74,14 +74,12 @@ int MPI_Comm_connect(char *port_name, MPI_Info info, int root,
           return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_INFO,
                                         FUNC_NAME);
         }
-    }
-
-/*
 #if OPAL_ENABLE_FT_MPI
-    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, comm,
-                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
+        if( !ompi_comm_iface_coll_check(comm, &rc) ) {
+            return OMPI_ERRHANDLER_INVOKE(comm, rc, FUNC_NAME);
+        }
 #endif
-*/
+    }
     
     rank = ompi_comm_rank ( comm );
     if ( MPI_PARAM_CHECK ) {
