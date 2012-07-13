@@ -110,7 +110,11 @@ AC_DEFUN([OMPI_CHECK_PORTALS],[
                   CPPFLAGS="$CPPFLAGS $check_portals_CPPFLAGS"], [])
            AS_IF([test -d "$with_portals/lib"],
                  [check_portals_LDFLAGS="-L$with_portals/lib"
-                  LDFLAGS="$LDFLAGS $check_portals_LDFLAGS"], [])])
+                  LDFLAGS="$LDFLAGS $check_portals_LDFLAGS"], [])
+           AS_IF([test -d "$with_portals/lib64"],
+                 [check_portals_LDFLAGS="-L$with_portals/lib64"
+                  LDFLAGS="$LDFLAGS $check_portals_LDFLAGS"], [])
+                  ])
 
     # Try to find all the portals libraries (this is not fun!)
     if test -n "$with_portals_libs" ; then
