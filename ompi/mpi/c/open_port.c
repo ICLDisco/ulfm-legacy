@@ -65,11 +65,6 @@ int MPI_Open_port(MPI_Info info, char *port_name)
         */
     }
 
-#if OPAL_ENABLE_FT_MPI
-    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, MPI_COMM_WORLD,
-                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
-#endif
-
     OPAL_CR_ENTER_LIBRARY();
 
     rc = ompi_dpm.open_port(port_name, OMPI_RML_TAG_INVALID);
