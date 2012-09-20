@@ -51,11 +51,6 @@ int MPI_Close_port(char *port_name)
                                           FUNC_NAME);
     }
 
-#if OPAL_ENABLE_FT_MPI
-    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, MPI_COMM_WORLD,
-                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
-#endif
-
     ret = ompi_dpm.close_port(port_name);
     
     OMPI_ERRHANDLER_RETURN(ret, MPI_COMM_WORLD, ret, FUNC_NAME);
