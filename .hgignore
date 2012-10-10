@@ -1021,3 +1021,6 @@ ompi_wrapper_script
 *~
 *\\#
 ./build/
+auto.out
+config.out
+dist.out
