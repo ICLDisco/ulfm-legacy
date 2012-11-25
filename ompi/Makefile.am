@@ -80,7 +80,7 @@ SUBDIRS = \
 	mpi/cxx \
 	mpi/f77 \
 	mpi/f90 \
-    mpi/java \
+	mpi/java \
 	$(MCA_ompi_FRAMEWORK_COMPONENT_DSO_SUBDIRS) \
 	$(OMPI_CONTRIB_SUBDIRS)
 
@@ -93,7 +93,7 @@ DIST_SUBDIRS = \
 	mpi/cxx \
 	mpi/f77 \
 	mpi/f90 \
-    mpi/java \
+	mpi/java \
 	$(OMPI_MPIEXT_ALL_SUBDIRS) \
 	$(MCA_ompi_FRAMEWORKS_SUBDIRS) \
 	$(MCA_ompi_FRAMEWORK_COMPONENT_ALL_SUBDIRS) \
