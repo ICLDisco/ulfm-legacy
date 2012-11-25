@@ -403,7 +403,7 @@ EOF
             AC_MSG_RESULT([yes])
 
             # Save the list of headers and convenience libraries that this component will output
-            $3="mpiext/${component}/c/profile/libext_pmpiext_c_${component}.la $$3"
+#            $3="mpiext/${component}/c/profile/libext_pmpiext_c_${component}.la $$3"
         else 
             AC_MSG_RESULT([no])
         fi
@@ -442,8 +442,7 @@ EOF
 EOF
         #
         # Profiling interface
-        # TODO: When needed, we should add similar profiling code to C/F77
-        #
+        # Let the extension itself define the profiling interface is needed.
     else
         AC_MSG_RESULT([no])
 
@@ -498,7 +497,7 @@ EOF
             AC_MSG_RESULT([yes])
 
             # Save the list of headers and convenience libraries that this component will output
-            $3="mpiext/${component}/f77/profile/libext_pmpiext_f77_${component}.la $$3"
+#            $3="mpiext/${component}/f77/profile/libext_pmpiext_f77_${component}.la $$3"
         else 
             AC_MSG_RESULT([no])
         fi
