@@ -16,31 +16,32 @@
 #
 AM_CPPFLAGS = -DOMPI_PROFILING_DEFINES=1 -DOMPI_PROFILE_LAYER=1 -DOMPI_COMPILING_F77_WRAPPERS=1
 
-noinst_LTLIBRARIES =
-if OMPI_WANT_F77_BINDINGS
-if WANT_PMPI_BINDINGS_LAYER
-noinst_LTLIBRARIES += libext_pmpiext_f77_ftmpi.la
-endif
-endif
-
 headers = 
-nodist_libext_pmpiext_f77_ftmpi_la_SOURCES = 
+noinst_LTLIBRARIES =
+nodist_libext_pmpiext_ftmpi_f77_la_SOURCES = 
+
 if OMPI_WANT_F77_BINDINGS
+
 headers += defines.h
 
-nodist_libext_pmpiext_f77_ftmpi_la_SOURCES += \
+nodist_libext_pmpiext_ftmpi_f77_la_SOURCES += \
 	pcomm_revoke_f.c \
 	pcomm_shrink_f.c \
 	pcomm_failure_ack_f.c \
 	pcomm_failure_get_acked_f.c \
 	pcomm_agree_f.c \
 	pcomm_iagree_f.c
+
+if WANT_PMPI_F77_BINDINGS_LAYER
+noinst_LTLIBRARIES += libext_pmpiext_ftmpi_f77.la
+endif
+
 endif
 
 #
 # Sym link in the sources from the real MPI directory
 #
-$(nodist_libext_pmpiext_f77_ftmpi_la_SOURCES):
+$(nodist_libext_pmpiext_ftmpi_f77_la_SOURCES):
 	if test ! -r $@ ; then \
 		pname=`echo $@ | cut -b '2-'` ; \
 		$(LN_S) $(top_srcdir)/ompi/mpiext/ftmpi/f77/$$pname $@ ; \
@@ -55,5 +56,5 @@ endif
 
 # These files were created by targets above
 
-MAINTAINERCLEANFILES = $(nodist_libext_pmpiext_f77_ftmpi_la_SOURCES)
+MAINTAINERCLEANFILES = $(nodist_libext_pmpiext_ftmpi_f77_la_SOURCES)
 endif
