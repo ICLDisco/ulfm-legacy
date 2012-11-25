@@ -11,6 +11,7 @@
 # C Bindings
 #
 SUBDIRS = c/profile
+SUBDIRS += f77/profile
 
 headers = \
 	mpiext_ftmpi_c.h
@@ -28,7 +29,6 @@ sources = \
 #
 f77_sources =
 if OMPI_WANT_F77_BINDINGS
-SUBDIRS += f77/profile
 
 headers += \
 	mpiext_ftmpi_f77.h \
@@ -70,6 +70,9 @@ f77_lib_sources = $(f77_sources)
 libext_mpiext_ftmpi_f77_la_SOURCES = $(f77_lib_sources)
 libext_mpiext_ftmpi_f77_la_LIBADD  = $(lib_sources)
 libext_mpiext_ftmpi_f77_la_LDFLAGS = -module -avoid-version
+if WANT_PMPI_F77_BINDINGS_LAYER
+  libext_mpiext_ftmpi_f77_la_LIBADD += f77/profile/libext_pmpiext_ftmpi_f77.la
+endif
 endif
 
 noinst_LTLIBRARIES = $(lib)

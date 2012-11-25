@@ -18,12 +18,12 @@ AM_CPPFLAGS = -DOMPI_PROFILING_DEFINES=1
 
 noinst_LTLIBRARIES =
 if WANT_PMPI_BINDINGS_LAYER
-noinst_LTLIBRARIES += libext_pmpiext_c_ftmpi.la
+noinst_LTLIBRARIES += libext_pmpiext_ftmpi_c.la
 endif
 
 headers = defines.h
 
-nodist_libext_pmpiext_c_ftmpi_la_SOURCES = \
+nodist_libext_pmpiext_ftmpi_c_la_SOURCES = \
 	pcomm_revoke.c \
 	pcomm_shrink.c \
 	pcomm_failure_ack.c \
@@ -34,7 +34,7 @@ nodist_libext_pmpiext_c_ftmpi_la_SOURCES = \
 #
 # Sym link in the sources from the real MPI directory
 #
-$(nodist_libext_pmpiext_c_ftmpi_la_SOURCES):
+$(nodist_libext_pmpiext_ftmpi_c_la_SOURCES):
 	if test ! -r $@ ; then \
 		pname=`echo $@ | cut -b '2-'` ; \
 		$(LN_S) $(top_srcdir)/ompi/mpiext/ftmpi/c/$$pname $@ ; \
@@ -49,4 +49,4 @@ endif
 
 # These files were created by targets above
 
-MAINTAINERCLEANFILES = $(nodist_libext_pmpiext_c_ftmpi_la_SOURCES)
+MAINTAINERCLEANFILES = $(nodist_libext_pmpiext_ftmpi_c_la_SOURCES)
