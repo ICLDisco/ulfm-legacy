@@ -328,10 +328,13 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
     failed_group = OBJ_NEW(ompi_group_t);
     flag = (OMPI_SUCCESS == OMPI_SUCCESS);
+double start = MPI_Wtime();
     ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
                                        &failed_group,
                                        &flag,
                                        comm->c_coll.coll_agreement_module);
+double stop = MPI_Wtime();
+printf("SHRINK AGREE: %g seconds\n", stop-start);
     if( OMPI_SUCCESS != ret ) {
         exit_status = ret;
         goto cleanup;
@@ -345,7 +348,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ompi: comm_shrink: Determine ranking for new communicator",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
-
+start = MPI_Wtime();
     comp = (ompi_communicator_t *) comm;
 
     if ( OMPI_COMM_IS_INTER(comp) ) {
@@ -395,7 +398,8 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
         exit_status = MPI_ERR_INTERN;
         goto decide_commit;
     }
-
+stop = MPI_Wtime();
+printf("SHRINK GRP COMPUTATION: %g seconds\n", stop-start);
     /*
      * Step 3: Determine context id
      */
@@ -403,7 +407,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ompi: comm_shrink: Determine context id",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
-
+start = MPI_Wtime();
     ret = ompi_comm_nextcid( newcomp,  /* new communicator */ 
                              comp,     /* old comm */
                              NULL,     /* bridge comm */
@@ -415,7 +419,8 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
         exit_status = ret;
         goto decide_commit;
     }
-
+stop = MPI_Wtime();
+printf("SHRINK NEXT CID: %g seconds\n", stop-start);
     /*
      * Step 4: Activate the communicator
      */
@@ -423,7 +428,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     /* Set name for debugging purposes */
     snprintf(newcomp->c_name, MPI_MAX_OBJECT_NAME, "MPI COMMUNICATOR %d SHRUNK FROM %d", 
              newcomp->c_contextid, comm->c_contextid );
-
+start = MPI_Wtime();
     /* activate communicator and init coll-module */
     ret = ompi_comm_activate( &newcomp, /* new communicator */ 
                               comp,
@@ -436,7 +441,8 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
         exit_status = ret;
         goto decide_commit;
     }
-
+stop = MPI_Wtime();
+printf("SHRINK COLL SELECT: %g seconds\n", stop-start);
  decide_commit:    
     /*
      * Step 5: Agreement on whether the operation was successful or not
@@ -451,6 +457,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
         OBJ_RELEASE(failed_group);
         failed_group = NULL;
     }
+start = MPI_Wtime();
     failed_group = OBJ_NEW(ompi_group_t);
     flag = (OMPI_SUCCESS == exit_status);
     ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
@@ -461,7 +468,8 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
         exit_status = ret;
         goto cleanup;
     }
-
+stop = MPI_Wtime();
+printf("SHRINK COMMIT: %g seconds\n", stop-start);
     if( flag ) {
         *newcomm = newcomp;
     } else {
