@@ -28,6 +28,7 @@
 
 
 static bool comm_revoke_listener_started = false;
+static int comm_revoke_rbcast = 1;
 
 static void comm_revoke_notice_recv(int status,
                                     orte_process_name_t* sender,
@@ -120,6 +121,12 @@ int ompi_comm_init_revoke(void)
         return OMPI_SUCCESS;
     }
 
+    {
+    int rbcast = 1;
+    int id = mca_base_param_register_int("ompi", "ft", "revoke_bcast", NULL, 1);
+    mca_base_param_lookup_int(id, &rbcast);
+    comm_revoke_rbcast = rbcast; }
+
     ret = mca_bml.bml_register(MCA_BTL_TAG_FT, ompi_comm_revoke_bml_cb_fn, NULL);
     if( OMPI_SUCCESS != ret ) {
         return ret;
@@ -210,9 +217,17 @@ static void ompi_revoke_bml_complete_fn(
     return;
 }
 
+static int ompi_comm_revoke_internal_rbcast_n2(ompi_group_t* grp, int cid);
+static int ompi_comm_revoke_internal_rbcast_ringleader(ompi_group_t* grp, int cid);
+#define ompi_comm_revoke_internal_rbcast(grp, cid) ( \
+    comm_revoke_rbcast == 0 ? OMPI_SUCCESS : \
+    comm_revoke_rbcast == 1 ? ompi_comm_revoke_internal_rbcast_n2(grp, cid) : \
+                              ompi_comm_revoke_internal_rbcast_ringleader(grp, cid) )
+
+
 int ompi_comm_revoke_internal(ompi_communicator_t* comm)
 {
-    int ret, i, exit_status = OMPI_SUCCESS;
+    int i, exit_status;
     ompi_group_t* grp;
 
     /* if the communicator is already revoked, nothing to be done */
@@ -245,6 +260,15 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
         grp = comm->c_local_group;
         OBJ_RETAIN(grp);
     }
+    exit_status = ompi_comm_revoke_internal_rbcast(grp, comm->c_contextid);
+    OBJ_RELEASE(grp);
+    
+    return exit_status;
+}
+
+static int ompi_comm_revoke_internal_rbcast_n2(ompi_group_t* grp, int cid) {
+    int i, exit_status = OMPI_SUCCESS, ret;
+
     for(i = 0; i < ompi_group_size(grp); i++) {
         ompi_proc_t* proc;
         mca_btl_base_descriptor_t *des;
@@ -255,7 +279,7 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
         proc = ompi_group_peer_lookup(grp, i);
         OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                 "%s ompi: comm_revoke: Send: preparing a fragment to %s to revoke %3d",
-                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), comm->c_contextid ));
+                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), cid));
 
         assert(proc->proc_bml);
         bml_btl = mca_bml_base_btl_array_get_next(&proc->proc_bml->btl_send);
@@ -263,30 +287,33 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
                            sizeof(ompi_revoke_message_t),
                            MCA_BTL_DES_FLAGS_PRIORITY | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
         if(OPAL_UNLIKELY(NULL == des)) return OMPI_ERR_OUT_OF_RESOURCE;
-		assert(des->des_src->seg_len == sizeof(ompi_revoke_message_t));
+        assert(des->des_src->seg_len == sizeof(ompi_revoke_message_t));
         des->des_cbfunc = ompi_revoke_bml_complete_fn;
      
         msg = des->des_src->seg_addr.pval;
-        msg->cid = comm->c_contextid;
+        msg->cid = cid;
         ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_UNLIKELY(1 == ret)) {
                 OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                         "%s ompi: comm_revoke: Send: fragment to %s to revoke %3d is gone",
-                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), comm->c_contextid ));
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), cid));
             }
         }
         else {
             mca_bml_base_free(bml_btl, des);
             OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                     "%s ompi: comm_revoke: Send: could not send a fragment to %s to revoke %3d (code %d)",
-                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), comm->c_contextid, ret ));
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), cid, ret ));
             exit_status = ret;
         }
     }
-    OBJ_RELEASE(grp);
-    
     return exit_status;
+}
+
+static int ompi_comm_revoke_internal_rbcast_ringleader(ompi_group_t* grp, int cid) {
+    return OMPI_SUCCESS;
+
 }
 
 int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** newcomm)
