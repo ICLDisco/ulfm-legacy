@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2012 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -296,6 +296,7 @@ static int mca_btl_tcp_endpoint_send_blocking(mca_btl_base_endpoint_t* btl_endpo
             if(opal_socket_errno != EINTR && opal_socket_errno != EAGAIN && opal_socket_errno != EWOULDBLOCK) {
                 BTL_ERROR(("send() failed: %s (%d)",
                            strerror(opal_socket_errno), opal_socket_errno));
+                btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
                 mca_btl_tcp_endpoint_close(btl_endpoint);
                 return -1;
             }
@@ -360,6 +361,7 @@ bool mca_btl_tcp_endpoint_accept(mca_btl_base_endpoint_t* btl_endpoint,
         mca_btl_tcp_endpoint_close(btl_endpoint);
         btl_endpoint->endpoint_sd = sd;
         if(mca_btl_tcp_endpoint_send_connect_ack(btl_endpoint) != OMPI_SUCCESS) {
+            btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
             mca_btl_tcp_endpoint_close(btl_endpoint);
             OPAL_THREAD_UNLOCK(&btl_endpoint->endpoint_send_lock);
             OPAL_THREAD_UNLOCK(&btl_endpoint->endpoint_recv_lock);
@@ -390,7 +392,6 @@ void mca_btl_tcp_endpoint_close(mca_btl_base_endpoint_t* btl_endpoint)
 {
     if(btl_endpoint->endpoint_sd < 0)
         return;
-    btl_endpoint->endpoint_state = MCA_BTL_TCP_CLOSED;
     btl_endpoint->endpoint_retries++;
     opal_event_del(&btl_endpoint->endpoint_recv_event);
     opal_event_del(&btl_endpoint->endpoint_send_event);
@@ -402,6 +403,25 @@ void mca_btl_tcp_endpoint_close(mca_btl_base_endpoint_t* btl_endpoint)
     btl_endpoint->endpoint_cache_pos    = NULL;
     btl_endpoint->endpoint_cache_length = 0;
 #endif  /* MCA_BTL_TCP_ENDPOINT_CACHE */
+    /**
+     * If we keep failing to connect to the peer let the caller know about
+     * this situation by triggering the callback on all pending fragments and
+     * reporting the error. The upper layer has then the opportunity to
+     * re-route or re-schedule the fragments.
+     */
+    if( MCA_BTL_TCP_FAILED == btl_endpoint->endpoint_state ) {
+        mca_btl_tcp_frag_t* frag = btl_endpoint->endpoint_send_frag;
+        if( NULL == frag ) 
+            frag = (mca_btl_tcp_frag_t*)opal_list_remove_first(&btl_endpoint->endpoint_frags);
+        while(NULL != frag) {
+            frag->base.des_cbfunc(&frag->btl->super, frag->endpoint, &frag->base, OMPI_ERR_UNREACH);
+
+            frag = (mca_btl_tcp_frag_t*)opal_list_remove_first(&btl_endpoint->endpoint_frags);
+        }
+        btl_endpoint->endpoint_send_frag = NULL;
+    } else {
+        btl_endpoint->endpoint_state = MCA_BTL_TCP_CLOSED;
+    }
 }
 
 /*
@@ -445,6 +465,7 @@ static int mca_btl_tcp_endpoint_recv_blocking(mca_btl_base_endpoint_t* btl_endpo
 
         /* remote closed connection */
         if(retval == 0) {
+            btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
             mca_btl_tcp_endpoint_close(btl_endpoint);
             return -1;
         }
@@ -456,6 +477,7 @@ static int mca_btl_tcp_endpoint_recv_blocking(mca_btl_base_endpoint_t* btl_endpo
                 BTL_ERROR(("recv(%d) failed: %s (%d)",
                            btl_endpoint->endpoint_sd, strerror(opal_socket_errno), opal_socket_errno));
 #endif /* OPAL_ENABLE_FT_MPI */
+                btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
                 mca_btl_tcp_endpoint_close(btl_endpoint);
                 return -1;
             }
@@ -592,6 +614,7 @@ static int mca_btl_tcp_endpoint_start_connect(mca_btl_base_endpoint_t* btl_endpo
                             address,
                            btl_endpoint->endpoint_addr->addr_port, strerror(opal_socket_errno) ) );
         }
+        btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
         mca_btl_tcp_endpoint_close(btl_endpoint);
         btl_endpoint->endpoint_retries++;
         return OMPI_ERR_UNREACH;
@@ -602,6 +625,7 @@ static int mca_btl_tcp_endpoint_start_connect(mca_btl_base_endpoint_t* btl_endpo
         btl_endpoint->endpoint_state = MCA_BTL_TCP_CONNECT_ACK;
         opal_event_add(&btl_endpoint->endpoint_recv_event, 0);
     } else {
+        btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
         mca_btl_tcp_endpoint_close(btl_endpoint);
     }
     return rc;
@@ -650,6 +674,7 @@ static void mca_btl_tcp_endpoint_complete_connect(mca_btl_base_endpoint_t* btl_e
         btl_endpoint->endpoint_state = MCA_BTL_TCP_CONNECT_ACK;
         opal_event_add(&btl_endpoint->endpoint_recv_event, 0);
     } else {
+        btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
         mca_btl_tcp_endpoint_close(btl_endpoint);
     }
 }
