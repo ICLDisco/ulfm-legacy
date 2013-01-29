@@ -359,7 +359,7 @@ fi
 AC_MSG_CHECKING([if want fault tolerance])
 AC_ARG_WITH(ft,
     [AC_HELP_STRING([--with-ft=TYPE],
-            [Specify the type of fault tolerance to enable. Options: LAM (LAM/MPI-like), cr (Checkpoint/Restart), orcm (OpenRCM) (default: disabled)])],
+            [Specify the type of fault tolerance to enable. Options: LAM (LAM/MPI-like), cr (Checkpoint/Restart), mpi (ULFM), orcm (OpenRCM) (default: disabled)])],
         [opal_want_ft=1],
         [opal_want_ft=0])
 if test "$with_ft" = "no" -o "$opal_want_ft" = "0"; then
