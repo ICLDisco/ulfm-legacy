@@ -153,46 +153,48 @@ static void comm_revoke_notice_recv(int status,
                                     orte_rml_tag_t tag,
                                     void* cbdata)
 {
-    int ret;
-    orte_std_cntr_t count;
-    int cid_to_revoke;
     ompi_communicator_t *comm = NULL;
     ompi_proc_t *ompi_proc_peer = NULL;
-    int proc_rank;
     orte_process_name_t true_sender;
+    int to_revoke[2], ret, proc_rank;
+    orte_std_cntr_t count;
 
-    /*
-     * Get the true sender from the message
-     */
+    /* Get the true sender from the message */
     count = 1;
     ret = opal_dss.unpack(buffer, &(true_sender), &count, ORTE_NAME);
-    if( OMPI_SUCCESS != ret ){
+    if( OMPI_SUCCESS != ret ) {
         return;
     }
 
-    /*
-     * Get the 'cid' from the message
-     */
-    count = 1;
-    ret = opal_dss.unpack(buffer, &(cid_to_revoke), &count, OPAL_INT);
+    /* Get the 'cid' and the epoch of the communicator to be revoked from the message */
+    count = 2;
+    ret = opal_dss.unpack(buffer, to_revoke, &count, OPAL_INT);
     if( OMPI_SUCCESS != ret ){
         return;
     }
 
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                         "%s ompi: comm_revoke: Recv: %s Asked to revoke communicator %3d",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&true_sender), cid_to_revoke ));
+                         "%s ompi: comm_revoke: Recv: %s Asked to revoke communicator %d:%d",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         ORTE_NAME_PRINT(&true_sender),
+                         to_revoke[0], to_revoke[1] ));
 
     /*
      * Find the communicator
      */
-    comm = (ompi_communicator_t *)opal_pointer_array_get_item(&ompi_mpi_communicators, cid_to_revoke);
-    if( NULL == comm || cid_to_revoke != (int)(comm->c_contextid) ) {
-        opal_output(0, "%s ompi: comm_revoke: Error: Could not find the communicator with CID %3d",
-                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cid_to_revoke );
+    comm = (ompi_communicator_t *)opal_pointer_array_get_item(&ompi_mpi_communicators, to_revoke[0]);
+    if( NULL == comm || to_revoke[0] != (int)(comm->c_contextid) ) {
+        opal_output(0, "%s ompi: comm_revoke: Error: Could not find the communicator with CID %d:%d",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), to_revoke[0], to_revoke[1] );
         return;
     }
-
+    if( to_revoke[1] != (int)comm->epoch ) {
+        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                             "%s ompi: comm_revoke: Info: Receive a late revoke order for the communicator with CID %3d:%d when we are now at %d:%d",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), to_revoke[0], to_revoke[1],
+                             (int)comm->c_contextid, comm->epoch));
+        return;
+    }
     /*
      * Check to make sure the sender is in this communicator
      */
@@ -209,8 +211,9 @@ static void comm_revoke_notice_recv(int status,
         if( proc_rank < 0 ) {
             /* Not in this communicator, ignore */
             OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                                 "%s ompi: comm_revoke: Recv: %s Revoked a different communicator %3d - Ignore ",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&true_sender), cid_to_revoke ));
+                                 "%s ompi: comm_revoke: Recv: %s Revoked a different communicator %d:%d - Ignore ",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&true_sender),
+                                 to_revoke[0], to_revoke[1] ));
             return;
         }
     }
@@ -220,8 +223,8 @@ static void comm_revoke_notice_recv(int status,
      */
     if( comm->comm_revoked ) {
         OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                             "%s ompi: comm_revoke: Recv: Asked to revoke communicator %3d - Already revoked",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cid_to_revoke ));
+                             "%s ompi: comm_revoke: Recv: Asked to revoke communicator %d:%d - Already revoked",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), to_revoke[0], to_revoke[1] ));
         return;
     }
     /* Revoke the communicator */
@@ -273,6 +276,12 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
     }
 
     if (OMPI_SUCCESS != (ret = opal_dss.pack(&buffer, &(comm->c_contextid), 1, OPAL_INT))) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    if (OMPI_SUCCESS != (ret = opal_dss.pack(&buffer, &(comm->epoch), 1, OPAL_INT))) {
         ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
