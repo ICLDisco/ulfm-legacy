@@ -101,7 +101,6 @@ int ompi_comm_set ( ompi_communicator_t **ncomm,
     ompi_communicator_t *newcomm=NULL;
     int ret;
     
-    /* ompi_comm_allocate */
     newcomm = OBJ_NEW(ompi_communicator_t);
     /* fill in the inscribing hyper-cube dimensions */
     newcomm->c_cube_dim = opal_cube_dim(local_size);
@@ -151,13 +150,15 @@ int ompi_comm_set ( ompi_communicator_t **ncomm,
     newcomm->collectives_force_error = false;
     newcomm->num_active_local    = newcomm->c_local_group->grp_proc_count;
     newcomm->num_active_remote   = newcomm->c_remote_group->grp_proc_count;
+    newcomm->lleader             = 0;
+    newcomm->rleader             = 0;
 #endif /* OPAL_ENABLE_FT_MPI */
     
     /* Check how many different jobids are represented in this communicator.
        Necessary for the disconnect of dynamic communicators. */
 
     if ( 0 < local_size  ) {
-	ompi_dpm.mark_dyncomm (newcomm);
+        ompi_dpm.mark_dyncomm (newcomm);
     }
 
     /* Set error handler */
@@ -1573,25 +1574,41 @@ int ompi_topo_create (ompi_communicator_t *old_comm,
                       int *periods_or_edges,
                       bool reorder,
                       ompi_communicator_t **comm_topo,
-                      int cart_or_graph){
-
+                      int cart_or_graph)
+{
+    int num_procs = old_comm->c_local_group->grp_proc_count;
+    ompi_proc_t **topo_procs, **proc_list = NULL;
     ompi_communicator_t *new_comm;
-    int new_rank;
-    ompi_proc_t **topo_procs;
-    int num_procs;
-    int ret;
-    ompi_proc_t **proc_list=NULL;
-    int i;
+    int new_rank, ret, i;
 
-    /* allocate a new communicator */
-
-    new_comm = ompi_comm_allocate(ompi_comm_size(old_comm), 0);
+    /* create new communicator element */
+    new_comm = OBJ_NEW(ompi_communicator_t);
     if (NULL == new_comm) {
         return MPI_ERR_INTERN;
     }
+    new_comm->c_local_group = ompi_group_allocate(num_procs);
+    if (NULL == new_comm->c_local_group) {
+        OBJ_RELEASE(new_comm);
+        return MPI_ERR_INTERN;
+    }
+    new_comm->c_remote_group = new_comm->c_local_group;  /* intra-comm */
+    OBJ_RETAIN(new_comm->c_remote_group);
+
+    /* fill in the inscribing hyper-cube dimensions */
+    new_comm->c_cube_dim = opal_cube_dim(num_procs);
+
+#if OPAL_ENABLE_FT_MPI
+    new_comm->any_source_enabled  = true;
+    new_comm->any_source_offset   = 0;
+    new_comm->comm_revoked        = false;
+    new_comm->collectives_force_error = false;
+    new_comm->num_active_local    = new_comm->c_local_group->grp_proc_count;
+    new_comm->num_active_remote   = new_comm->c_remote_group->grp_proc_count;
+    new_comm->lleader             = 0;
+    new_comm->rleader             = 0;
+#endif /* OPAL_ENABLE_FT_MPI */
 
     /* allocate the data for the common good */
-
     new_comm->c_topo_comm = (mca_topo_base_comm_t*)malloc(sizeof(mca_topo_base_comm_t));
     if (NULL == new_comm->c_topo_comm) {
         OBJ_RELEASE(new_comm);
@@ -1639,7 +1656,6 @@ int ompi_topo_create (ompi_communicator_t *old_comm,
      * over to the new one. the topology component can then work on
      * this and rearrange it as it deems fit.
      */
-    num_procs = old_comm->c_local_group->grp_proc_count;
     topo_procs = (ompi_proc_t **)malloc (num_procs * sizeof(ompi_proc_t *));
 
     if(OMPI_GROUP_IS_DENSE(old_comm->c_local_group)) {

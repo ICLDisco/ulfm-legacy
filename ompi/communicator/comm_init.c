@@ -44,6 +44,7 @@
 ** 
 */
 opal_pointer_array_t ompi_mpi_communicators; 
+opal_pointer_array_t ompi_mpi_comm_epoch; 
 
 ompi_predefined_communicator_t  ompi_mpi_comm_world;
 ompi_predefined_communicator_t  ompi_mpi_comm_self;
@@ -75,6 +76,14 @@ int ompi_comm_init(void)
         return OMPI_ERROR;
     }
 
+#if OPAL_ENABLE_FT_MPI
+    OBJ_CONSTRUCT(&ompi_mpi_comm_epoch, opal_pointer_array_t); 
+    if( OPAL_SUCCESS != opal_pointer_array_init(&ompi_mpi_comm_epoch, 0,
+                                                OMPI_FORTRAN_HANDLE_MAX, 64) ) {
+        return OMPI_ERROR;
+    }
+#endif  /* OPAL_ENABLE_FT_MPI */
+
     /* Setup MPI_COMM_WORLD */
     OBJ_CONSTRUCT(&ompi_mpi_comm_world, ompi_communicator_t);
     group = OBJ_NEW(ompi_group_t);
@@ -97,7 +106,8 @@ int ompi_comm_init(void)
     ompi_mpi_comm_world.comm.error_handler  = &ompi_mpi_errors_are_fatal.eh;
     OBJ_RETAIN( &ompi_mpi_errors_are_fatal.eh );
     OMPI_COMM_SET_PML_ADDED(&ompi_mpi_comm_world.comm);
-    opal_pointer_array_set_item (&ompi_mpi_communicators, 0, &ompi_mpi_comm_world);
+    opal_pointer_array_set_item (&ompi_mpi_communicators,
+                                 ompi_mpi_comm_world.comm.c_f_to_c_index, &ompi_mpi_comm_world);
 
     MEMCHECKER (memset (ompi_mpi_comm_world.comm.c_name, 0, MPI_MAX_OBJECT_NAME));
     strncpy (ompi_mpi_comm_world.comm.c_name, "MPI_COMM_WORLD",
@@ -112,15 +122,11 @@ int ompi_comm_init(void)
     ompi_attr_hash_init(&ompi_mpi_comm_world.comm.c_keyhash);
 
 #if OPAL_ENABLE_FT_MPI
-    ompi_mpi_comm_world.comm.any_source_enabled  = true;
-    ompi_mpi_comm_world.comm.any_source_offset   = 0;
-    ompi_mpi_comm_world.comm.comm_revoked        = false;
-    ompi_mpi_comm_world.comm.collectives_force_error = false;
-    ompi_mpi_comm_world.comm.num_active_local    = group->grp_proc_count;
-    ompi_mpi_comm_world.comm.num_active_remote   = group->grp_proc_count;
-    ompi_mpi_comm_world.comm.lleader             = 0;
-    ompi_mpi_comm_world.comm.rleader             = 0;
-#endif /* OPAL_ENABLE_FT_MPI */
+    OMPI_COMM_SET_FT(&ompi_mpi_comm_world.comm, group->grp_proc_count, 0);
+    opal_pointer_array_set_item (&ompi_mpi_comm_epoch,
+                                 ompi_mpi_comm_world.comm.c_f_to_c_index,
+                                 (void*)(uintptr_t)(ompi_mpi_comm_world.comm.epoch));
+#endif  /* OPAL_ENABLE_FT_MPI */
 
     /* Setup MPI_COMM_SELF */
     OBJ_CONSTRUCT(&ompi_mpi_comm_self, ompi_communicator_t);
@@ -142,10 +148,11 @@ int ompi_comm_init(void)
     ompi_mpi_comm_self.comm.error_handler  = &ompi_mpi_errors_are_fatal.eh;
     OBJ_RETAIN( &ompi_mpi_errors_are_fatal.eh );
     OMPI_COMM_SET_PML_ADDED(&ompi_mpi_comm_self.comm);
-    opal_pointer_array_set_item (&ompi_mpi_communicators, 1, &ompi_mpi_comm_self);
+    opal_pointer_array_set_item (&ompi_mpi_communicators,
+                                 ompi_mpi_comm_self.comm.c_f_to_c_index, &ompi_mpi_comm_self);
 
     MEMCHECKER (memset (ompi_mpi_comm_self.comm.c_name, 0, MPI_MAX_OBJECT_NAME));
-    strncpy(ompi_mpi_comm_self.comm.c_name,"MPI_COMM_SELF",strlen("MPI_COMM_SELF")+1);
+    strncpy(ompi_mpi_comm_self.comm.c_name,"MPI_COMM_SELF", strlen("MPI_COMM_SELF")+1);
     ompi_mpi_comm_self.comm.c_flags |= OMPI_COMM_NAMEISSET;
     ompi_mpi_comm_self.comm.c_flags |= OMPI_COMM_INTRINSIC;
 
@@ -155,15 +162,11 @@ int ompi_comm_init(void)
     ompi_mpi_comm_self.comm.c_keyhash = NULL;
 
 #if OPAL_ENABLE_FT_MPI
-    ompi_mpi_comm_self.comm.any_source_enabled  = true;
-    ompi_mpi_comm_self.comm.any_source_offset   = 0;
-    ompi_mpi_comm_self.comm.comm_revoked        = false;
-    ompi_mpi_comm_self.comm.collectives_force_error = false;
-    ompi_mpi_comm_self.comm.num_active_local    = group->grp_proc_count;
-    ompi_mpi_comm_self.comm.num_active_remote   = group->grp_proc_count;
-    ompi_mpi_comm_self.comm.lleader             = 0;
-    ompi_mpi_comm_self.comm.rleader             = 0;
-#endif /* OPAL_ENABLE_FT_MPI */
+    OMPI_COMM_SET_FT(&ompi_mpi_comm_self.comm, group->grp_proc_count, 0);
+    opal_pointer_array_set_item (&ompi_mpi_comm_epoch,
+                                 ompi_mpi_comm_self.comm.c_f_to_c_index,
+                                 (void*)(uintptr_t)(ompi_mpi_comm_self.comm.epoch));
+#endif  /* OPAL_ENABLE_FT_MPI */
 
     /* Setup MPI_COMM_NULL */
     OBJ_CONSTRUCT(&ompi_mpi_comm_null, ompi_communicator_t);
@@ -178,12 +181,20 @@ int ompi_comm_init(void)
 
     ompi_mpi_comm_null.comm.error_handler  = &ompi_mpi_errors_are_fatal.eh;
     OBJ_RETAIN( &ompi_mpi_errors_are_fatal.eh );
-    opal_pointer_array_set_item (&ompi_mpi_communicators, 2, &ompi_mpi_comm_null);
+    opal_pointer_array_set_item (&ompi_mpi_communicators,
+                                 ompi_mpi_comm_null.comm.c_f_to_c_index, &ompi_mpi_comm_null);
 
     MEMCHECKER (memset (ompi_mpi_comm_null.comm.c_name, 0, MPI_MAX_OBJECT_NAME));
     strncpy(ompi_mpi_comm_null.comm.c_name,"MPI_COMM_NULL",strlen("MPI_COMM_NULL")+1);
     ompi_mpi_comm_null.comm.c_flags |= OMPI_COMM_NAMEISSET;
     ompi_mpi_comm_null.comm.c_flags |= OMPI_COMM_INTRINSIC;
+#if OPAL_ENABLE_FT_MPI
+    OMPI_COMM_SET_FT(&ompi_mpi_comm_null.comm, 0, 0);
+    opal_pointer_array_set_item (&ompi_mpi_comm_epoch,
+                                 ompi_mpi_comm_null.comm.c_f_to_c_index,
+                                 (void*)(uintptr_t)(ompi_mpi_comm_null.comm.epoch));
+#endif  /* OPAL_ENABLE_FT_MPI */
+
 
     /* Initialize the parent communicator to MPI_COMM_NULL */
     ompi_mpi_comm_parent = &ompi_mpi_comm_null.comm;
@@ -196,43 +207,6 @@ int ompi_comm_init(void)
     ompi_comm_reg_init();
 
     return OMPI_SUCCESS;
-}
-
-
-ompi_communicator_t *ompi_comm_allocate ( int local_size, int remote_size )
-{
-    ompi_communicator_t *new_comm;
-
-    /* create new communicator element */
-    new_comm = OBJ_NEW(ompi_communicator_t);
-    new_comm->c_local_group = ompi_group_allocate ( local_size );
-    if ( 0 < remote_size ) {
-        new_comm->c_remote_group = ompi_group_allocate (remote_size);
-        new_comm->c_flags |= OMPI_COMM_INTER;
-    } else {
-        /* 
-         * simplifies some operations (e.g. p2p), if 
-         * we can always use the remote group 
-         */
-        new_comm->c_remote_group = new_comm->c_local_group;
-        OBJ_RETAIN(new_comm->c_remote_group);
-    }
-
-    /* fill in the inscribing hyper-cube dimensions */
-    new_comm->c_cube_dim = opal_cube_dim(local_size);
-
-#if OPAL_ENABLE_FT_MPI
-    new_comm->any_source_enabled  = true;
-    new_comm->any_source_offset   = 0;
-    new_comm->comm_revoked        = false;
-    new_comm->collectives_force_error = false;
-    new_comm->num_active_local    = new_comm->c_local_group->grp_proc_count;
-    new_comm->num_active_remote   = new_comm->c_remote_group->grp_proc_count;
-    new_comm->lleader             = 0;
-    new_comm->rleader             = 0;
-#endif /* OPAL_ENABLE_FT_MPI */
-
-    return new_comm;
 }
 
 int ompi_comm_finalize(void) 
@@ -281,14 +255,14 @@ int ompi_comm_finalize(void)
     /* Shut down MPI_COMM_NULL */
     OBJ_DESTRUCT( &ompi_mpi_comm_null );
 
-    /* Check whether we have some communicators left */
+    /* Check whether we have some communicators left (minus the predefined) */
     max = opal_pointer_array_get_size(&ompi_mpi_communicators);
-    for ( i=3; i<max; i++ ) {
+    for ( i = 3; i < max; i++ ) {
         comm = (ompi_communicator_t *)opal_pointer_array_get_item(&ompi_mpi_communicators, i);
         if ( NULL != comm ) {
             /* Communicator has not been freed before finalize */
             OBJ_RELEASE(comm);
-            comm=(ompi_communicator_t *)opal_pointer_array_get_item(&ompi_mpi_communicators, i);
+            comm = (ompi_communicator_t *)opal_pointer_array_get_item(&ompi_mpi_communicators, i);
             if ( NULL != comm ) {
                 /* Still here ? */
                 if ( !OMPI_COMM_IS_EXTRA_RETAIN(comm)) {
@@ -304,7 +278,7 @@ int ompi_comm_finalize(void)
                      */
                     if ( ompi_debug_show_handle_leaks && !(OMPI_COMM_IS_FREED(comm)) ){
                         opal_output(0,"WARNING: MPI_Comm still allocated in MPI_Finalize\n");
-                        ompi_comm_dump ( comm);
+                        ompi_comm_dump(comm);
                         OBJ_RELEASE(comm);
                     }
                 }
@@ -312,8 +286,8 @@ int ompi_comm_finalize(void)
         }
     }
 
-
     OBJ_DESTRUCT (&ompi_mpi_communicators);
+    OBJ_DESTRUCT (&ompi_mpi_comm_epoch);
 
     /* finalize the comm_reg stuff */
     ompi_comm_reg_finalize();
@@ -368,16 +342,7 @@ static void ompi_comm_construct(ompi_communicator_t* comm)
        done this. */
     memset(&comm->c_coll, 0, sizeof(mca_coll_base_comm_coll_t));
 
-#if OPAL_ENABLE_FT_MPI
-    comm->any_source_enabled  = false;
-    comm->any_source_offset   = 0;
-    comm->comm_revoked        = true;
-    comm->collectives_force_error = true;
-    comm->num_active_local    = -1;
-    comm->num_active_remote   = -1;
-    comm->lleader             = 0;
-    comm->rleader             = 0;
-#endif /* OPAL_ENABLE_FT_MPI */
+    OMPI_COMM_SET_FT(comm, -1, MPI_UNDEFINED);
 }
 
 static void ompi_comm_destruct(ompi_communicator_t* comm)
@@ -475,21 +440,9 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
     if ( MPI_UNDEFINED != comm->c_f_to_c_index && 
          NULL != opal_pointer_array_get_item(&ompi_mpi_communicators,
                                              comm->c_f_to_c_index )) {
-        opal_pointer_array_set_item ( &ompi_mpi_communicators,
-                                      comm->c_f_to_c_index, NULL);
-
+        opal_pointer_array_set_item(&ompi_mpi_communicators,
+                                    comm->c_f_to_c_index, NULL);
     }
-
-#if OPAL_ENABLE_FT_MPI
-    comm->any_source_enabled  = false;
-    comm->any_source_offset   = 0;
-    comm->comm_revoked        = true;
-    comm->collectives_force_error = true;
-    comm->num_active_local    = -1;
-    comm->num_active_remote   = -1;
-    comm->lleader             = 0;
-    comm->rleader             = 0;
-#endif /* OPAL_ENABLE_FT_MPI */
 
     return;
 }

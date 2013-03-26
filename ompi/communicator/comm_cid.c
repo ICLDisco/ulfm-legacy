@@ -294,6 +294,17 @@ int ompi_comm_nextcid ( ompi_communicator_t* newcomm,
     newcomm->c_contextid = nextcid;
     newcomm->c_f_to_c_index = newcomm->c_contextid;
     opal_pointer_array_set_item (&ompi_mpi_communicators, nextcid, newcomm);
+#if OPAL_ENABLE_FT_MPI
+    /* If aother communitor used this cid then we should inherit his epoch
+     * to avoid potential race conditions with revocation messages still
+     * flowing in the communication layer.
+     */
+    {
+        void* location = opal_pointer_array_get_item(&ompi_mpi_comm_epoch, nextcid);
+        newcomm->epoch = (NULL == location ? 0 : 1 + (int)((uintptr_t)location));
+        opal_pointer_array_set_item(&ompi_mpi_comm_epoch, nextcid, (void*)(uintptr_t)newcomm->epoch);
+    }
+#endif  /* OPAL_ENABLE_FT_MPI */
 
  release_and_return:
     OPAL_THREAD_LOCK(&ompi_cid_lock);

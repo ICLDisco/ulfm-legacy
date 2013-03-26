@@ -215,8 +215,6 @@ void ompi_group_increment_proc_count(ompi_group_t *group)
         proc_pointer = ompi_group_peer_lookup(group,proc);
         OBJ_RETAIN(proc_pointer);
     }
-
-    return;
 }
 
 /*
@@ -231,8 +229,6 @@ void ompi_group_decrement_proc_count(ompi_group_t *group)
         proc_pointer = ompi_group_peer_lookup(group,proc);
         OBJ_RELEASE(proc_pointer);
     }
-
-    return;
 }
 
 /*
@@ -250,13 +246,13 @@ static void ompi_group_construct(ompi_group_t *new_group)
     /* assign entry in fortran <-> c translation array */
     ret_val = opal_pointer_array_add(&ompi_group_f_to_c_table, new_group);
     new_group->grp_f_to_c_index = ret_val;
-    new_group->grp_flags = 0;
 
-    /* default the sparse values for groups */
+    new_group->grp_flags        = 0;
+    new_group->grp_proc_count   = 0;
+    new_group->grp_my_rank      = 0;
+
+    new_group->grp_proc_pointers    = NULL;
     new_group->grp_parent_group_ptr = NULL;
-    
-    /* return */
-    return;
 }
 
 
