@@ -104,11 +104,6 @@ int MPI_Cart_create(MPI_Comm old_comm, int ndims, int *dims,
         }
     }
 
-#if OPAL_ENABLE_FT_MPI
-    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, old_comm,
-                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
-#endif
-
     OPAL_CR_ENTER_LIBRARY();
 
     /* everything seems to be alright with the communicator, we can go 
