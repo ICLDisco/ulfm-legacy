@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2013 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -80,11 +80,6 @@ int MPI_Cart_rank(MPI_Comm comm, int *coords, int *rank)
             }
         }
     }
-
-#if OPAL_ENABLE_FT_MPI
-    OMPI_ERRHANDLER_RETURN(OMPI_ERR_NOT_SUPPORTED, comm,
-                           OMPI_ERR_NOT_SUPPORTED, FUNC_NAME);
-#endif
 
     OPAL_CR_ENTER_LIBRARY();
 

@@ -469,6 +469,11 @@ int ompi_request_default_wait_all( size_t count,
                     mpi_error = tmp;
                 }
             }
+#if OPAL_ENABLE_FT_MPI
+            if( (MPI_ERR_PROC_FAILED == rc) || (MPI_ERR_REVOKED == rc) ) {
+                mpi_error = rc;
+            }
+#endif  /* OPAL_ENABLE_FT_MPI */
             /*
              * Per MPI 2.2 p34:
              * "It is possible for an MPI function to return MPI_ERR_IN_STATUS
@@ -618,11 +623,16 @@ finished:
 #if OPAL_ENABLE_FT_MPI
             /* Special case for MPI_ANY_SOURCE */
             if( request->req_any_source_pending ) {
+                rc = MPI_ERR_IN_STATUS;
                 if (MPI_STATUSES_IGNORE != statuses) {
                     OMPI_STATUS_SET(&statuses[i], &request->req_status);
                     statuses[i].MPI_ERROR = MPI_ERR_PENDING;
+                } else {
+                    if( (MPI_ERR_PROC_FAILED == request->req_status.MPI_ERROR) ||
+                        (MPI_ERR_REVOKED == request->req_status.MPI_ERROR) ) {
+                        rc = request->req_status.MPI_ERROR;
+                    }
                 }
-                rc = MPI_ERR_IN_STATUS;
                 continue;
             }
 #endif /* OPAL_ENABLE_FT_MPI */
