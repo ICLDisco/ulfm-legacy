@@ -165,11 +165,11 @@ AC_DEFINE_UNQUOTED([OMPI_ENABLE_PROGRESS_THREADS], [$OMPI_ENABLE_PROGRESS_THREAD
 
 # List header files to generate
 
-AM_CONFIG_HEADER([opal/include/opal_config.h])
+AC_CONFIG_HEADER([opal/include/opal_config.h])
 m4_ifdef([project_orte],
-         [AM_CONFIG_HEADER([orte/include/orte_config.h])])
+         [AC_CONFIG_HEADER([orte/include/orte_config.h])])
 m4_ifdef([project_ompi],
-         [AM_CONFIG_HEADER([ompi/include/ompi_config.h ompi/include/mpi.h])])
+         [AC_CONFIG_HEADER([ompi/include/ompi_config.h ompi/include/mpi.h])])
 
 # override/fixup the version numbers set by AC_INIT, since on
 # developer builds, there's no good way to know what the version is

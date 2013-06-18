@@ -104,8 +104,16 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(ompi_communicator_t);
 /* A macro comparing two CIDs */
 #define OMPI_COMM_CID_IS_LOWER(comm1,comm2) ( ((comm1)->c_contextid < (comm2)->c_contextid)? 1:0)
 
-
 OMPI_DECLSPEC extern opal_pointer_array_t ompi_mpi_communicators;
+#if OPAL_ENABLE_FT_MPI
+/**
+ * This array hold the number of time each id has been used. In the case where a communicator
+ * is revoked this reference count act as a epoch, and prevent us from revoking newly created
+ * communicators, that use similar id to others communicators that are still revoked in the
+ * system.
+ */
+OMPI_DECLSPEC extern opal_pointer_array_t ompi_mpi_comm_epoch;
+#endif  /* OPAL_ENABLE_FT_MPI */
 
 struct ompi_communicator_t {
     opal_object_t              c_base;
@@ -121,7 +129,10 @@ struct ompi_communicator_t {
                to a child*/
     int c_id_start_index; /* the starting index of the block of cids 
                  allocated to this communicator*/
-
+    int                  epoch;  /**< Identified used to keep trace of the communicators revoked.
+                                  * This allows to avoid a race condition between the revoke-based
+                                  * message arriving from late peers and the creation of new communicators.
+                                  */
     ompi_group_t        *c_local_group;
     ompi_group_t       *c_remote_group;
 
@@ -263,8 +274,6 @@ OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_world;
 OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_self;
 OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_null;
 
-
-
 /**
  * Is this a valid communicator?  This is a complicated question.
  * :-)
@@ -367,6 +376,19 @@ static inline int ompi_comm_peer_lookup_id(ompi_communicator_t* comm, ompi_proc_
 }
 
 #if OPAL_ENABLE_FT_MPI
+#define OMPI_COMM_SET_FT(COMM, NPROCS, EPOCH)                           \
+    do {                                                                \
+        (COMM)->any_source_enabled  = true;                             \
+        (COMM)->any_source_offset   = 0;                                \
+        (COMM)->comm_revoked        = false;                            \
+        (COMM)->collectives_force_error = false;                        \
+        (COMM)->num_active_local    = (NPROCS);                         \
+        (COMM)->num_active_remote   = (NPROCS);                         \
+        (COMM)->lleader             = 0;                                \
+        (COMM)->rleader             = 0;                                \
+        (COMM)->epoch               = (EPOCH);                          \
+    } while (0)
+
 /*
  * Support for MPI_ANY_SOURCE point-to-point operations
  */
@@ -505,6 +527,8 @@ int ompi_comm_allreduce_intra_oob_ft(int *inbuf, int *outbuf,
                                      ompi_communicator_t *bridgecomm, 
                                      void* lleader, void* rleader,
                                      int send_first );
+#else
+#define OMPI_COMM_SET_FT(COMM, NPROCS, EPOCH)
 #endif /* OPAL_ENABLE_FT_MPI */
 
 static inline bool ompi_comm_peer_invalid(ompi_communicator_t* comm, int peer_id)
