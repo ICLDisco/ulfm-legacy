@@ -36,6 +36,7 @@ static void ompi_comm_revoke_bml_cb_fn(
 
 typedef struct ompi_revoke_message_t {
     int32_t    cid;
+    int32_t    epoch;
     int32_t    leader;
     int8_t     round;
 } ompi_revoke_message_t;
@@ -45,16 +46,16 @@ static int ompi_comm_revoke_internal_rbcast_ringleader(ompi_group_t* grp, int ci
 static int ompi_comm_revoke_internal_rbcast_bmg(ompi_group_t* grp, int cid);
 #define ompi_comm_revoke_internal_rbcast(grp, cid) ( \
     comm_revoke_rbcast == 0 ? OMPI_SUCCESS : \
-    comm_revoke_rbcast == 1 ? ompi_comm_revoke_internal_rbcast_n2(grp, cid) : \
-    comm_revoke_rbcast == 2 ? ompi_comm_revoke_internal_rbcast_bmg(grp, cid) : \
+    comm_revoke_rbcast == 1 ? ompi_comm_revoke_internal_rbcast_bmg(grp, cid) : \
+    comm_revoke_rbcast == 2 ? ompi_comm_revoke_internal_rbcast_n2(grp, cid) : \
                               ompi_comm_revoke_internal_rbcast_ringleader(grp, cid) )
 
 static int ompi_comm_revoke_internal_fw_ringleader(ompi_revoke_message_t* msg);
 static int ompi_comm_revoke_internal_fw_n2(ompi_revoke_message_t* msg);
 #define ompi_comm_revoke_internal_fw(msg) ( \
     comm_revoke_rbcast == 0 ? OMPI_SUCCESS : \
-    comm_revoke_rbcast == 1 ? ompi_comm_revoke_internal_fw_n2(msg) : \
-    comm_revoke_rbcast == 2 ? ompi_comm_revoke_internal_fw_n2(msg) /*this is not a mistake*/ : \
+    comm_revoke_rbcast == 1 ? ompi_comm_revoke_internal_fw_n2(msg) : /*this is not a mistake, BMG uses the n2 fw */ \
+    comm_revoke_rbcast == 2 ? ompi_comm_revoke_internal_fw_n2(msg) : \
                               ompi_comm_revoke_internal_fw_ringleader(msg) )
 
 
@@ -127,10 +128,15 @@ static void ompi_comm_revoke_bml_cb_fn(
     assert( cid_to_revoke == (int)(comm->c_contextid) );
     
     /* Revoke the communicator locally */
+    if( comm->epoch != msg->epoch ) {
+        OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle, 
+                             "%s ompi: comm_revoke: Info: Received a late revoke order for the communicator with CID %3d:%d when is is now at epoch %d - ignoring, nothing to do",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cid_to_revoke, msg->epoch, comm->epoch ));
+    }
     if( comm->comm_revoked ) {
         OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle,
-                             "%s ompi: comm_revoke: Recv: Asked to revoke communicator %3d - Already revoked",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cid_to_revoke ));
+                             "%s ompi: comm_revoke: Info: Received a duplicate revoke order for communicator with CID %3d:%d - Already revoked, nothing to do",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cid_to_revoke, msg->epoch ));
     }
     else {
         comm->comm_revoked        = true;
