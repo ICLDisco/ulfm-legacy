@@ -197,20 +197,20 @@ static ompi_group_t* ompi_comm_revoke_internal_fw_grp(ompi_revoke_message_t* msg
 
 
 int ompi_comm_revoke_internal(ompi_communicator_t* comm) {
+    int ret;
     ompi_revoke_message_t msg;
 
     msg.cid = comm->c_contextid;
     msg.epoch = comm->epoch;
-    if(false == ompi_comm_revoke_internal_local(&msg))
-        return OMPI_SUCCESS;     /* if the communicator is already revoked, nothing to be done */
-
     /*
      * Broadcast the 'revoke' signal to all other processes.
      */
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                          "%s ompi: comm_revoke: API: Ask others to revoke communicator %3d:%d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), comm->c_contextid, comm->epoch ));
-    return ompi_comm_revoke_internal_rbcast(&msg);
+    ret = ompi_comm_revoke_internal_rbcast(&msg);
+    ompi_comm_revoke_internal_local(&msg);
+    return ret;
 }
 
 static int ompi_comm_revoke_internal_rbcast_n2(ompi_revoke_message_t* msg) {
