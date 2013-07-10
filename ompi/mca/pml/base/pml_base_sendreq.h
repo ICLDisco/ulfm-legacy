@@ -123,6 +123,7 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION( mca_pml_base_send_request_t );
         (request)->req_ompi.req_complete = false;             \
         (request)->req_ompi.req_state = OMPI_REQUEST_ACTIVE;  \
         (request)->req_ompi.req_status._cancelled = 0;        \
+        (request)->req_ompi.req_status.MPI_ERROR = OMPI_SUCCESS; \
         (request)->req_ompi.req_mpi_object.comm     = (request)->req_comm; \
         (request)->req_ompi.req_peer = (request)->req_peer;   \
     } while (0)

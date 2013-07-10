@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2013 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -27,6 +27,7 @@
 #include "opal/prefetch.h"
 #include "ompi/constants.h"
 #include "ompi/mca/pml/pml.h"
+#include "ompi/mca/pml/base/base.h"
 #include "ompi/mca/btl/btl.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "ompi/mca/mpool/mpool.h" 
@@ -184,9 +185,9 @@ mca_pml_ob1_match_completion_free( struct mca_btl_base_module_t* btl,
 
     /* check completion status */
     if( OPAL_UNLIKELY(OMPI_SUCCESS != status) ) {
-        /* TSW - FIX */
-        opal_output(0, "%s:%d FATAL", __FILE__, __LINE__);
-        orte_errmgr.abort(-1, NULL);
+        OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        MCA_PML_OB1_SEND_REQUEST_MPI_COMPLETE(sendreq, true);
     }
     mca_pml_ob1_match_completion_free_request( bml_btl, sendreq );
 }
@@ -228,9 +229,9 @@ mca_pml_ob1_rndv_completion( mca_btl_base_module_t* btl,
 
     /* check completion status */
     if( OPAL_UNLIKELY(OMPI_SUCCESS != status) ) {
-        /* TSW - FIX */
-        opal_output(0, "%s:%d FATAL", __FILE__, __LINE__);
-        orte_errmgr.abort(-1, NULL);
+        OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        MCA_PML_OB1_SEND_REQUEST_MPI_COMPLETE(sendreq, true);
     }
 
     /* count bytes of user data actually delivered. As the rndv completion only
@@ -259,6 +260,13 @@ mca_pml_ob1_rget_completion( mca_btl_base_module_t* btl,
     mca_pml_ob1_send_request_t* sendreq = (mca_pml_ob1_send_request_t*)des->des_cbdata;
     mca_bml_base_btl_t* bml_btl = (mca_bml_base_btl_t*)des->des_context;
     size_t req_bytes_delivered = 0;
+    
+    /* check completion status */
+    if( OPAL_UNLIKELY(OMPI_SUCCESS != status) ) {
+        OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        MCA_PML_OB1_SEND_REQUEST_MPI_COMPLETE(sendreq, true);
+    }
 
     /* count bytes of user data actually delivered and check for request completion */
     MCA_PML_OB1_COMPUTE_SEGMENT_LENGTH( des->des_src, des->des_src_cnt,
@@ -305,9 +313,9 @@ mca_pml_ob1_frag_completion( mca_btl_base_module_t* btl,
 
     /* check completion status */
     if( OPAL_UNLIKELY(OMPI_SUCCESS != status) ) {
-        /* TSW - FIX */
-        opal_output(0, "%s:%d FATAL", __FILE__, __LINE__);
-        orte_errmgr.abort(-1, NULL);
+        OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        MCA_PML_OB1_SEND_REQUEST_MPI_COMPLETE(sendreq, true);
     }
 
     /* count bytes of user data actually delivered */
@@ -1113,9 +1121,9 @@ static void mca_pml_ob1_put_completion( mca_btl_base_module_t* btl,
 
     /* check completion status */
     if( OPAL_UNLIKELY(OMPI_SUCCESS != status) ) {
-        /* TSW - FIX */
-        ORTE_ERROR_LOG(status);
-        orte_errmgr.abort(-1, NULL);
+        OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        MCA_PML_OB1_SEND_REQUEST_MPI_COMPLETE(sendreq, true);
     }
 
     mca_pml_ob1_send_fin(sendreq->req_send.req_base.req_proc, 
@@ -1198,9 +1206,7 @@ int mca_pml_ob1_send_request_put_frag( mca_pml_ob1_rdma_frag_t* frag )
             OPAL_THREAD_UNLOCK(&mca_pml_ob1.lock);
             return OMPI_ERR_OUT_OF_RESOURCE;
         } else {
-            /* TSW - FIX */
-            ORTE_ERROR_LOG(rc);
-            orte_errmgr.abort(-1, NULL);
+            return rc;
         }
     }
     return OMPI_SUCCESS;
@@ -1229,9 +1235,9 @@ void mca_pml_ob1_send_request_put( mca_pml_ob1_send_request_t* sendreq,
     MCA_PML_OB1_RDMA_FRAG_ALLOC(frag, rc); 
 
     if( OPAL_UNLIKELY(NULL == frag) ) {
-        /* TSW - FIX */
-        ORTE_ERROR_LOG(rc);
-        orte_errmgr.abort(-1, NULL);
+        OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, rc));
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = rc;
+        MCA_PML_OB1_SEND_REQUEST_MPI_COMPLETE(sendreq, true);
     }
 
     /* setup fragment */
