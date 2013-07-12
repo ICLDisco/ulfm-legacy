@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2009 The University of Tennessee and The University
+ * Copyright (c) 2004-2013 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -22,6 +22,7 @@
 #include "ompi_config.h"
 
 #include "ompi/mca/pml/pml.h"
+#include "ompi/mca/pml/base/base.h"
 #include "ompi/mca/bml/bml.h" 
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/mpool/mpool.h" 
@@ -193,6 +194,13 @@ static void mca_pml_ob1_put_completion( mca_btl_base_module_t* btl,
         MCA_PML_OB1_COMPUTE_SEGMENT_LENGTH( des->des_dst, des->des_dst_cnt,
                                             0, bytes_received );
     }
+    else {
+        OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
+        recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR = status;
+        /* Skip RDMA bytes when waiting for completion */
+        bytes_received = recvreq->req_send_offset - recvreq->req_rdma_offset;
+        recvreq->req_rdma_offset = recvreq->req_send_offset; /* prevent posting of more RDMA */
+    }
     OPAL_THREAD_ADD_SIZE_T(&recvreq->req_pipeline_depth,-1);
 
     mca_bml_base_free(bml_btl, des);
@@ -329,19 +337,23 @@ static void mca_pml_ob1_rget_completion( mca_btl_base_module_t* btl,
     mca_pml_ob1_recv_request_t* recvreq = (mca_pml_ob1_recv_request_t*)frag->rdma_req;
 
     /* check completion status */
-    if( OPAL_UNLIKELY(OMPI_SUCCESS != status) ) {
-        /* TSW - FIX */
-        ORTE_ERROR_LOG(status);
-        orte_errmgr.abort(-1, NULL);
+    if( OPAL_LIKELY(OMPI_SUCCESS == status) ) {
+        mca_pml_ob1_send_fin(recvreq->req_recv.req_base.req_proc,
+                             bml_btl,
+                             frag->rdma_hdr.hdr_rget.hdr_des,
+                             des->order, 0); 
+        OPAL_THREAD_ADD_SIZE_T(&recvreq->req_bytes_received, frag->rdma_length);
+    }
+    else {
+        size_t skipped_bytes = recvreq->req_send_offset - recvreq->req_rdma_offset;
+        OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
+        recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR = status;
+        recvreq->req_rdma_offset = recvreq->req_send_offset; /* prevent posting of more RDMA */
+        /* Account for the skipped RDMA bytes when waiting for completion */
+        OPAL_THREAD_ADD_SIZE_T(&recvreq->req_bytes_received, skipped_bytes); 
     }
 
-    mca_pml_ob1_send_fin(recvreq->req_recv.req_base.req_proc,
-                         bml_btl,
-                         frag->rdma_hdr.hdr_rget.hdr_des,
-                         des->order, 0); 
-
     /* is receive request complete */
-    OPAL_THREAD_ADD_SIZE_T(&recvreq->req_bytes_received, frag->rdma_length);
     recv_request_pml_complete_check(recvreq);
 
     MCA_PML_OB1_RDMA_FRAG_RETURN(frag);
@@ -369,7 +381,7 @@ int mca_pml_ob1_recv_request_get_frag( mca_pml_ob1_rdma_frag_t* frag )
                               0,
                               &frag->rdma_length,
                               MCA_BTL_DES_FLAGS_BTL_OWNERSHIP | MCA_BTL_DES_SEND_ALWAYS_CALLBACK |
-			      MCA_BTL_DES_FLAGS_GET,
+                              MCA_BTL_DES_FLAGS_GET,
                               &descriptor );
     if( OPAL_UNLIKELY(NULL == descriptor) ) {
         frag->rdma_length = save_size;
@@ -504,7 +516,7 @@ void mca_pml_ob1_recv_request_progress_rget( mca_pml_ob1_recv_request_t* recvreq
     
     MCA_PML_OB1_RDMA_FRAG_ALLOC(frag,rc);
     if( OPAL_UNLIKELY(NULL == frag) ) {
-        /* GLB - FIX */
+         /* GLB - FIX */
          ORTE_ERROR_LOG(rc);
          orte_errmgr.abort(-1, NULL);
     }
@@ -790,7 +802,7 @@ int mca_pml_ob1_recv_request_schedule_once( mca_pml_ob1_recv_request_t* recvreq,
         mca_bml_base_prepare_dst(bml_btl, reg, 
                                  &recvreq->req_recv.req_base.req_convertor,
                                  MCA_BTL_NO_ORDER, 0, &size, MCA_BTL_DES_FLAGS_BTL_OWNERSHIP |
-				 MCA_BTL_DES_FLAGS_PUT, &dst);
+                                 MCA_BTL_DES_FLAGS_PUT, &dst);
         OPAL_THREAD_UNLOCK(&recvreq->lock);
 
         if(OPAL_UNLIKELY(dst == NULL)) {
