@@ -191,10 +191,10 @@ mca_pml_ob1_match_completion_free( struct mca_btl_base_module_t* btl,
         sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /**
-          * Ideally we should release the BTL at this point. Unfortunately as we don't
-          * know if other operations are pending on it we can't release it yet (or we
-          * will prevent any further callbacks triggering).
-          */
+         * Ideally we should release the BTL at this point. Unfortunately as we don't
+         * know if other operations are pending on it we can't release it yet (or we
+         * will prevent any further callbacks triggering).
+         */
     }
     mca_pml_ob1_match_completion_free_request( bml_btl, sendreq );
 }
@@ -242,10 +242,10 @@ mca_pml_ob1_rndv_completion( mca_btl_base_module_t* btl,
         sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /**
-          * Ideally we should release the BTL at this point. Unfortunately as we don't
-          * know if other operations are pending on it we can't release it yet (or we
-          * will prevent any further callbacks triggering).
-          */
+         * Ideally we should release the BTL at this point. Unfortunately as we don't
+         * know if other operations are pending on it we can't release it yet (or we
+         * will prevent any further callbacks triggering).
+         */
     }
 
     /* count bytes of user data actually delivered. As the rndv completion only
@@ -296,11 +296,11 @@ mca_pml_ob1_rget_completion( mca_btl_base_module_t* btl,
     OPAL_THREAD_ADD_SIZE_T(&sendreq->req_bytes_delivered, req_bytes_delivered);
 
     send_request_pml_complete_check(sendreq);
+
     /* free the descriptor */
     mca_bml_base_free(bml_btl, des);
     if( OPAL_LIKELY(OMPI_SUCCESS == status) ) { 
         MCA_PML_OB1_PROGRESS_PENDING(bml_btl);
-
     }
 }
 
@@ -324,9 +324,9 @@ mca_pml_ob1_send_ctl_completion( mca_btl_base_module_t* btl,
         sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /** Ideally we should release the BTL at this point. Unfortunately as we don't
-          * know if other operations are pending on it we can't release it yet (or we
-          * will prevent any further callbacks triggering).
-          */
+         * know if other operations are pending on it we can't release it yet (or we
+         * will prevent any further callbacks triggering).
+         */
     }
     else {
         /* check for pending requests */
@@ -1164,6 +1164,7 @@ static void mca_pml_ob1_put_completion( mca_btl_base_module_t* btl,
     mca_pml_ob1_rdma_frag_t* frag = (mca_pml_ob1_rdma_frag_t*)des->des_cbdata;
     mca_pml_ob1_send_request_t* sendreq = (mca_pml_ob1_send_request_t*)frag->rdma_req;
     mca_bml_base_btl_t* bml_btl = (mca_bml_base_btl_t*) des->des_context;
+    size_t progressed_bytes;
 
     /* check completion status */
     if( OPAL_UNLIKELY(OMPI_SUCCESS != status) ) {
@@ -1177,15 +1178,16 @@ static void mca_pml_ob1_put_completion( mca_btl_base_module_t* btl,
           * know if other operations are pending on it we can't release it yet (or we
           * will prevent any further callbacks triggering).
           */
-        OPAL_THREAD_ADD_SIZE_T(&sendreq->req_bytes_delivered, sendreq->req_send.req_bytes_packed);
+        progressed_bytes = sendreq->req_send.req_bytes_packed;
     }
     else {
         mca_pml_ob1_send_fin(sendreq->req_send.req_base.req_proc, 
                              bml_btl,
                              frag->rdma_hdr.hdr_rdma.hdr_des,
                              des->order, 0);
-        OPAL_THREAD_ADD_SIZE_T(&sendreq->req_bytes_delivered, frag->rdma_length);
+        progressed_bytes = frag->rdma_length;
     } 
+    OPAL_THREAD_ADD_SIZE_T(&sendreq->req_bytes_delivered, progressed_bytes);
     send_request_pml_complete_check(sendreq);
 
     MCA_PML_OB1_RDMA_FRAG_RETURN(frag);
