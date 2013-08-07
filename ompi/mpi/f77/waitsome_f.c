@@ -94,25 +94,21 @@ void mpi_waitsome_f(MPI_Fint *incount, MPI_Fint *array_of_requests,
                                          OMPI_ARRAY_NAME_CONVERT(array_of_indices), 
                                          c_status));
 
-    if (MPI_SUCCESS == OMPI_FINT_2_INT(*ierr)) {
-        OMPI_SINGLE_INT_2_FINT(outcount);
-        OMPI_ARRAY_INT_2_FINT(array_of_indices, *incount);
+    OMPI_SINGLE_INT_2_FINT(outcount);
+    OMPI_ARRAY_INT_2_FINT(array_of_indices, *incount);
 
-        /* Increment indexes by one for fortran conventions */
+    /* Increment indexes by one for fortran conventions */
 
-        if (MPI_UNDEFINED != OMPI_FINT_2_INT(*outcount)) {
-            for (i = 0; i < OMPI_FINT_2_INT(*outcount); ++i) {
-                array_of_requests[OMPI_INT_2_FINT(array_of_indices[i])] =
-                    c_req[OMPI_INT_2_FINT(array_of_indices[i])]->req_f_to_c_index;
-                ++array_of_indices[i];
-            }
+    if (MPI_UNDEFINED != OMPI_FINT_2_INT(*outcount)) {
+        for (i = 0; i < OMPI_FINT_2_INT(*outcount); ++i) {
+            array_of_requests[OMPI_INT_2_FINT(array_of_indices[i])] =
+                c_req[OMPI_INT_2_FINT(array_of_indices[i])]->req_f_to_c_index;
+            ++array_of_indices[i];
         }
-        if (!OMPI_IS_FORTRAN_STATUSES_IGNORE(array_of_statuses)) {
-            for (i = 0; i < OMPI_FINT_2_INT(*incount); ++i) {
-                if (!OMPI_IS_FORTRAN_STATUS_IGNORE(&array_of_statuses[i])) {
-                    MPI_Status_c2f(&c_status[i], &array_of_statuses[i * (sizeof(MPI_Status) / sizeof(int))]);
-                }
-            }
+    }
+    if (!OMPI_IS_FORTRAN_STATUSES_IGNORE(array_of_statuses)) {
+        for (i = 0; i < OMPI_FINT_2_INT(*incount); ++i) {
+            MPI_Status_c2f(&c_status[i], &array_of_statuses[i * (sizeof(MPI_Status) / sizeof(int))]);
         }
     }
     free(c_req);
