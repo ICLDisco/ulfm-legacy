@@ -90,13 +90,10 @@ void mpi_testall_f(MPI_Fint *count, MPI_Fint *array_of_requests, ompi_fortran_lo
     /*
      * All Fortran Compilers have FALSE == 0 -- we just need a TRUE value, i.e. *flag != 0
      */
-    if (MPI_SUCCESS == OMPI_FINT_2_INT(*ierr) && *flag) {
+    if (!OMPI_IS_FORTRAN_STATUSES_IGNORE(array_of_statuses) && *flag) {
         for (i = 0; i < OMPI_FINT_2_INT(*count); ++i) {
             array_of_requests[i] = c_req[i]->req_f_to_c_index;
-            if (!OMPI_IS_FORTRAN_STATUSES_IGNORE(array_of_statuses) &&
-                !OMPI_IS_FORTRAN_STATUS_IGNORE(&array_of_statuses[i])) {
-                MPI_Status_c2f(&c_status[i], &array_of_statuses[i * (sizeof(MPI_Status) / sizeof(int))]);
-            }
+            MPI_Status_c2f(&c_status[i], &array_of_statuses[i * (sizeof(MPI_Status) / sizeof(int))]);
         }
     }
 
