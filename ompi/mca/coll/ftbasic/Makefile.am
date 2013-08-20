@@ -27,6 +27,7 @@ sources = \
         coll_ftbasic_agreement.h \
         coll_ftbasic_agreement_2phase.c \
 		coll_ftbasic_agreement_log2phase.c \
+		coll_ftbasic_agreement_earlyterminating.c \
         coll_ftbasic_agreement_allreduce.c
 
 # Make the output library in this directory, and name it either
