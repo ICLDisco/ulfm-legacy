@@ -139,6 +139,8 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
             ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_log_two_phase;
             ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_log_two_phase;
         default:
+            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_eta_intra;
+            ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
             break;
         }
     } else {
