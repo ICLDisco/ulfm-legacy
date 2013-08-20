@@ -242,7 +242,7 @@ extern int mca_coll_ftbasic_remote_bitmap_num_modules;
     } while(0)
 
 #define REMOTE_BITMAP_RESET_NEXT(ftmodule)                              \
-    do {                                                                \
+    if( ftmodule->agreement_info ) {                                    \
         opal_list_item_t* item = NULL;                                  \
         mca_coll_ftbasic_remote_bitmap_t *rbm = NULL;                   \
                                                                         \
@@ -253,7 +253,7 @@ extern int mca_coll_ftbasic_remote_bitmap_num_modules;
             rbm->rank = -1;                                             \
         }                                                               \
         ftmodule->agreement_info->last_used = NULL;                                     \
-    } while(0)
+    }
 
 
     /*
