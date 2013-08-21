@@ -48,7 +48,7 @@ typedef struct {
     int know;
 } ftbasic_eta_agreement_msg_t;
 
-#define FTBASIC_ETA_TAG_AGREEMENT -314
+#define FTBASIC_ETA_TAG_AGREEMENT MCA_COLL_BASE_TAG_AGREEMENT
 
 static void ftbasic_eta_received_message(ftbasic_eta_agreement_msg_t  *out, 
                                          int *nbrecv, int *nbknow, 
