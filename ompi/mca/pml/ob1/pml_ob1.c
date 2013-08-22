@@ -79,9 +79,9 @@ mca_pml_ob1_t mca_pml_ob1 = {
 };
 
 
-void mca_pml_ob1_error_handler( struct mca_btl_base_module_t* btl,
-                                int32_t flags, ompi_proc_t* errproc,
-                                char* btlinfo );
+static void mca_pml_ob1_error_handler( struct mca_btl_base_module_t* btl,
+                                       int32_t flags, ompi_proc_t* errproc,
+                                       char* btlinfo );
 
 int mca_pml_ob1_enable(bool enable)
 {
@@ -614,9 +614,12 @@ void mca_pml_ob1_error_handler(struct mca_btl_base_module_t* btl,
                                ompi_proc_t* errproc,
                                char* btlinfo )
 {
-    opal_output(0, "pml:ob1: the error handler was invoked by a BTL. FATAL.");
-    (void)ompi_errmgr_mark_failed_peer(errproc, ORTE_PROC_STATE_COMM_FAILED);
-    /* orte_errmgr.abort(-1, NULL); */
+    opal_output_verbose( 1, mca_pml_base_output,
+                         "PML:OB1: the error handler was invoked by the %s BTL for proc %s with info %s",
+                         btl->btl_component->btl_version.mca_component_name,
+                         (NULL == errproc ? "null" : ORTE_NAME_PRINT(&errproc->proc_name)), btlinfo);
+    if( NULL != errproc )
+        (void)ompi_errmgr_mark_failed_peer(errproc, ORTE_PROC_STATE_COMM_FAILED);
 }
 
 #if OPAL_ENABLE_FT_CR    == 0
