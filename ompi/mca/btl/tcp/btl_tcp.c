@@ -33,6 +33,8 @@
 #include "ompi/mca/mpool/mpool.h" 
 #include "ompi/proc/proc.h"
 
+static int mca_btl_tcp_register_error_cb(struct mca_btl_base_module_t* btl,
+                                         mca_btl_base_module_error_cb_fn_t cbfunc);
 mca_btl_tcp_module_t mca_btl_tcp_module = {
     {
         &mca_btl_tcp_component.super,
@@ -60,10 +62,18 @@ mca_btl_tcp_module_t mca_btl_tcp_module = {
         NULL, /* get */ 
         mca_btl_base_dump,
         NULL, /* mpool */
-        NULL, /* register error */
+        mca_btl_tcp_register_error_cb, /* register error */
         mca_btl_tcp_ft_event
     }
 };
+
+static int mca_btl_tcp_register_error_cb(struct mca_btl_base_module_t* btl,
+                                         mca_btl_base_module_error_cb_fn_t cbfunc)
+{
+    mca_btl_tcp_module_t* tcp_btl = (mca_btl_tcp_module_t*)btl;
+    tcp_btl->error_cb = cbfunc;
+    return OMPI_SUCCESS;
+}
 
 /**
  *

@@ -106,6 +106,7 @@ OMPI_MODULE_DECLSPEC extern mca_btl_tcp_component_t mca_btl_tcp_component;
  */
 struct mca_btl_tcp_module_t {
     mca_btl_base_module_t  super;  /**< base BTL interface */
+    mca_btl_base_module_error_cb_fn_t error_cb;
     uint16_t           tcp_ifkindex; /** <BTL kernel interface index */
 #if 0
     int                tcp_ifindex; /**< BTL interface index */
