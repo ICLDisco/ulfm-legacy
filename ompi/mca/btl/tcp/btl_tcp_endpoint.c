@@ -115,16 +115,9 @@ static void mca_btl_tcp_endpoint_recv_handler(int sd, short flags, void* user);
 static void mca_btl_tcp_endpoint_send_handler(int sd, short flags, void* user);
 
 /*
- * Diagnostics: change this to "1" to enable the function
- * mca_btl_tcp_endpoint_dump(), below
- */
-#define WANT_PEER_DUMP 0
-/*
  * diagnostics
  */
-
-#if WANT_PEER_DUMP
-static void mca_btl_tcp_endpoint_dump(mca_btl_base_endpoint_t* btl_endpoint, const char* msg)
+void mca_btl_tcp_endpoint_dump(mca_btl_base_endpoint_t* btl_endpoint, const char* msg)
 {
     char src[64];
     char dst[64];
@@ -198,7 +191,6 @@ static void mca_btl_tcp_endpoint_dump(mca_btl_base_endpoint_t* btl_endpoint, con
     BTL_VERBOSE(("%s: %s - %s nodelay %d sndbuf %d rcvbuf %d flags %08x", 
         msg, src, dst, nodelay, sndbuf, rcvbuf, flags));
 }
-#endif
 
 /*
  * Initialize events to be used by the endpoint instance for TCP select/poll callbacks.
@@ -392,6 +384,7 @@ void mca_btl_tcp_endpoint_close(mca_btl_base_endpoint_t* btl_endpoint)
 {
     if(btl_endpoint->endpoint_sd < 0)
         return;
+
     btl_endpoint->endpoint_retries++;
     opal_event_del(&btl_endpoint->endpoint_recv_event);
     opal_event_del(&btl_endpoint->endpoint_send_event);
@@ -465,7 +458,8 @@ static int mca_btl_tcp_endpoint_recv_blocking(mca_btl_base_endpoint_t* btl_endpo
 
         /* remote closed connection */
         if(retval == 0) {
-            btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
+            if(MCA_BTL_TCP_CONNECTED == btl_endpoint->endpoint_state)
+                btl_endpoint->endpoint_state = MCA_BTL_TCP_FAILED;
             mca_btl_tcp_endpoint_close(btl_endpoint);
             return -1;
         }

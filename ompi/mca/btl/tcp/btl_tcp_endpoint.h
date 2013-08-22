@@ -26,6 +26,7 @@
 BEGIN_C_DECLS
 
 #define MCA_BTL_TCP_ENDPOINT_CACHE 1
+#define WANT_PEER_DUMP 0
 
 /**
  * State of TCP endpoint connection.
@@ -78,6 +79,7 @@ void mca_btl_tcp_endpoint_close(mca_btl_base_endpoint_t*);
 int  mca_btl_tcp_endpoint_send(mca_btl_base_endpoint_t*, struct mca_btl_tcp_frag_t*);
 bool mca_btl_tcp_endpoint_accept(mca_btl_base_endpoint_t*, struct sockaddr*, int);
 void mca_btl_tcp_endpoint_shutdown(mca_btl_base_endpoint_t*);
+void mca_btl_tcp_endpoint_dump(mca_btl_base_endpoint_t* btl_endpoint, const char* msg);
 
 END_C_DECLS
 #endif
