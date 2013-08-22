@@ -412,6 +412,11 @@ void mca_btl_tcp_endpoint_close(mca_btl_base_endpoint_t* btl_endpoint)
             frag = (mca_btl_tcp_frag_t*)opal_list_remove_first(&btl_endpoint->endpoint_frags);
         }
         btl_endpoint->endpoint_send_frag = NULL;
+        /* Let's report the error upstream */
+        if(NULL != btl_endpoint->endpoint_btl->error_cb) {
+            btl_endpoint->endpoint_btl->error_cb((mca_btl_base_module_t*)btl_endpoint->endpoint_btl, 0,
+                                                 btl_endpoint->endpoint_proc->proc_ompi, "Socket closed");
+        }
     } else {
         btl_endpoint->endpoint_state = MCA_BTL_TCP_CLOSED;
     }
