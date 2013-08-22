@@ -206,7 +206,7 @@ int ompi_errhandler_finalize(void)
 
 
 ompi_errhandler_t *ompi_errhandler_create(ompi_errhandler_type_t object_type,
-					  ompi_errhandler_generic_handler_fn_t *func,
+                                          ompi_errhandler_generic_handler_fn_t *func,
                                           ompi_errhandler_lang_t lang)
 {
   ompi_errhandler_t *new_errhandler;

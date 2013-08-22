@@ -119,17 +119,13 @@ int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state
          * Look in both the local and remote group for this process
          */
         proc_rank = ompi_group_peer_lookup_id(comm->c_local_group, ompi_proc);
-        if( proc_rank < 0 ) {
+        remote = false;
+        if( (proc_rank < 0) && (comm->c_local_group != comm->c_remote_group) ) {
             proc_rank = ompi_group_peer_lookup_id(comm->c_remote_group, ompi_proc);
-            if( proc_rank < 0 ) {
-                /* Not in this communicator, continue */
-                continue;
-            } else {
-                remote = true;
-            }
-        } else {
-            remote = false;
+            remote = true;
         }
+        if( proc_rank < 0 )
+            continue;  /* Not in this communicator, continue */
 
         /* Notify the communicator to update as necessary */
         ompi_comm_set_rank_failed(comm, proc_rank, remote);
