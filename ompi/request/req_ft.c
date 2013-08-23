@@ -116,8 +116,9 @@ bool ompi_request_state_ok(ompi_request_t *req)
             }
 
             opal_output_verbose(10, ompi_ftmpi_output_handle,
-                                "%s ompi_request_state_ok: Rank %3d in communicator (%3d) failed - Ret %s",
+                                "%s ompi_request_state_ok: Request %p rank %3d in commu (%3d) failed - Ret %s",
                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                req,
                                 req->req_status.MPI_SOURCE,
                                 req->req_mpi_object.comm->c_contextid,
                                 (MPI_ERR_PROC_FAILED == req->req_status.MPI_ERROR ? "MPI_ERR_PROC_FAILED" : "MPI_ERR_PENDING") );
