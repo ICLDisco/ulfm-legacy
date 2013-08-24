@@ -184,7 +184,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                         /* Release the requests, they can't be subsequently completed */
                         if(MPI_REQUEST_NULL != reqs[i])
                             ompi_request_free(&reqs[i]);
-                        if(MPI_REQUEST_NULL != reqs[i])
+                        if(MPI_REQUEST_NULL != reqs[i+np])
                             ompi_request_free(&reqs[i+np]);
                     } else if( (MPI_ERR_PENDING == statuses[i].MPI_ERROR) ||
                                (MPI_ERR_PENDING == statuses[np+i].MPI_ERROR)) {
