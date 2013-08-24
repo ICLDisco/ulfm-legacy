@@ -181,9 +181,11 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                              "%s ftbasic:agreement (ETA) communication with rank %d failed. Mark it as dead!",
                                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i));
 
-                        /* Release the request, it can't be subsequently completed */
-                        MPI_Request_free(&reqs[i]);
-                        MPI_Request_free(&reqs[i+np]);
+                        /* Release the requests, they can't be subsequently completed */
+                        if(MPI_REQUEST_NULL != reqs[i])
+                            MPI_Request_free(&reqs[i]);
+                        if(MPI_REQUEST_NULL != reqs[i])
+                            MPI_Request_free(&reqs[i+np]);
                     } else if( (MPI_ERR_PENDING == statuses[i].MPI_ERROR) ||
                                (MPI_ERR_PENDING == statuses[np+i].MPI_ERROR)) {
 
