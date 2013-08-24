@@ -81,12 +81,11 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                      int *flag,
                                      mca_coll_base_module_t *module)
 {
+    ftbasic_eta_agreement_msg_t out, *in;
     ftbasic_eta_proc_agreement_t *ag;
     ompi_request_t **reqs;
     MPI_Status *statuses;
-    ftbasic_eta_agreement_msg_t out;
-    ftbasic_eta_agreement_msg_t *in;
-    int  me, i, np, nbrecv, rc, ret, nbknow, nbcrashed, round_complete;
+    int me, i, np, nbrecv, rc, ret = MPI_SUCCESS, nbknow = 0, nbcrashed = 0, round_complete;
 
     np = ompi_comm_size(comm);
     me = ompi_comm_rank(comm);
@@ -101,15 +100,10 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     out.est = *flag;
     out.know = 0;
     out.round = 1;
-    nbknow = 0;
-    nbcrashed = 0;
 
-    ret = MPI_SUCCESS;
-
-    while(out.round <= np + 1) {
+    while(out.round <= (np + 1)) {
 
         *flag = out.est;
-
         nbrecv = 0;
 
         /**
@@ -142,81 +136,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
             rc = ompi_request_wait_all(2*np, reqs, statuses);
             round_complete = 1;
 
-            if( MPI_SUCCESS != rc ) {
-                if( rc != MPI_ERR_IN_STATUS ) {
-                    ret = rc;
-                    goto clean_and_exit;
-                }
-
-                for(i = 0; i < np; i++) {
-                    /* Ignore dead processes and myself */
-                    if( (ag[i].status == STATUS_CRASHED) ||
-                        (ag[i].status == STATUS_RECEIVED) ||
-                        (me == i) ) {
-                        assert(MPI_REQUEST_NULL == reqs[i]);
-                        assert(MPI_REQUEST_NULL == reqs[i+np]);
-                        continue;
-                    }
-                    
-                    if( (MPI_SUCCESS == statuses[i].MPI_ERROR) &&
-                        (MPI_SUCCESS == statuses[np+i].MPI_ERROR) ) {
-
-                        assert(MPI_REQUEST_NULL == reqs[i]);
-                        assert(MPI_REQUEST_NULL == reqs[i+np]);
-                        ftbasic_eta_received_message(&out, &nbrecv, &nbknow, &in[i], &ag[i]);
-                        ag[i].status = STATUS_RECEIVED;
-                    } else {
-
-                        if( (MPI_ERR_PROC_FAILED == statuses[i].MPI_ERROR) ||
-                            (MPI_ERR_PROC_FAILED == statuses[np+i].MPI_ERROR) ) {
-
-                            /* Failure detected */
-                            ag[i].status = STATUS_CRASHED;
-                            nbcrashed++;
-                            OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                                                 "%s ftbasic:agreement (ETA) point to point communication with rank %d failed. Mark it as dead!",
-                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i));
-
-                            /* Release the request, it can't be subsequently completed */
-                            MPI_Request_free(&reqs[i]);
-                            MPI_Request_free(&reqs[i+np]);
-                        } else if( (MPI_ERR_PENDING == statuses[i].MPI_ERROR) ||
-                                   (MPI_ERR_PENDING == statuses[np+i].MPI_ERROR)) {
-                            int j;
-                            /* All the remaining of the pending request must be complete to end the
-                             * current round. Check no other errors are reported during this turn.
-                             *
-                             * TODO: This step might not be needed as the
-                             * requests will be checked by the upper loop
-                             * anyway.
-                             */
-                            for(j = i; j < (2*np); j++) {
-                                if( MPI_ERR_PENDING != statuses[j].MPI_ERROR &&
-                                    MPI_SUCCESS != statuses[j].MPI_ERROR &&
-                                    MPI_ERR_PROC_FAILED != statuses[j].MPI_ERROR ) {
-                                    rc = statuses[j].MPI_ERROR;
-                                    OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                                                         "%s ftbasic:agreement (ETA) point to point communication with rank %d failed with error code %d",
-                                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
-                                                         j, statuses[j].MPI_ERROR));
-                                    goto clean_and_exit;
-                                }
-                            }
-
-                            round_complete = 0;
-                        } else {
-                            if( (MPI_SUCCESS != statuses[i].MPI_ERROR) &&
-                                (MPI_ERR_PROC_FAILED != statuses[i].MPI_ERROR) &&
-                                (MPI_ERR_PENDING != statuses[i].MPI_ERROR) ) {
-                                ret = statuses[i].MPI_ERROR;
-                            } else {
-                                ret = statuses[i+np].MPI_ERROR;
-                            }
-                            goto clean_and_exit;
-                        }
-                    }
-                }
-            } else {
+            if( MPI_SUCCESS == rc ) {
                 /* The waitall returned success: all posted requests completed */
                 for(i = 0; i < np; i++) {
                     assert(MPI_REQUEST_NULL == reqs[i]);
@@ -227,6 +147,58 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                         continue;
                     ftbasic_eta_received_message(&out, &nbrecv, &nbknow, &in[i], &ag[i]);
                     ag[i].status = STATUS_RECEIVED;
+                }
+                break;  /* Done with this loop */
+            }
+            if( rc != MPI_ERR_IN_STATUS ) {
+                ret = rc;
+                goto clean_and_exit;
+            }
+
+            for(i = 0; i < np; i++) {
+                /* Ignore all processes not on a waiting state and myself */
+                if( (ag[i].status != STATUS_WAITING) || (me == i) ) {
+                    assert(MPI_REQUEST_NULL == reqs[i]);
+                    assert(MPI_REQUEST_NULL == reqs[i+np]);
+                    continue;
+                }
+                if( (MPI_SUCCESS == statuses[i].MPI_ERROR) &&
+                    (MPI_SUCCESS == statuses[np+i].MPI_ERROR) ) {
+
+                    assert(MPI_REQUEST_NULL == reqs[i]);
+                    assert(MPI_REQUEST_NULL == reqs[i+np]);
+                    ftbasic_eta_received_message(&out, &nbrecv, &nbknow, &in[i], &ag[i]);
+                    ag[i].status = STATUS_RECEIVED;
+                } else {
+
+                    if( (MPI_ERR_PROC_FAILED == statuses[i].MPI_ERROR) ||
+                        (MPI_ERR_PROC_FAILED == statuses[np+i].MPI_ERROR) ) {
+
+                        /* Failure detected */
+                        ag[i].status = STATUS_CRASHED;
+                        nbcrashed++;
+                        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+                                             "%s ftbasic:agreement (ETA) communication with rank %d failed. Mark it as dead!",
+                                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i));
+
+                        /* Release the request, it can't be subsequently completed */
+                        MPI_Request_free(&reqs[i]);
+                        MPI_Request_free(&reqs[i+np]);
+                    } else if( (MPI_ERR_PENDING == statuses[i].MPI_ERROR) ||
+                               (MPI_ERR_PENDING == statuses[np+i].MPI_ERROR)) {
+
+                        /* The pending request will be waited on at the next iteration. */
+                        round_complete = 0;
+                    } else {
+                        if( (MPI_SUCCESS != statuses[i].MPI_ERROR) &&
+                            (MPI_ERR_PROC_FAILED != statuses[i].MPI_ERROR) &&
+                            (MPI_ERR_PENDING != statuses[i].MPI_ERROR) ) {
+                            ret = statuses[i].MPI_ERROR;
+                        } else {
+                            ret = statuses[i+np].MPI_ERROR;
+                        }
+                        goto clean_and_exit;
+                    }
                 }
             }
         } while( 1 != round_complete );
@@ -255,7 +227,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                 failed[pos++] = i;
             }
         }
-        ompi_group_excl(comm->c_remote_group, pos-1, failed, group);
+        ompi_group_incl(comm->c_remote_group, pos, failed, group);
         free(ag);
     }
 
