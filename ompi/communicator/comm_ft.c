@@ -163,7 +163,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ompi: comm_shrink: Determine ranking for new communicator",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
-start = MPI_Wtime();
+    start = MPI_Wtime();
     comp = (ompi_communicator_t *) comm;
 
     if ( OMPI_COMM_IS_INTER(comp) ) {
@@ -224,7 +224,7 @@ start = MPI_Wtime();
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ompi: comm_shrink: Determine context id",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
-start = MPI_Wtime();
+    start = MPI_Wtime();
     ret = ompi_comm_nextcid( newcomp,  /* new communicator */ 
                              comp,     /* old comm */
                              NULL,     /* bridge comm */
@@ -247,7 +247,7 @@ start = MPI_Wtime();
     /* Set name for debugging purposes */
     snprintf(newcomp->c_name, MPI_MAX_OBJECT_NAME, "MPI COMMUNICATOR %d SHRUNK FROM %d", 
              newcomp->c_contextid, comm->c_contextid );
-start = MPI_Wtime();
+    start = MPI_Wtime();
     /* activate communicator and init coll-module */
     ret = ompi_comm_activate( &newcomp, /* new communicator */ 
                               comp,
@@ -278,7 +278,7 @@ start = MPI_Wtime();
         OBJ_RELEASE(failed_group);
         failed_group = NULL;
     }
-start = MPI_Wtime();
+    start = MPI_Wtime();
     failed_group = OBJ_NEW(ompi_group_t);
     flag = (OMPI_SUCCESS == exit_status);
     ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
