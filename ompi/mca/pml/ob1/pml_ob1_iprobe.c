@@ -75,7 +75,7 @@ int mca_pml_ob1_probe(int src,
     if( MPI_ANY_SOURCE == src &&
         recvreq.req_recv.req_base.req_ompi.req_any_source_pending ) {
         ompi_request_cancel(&recvreq.req_recv.req_base.req_ompi);
-        ompi_request_complete(&recvreq.req_recv.req_base.req_ompi, false);
+        assert(true == recvreq.req_recv.req_base.req_ompi.req_complete);
         recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_PROC_FAILED;
     }
 #endif /* OPAL_ENABLE_FT_MPI */
