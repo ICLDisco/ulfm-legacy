@@ -72,12 +72,13 @@ int mca_pml_ob1_probe(int src,
 
     ompi_request_wait_completion(&recvreq.req_recv.req_base.req_ompi);
 #if OPAL_ENABLE_FT_MPI
-    if( MPI_ANY_SOURCE == src &&
-        recvreq.req_recv.req_base.req_ompi.req_any_source_pending ) {
+    if( MPI_ANY_SOURCE == src ) {
         ompi_request_cancel(&recvreq.req_recv.req_base.req_ompi);
         assert(true == recvreq.req_recv.req_base.req_ompi.req_complete);
         recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_PROC_FAILED;
     }
+    assert(true == recvreq.req_recv.req_base.req_ompi.req_complete);
+    assert(recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR == MPI_ERR_PROC_FAILED);
 #endif /* OPAL_ENABLE_FT_MPI */
     rc = recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR;
     if (NULL != status) {
