@@ -618,8 +618,10 @@ void mca_pml_ob1_error_handler(struct mca_btl_base_module_t* btl,
                          "PML:OB1: the error handler was invoked by the %s BTL for proc %s with info %s",
                          btl->btl_component->btl_version.mca_component_name,
                          (NULL == errproc ? "null" : ORTE_NAME_PRINT(&errproc->proc_name)), btlinfo);
-    if( NULL != errproc )
-        (void)ompi_errmgr_mark_failed_peer(errproc, ORTE_PROC_STATE_COMM_FAILED);
+    if( NULL != errproc ) {
+        orte_errmgr.update_state(errproc->proc_name.jobid, ORTE_JOB_STATE_UNDEF,
+                                 &errproc->proc_name, ORTE_PROC_STATE_COMM_FAILED, 0, 0);
+    }
 }
 
 #if OPAL_ENABLE_FT_CR    == 0
