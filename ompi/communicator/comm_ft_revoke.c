@@ -227,7 +227,7 @@ static int ompi_comm_revoke_internal_rbcast_n2(ompi_revoke_message_t* msg) {
 
         if(ompi_group_rank(grp) == i) continue;
         proc = ompi_group_peer_lookup(grp, i);
-        OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                 "%s ompi: comm_revoke: N2 Send: preparing a fragment to %s to revoke %3d",
                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid));
 
@@ -248,14 +248,14 @@ static int ompi_comm_revoke_internal_rbcast_n2(ompi_revoke_message_t* msg) {
         ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
-                OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle,
+                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                         "%s ompi: comm_revoke: N2 Send: fragment to %s to revoke %3d is gone",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid));
             }
         }
         else {
             mca_bml_base_free(bml_btl, des);
-            OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                     "%s ompi: comm_revoke: N2 Send: could not send a fragment to %s to revoke %3d (code %d)",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid, ret ));
             exit_status = ret;
@@ -269,7 +269,7 @@ static int ompi_comm_revoke_internal_fw_n2(ompi_revoke_message_t* msg) {
     /*
      * Broadcast the 'revoke' signal to all other processes.
      */
-    OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+    OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ompi: comm_revoke: FW : Ask others to revoke communicator %3d:%d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), msg->cid, msg->epoch ));
     return ompi_comm_revoke_internal_rbcast(msg);
@@ -291,7 +291,7 @@ static int ompi_comm_revoke_internal_rbcast_bmg(ompi_revoke_message_t* msg) {
 
         int me = ompi_group_rank(grp);
         proc = ompi_group_peer_lookup(grp, (me+i)%ompi_group_size(grp));
-        OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                 "%s ompi: comm_revoke: BMG Send: preparing a fragment to %s to revoke %3d",
                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid));
 
@@ -312,14 +312,14 @@ static int ompi_comm_revoke_internal_rbcast_bmg(ompi_revoke_message_t* msg) {
         ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
-                OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle,
+                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                         "%s ompi: comm_revoke: BMG Send: fragment to %s to revoke %3d is on the wire",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid));
             }
         }
         else {
             mca_bml_base_free(bml_btl, des);
-            OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                     "%s ompi: comm_revoke: BMG Send: could not send a fragment to %s to revoke %3d (code %d)",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid, ret ));
         }
@@ -345,7 +345,7 @@ static int ompi_comm_revoke_internal_rbcast_ringleader(ompi_revoke_message_t* ms
     
 retry_send:
     proc = ompi_group_peer_lookup(grp, pred);
-    OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+    OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
             "%s ompi: comm_revoke: RL Send: preparing a fragment to %s to revoke %3d",
             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid));
 
@@ -366,19 +366,19 @@ retry_send:
     ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
     if(OPAL_LIKELY(ret >= 0)) {
         if(OPAL_LIKELY(1 == ret)) {
-            OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle,
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                     "%s ompi: comm_revoke: RL Send: fragment to %s to revoke %3d is gone",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid));
         }
     }
     else {
         mca_bml_base_free(bml_btl, des);
-        OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                 "%s ompi: comm_revoke: RL Send: could not send a fragment to %s to revoke %3d (code %d)",
                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid, ret ));
         pred = (pred-1) % ompi_group_size(grp);
         if( leader != pred ) goto retry_send; 
-        OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                 "%s ompi: comm_revoke: RL Send: all other ranks are dead, the revoke of %3d is complete",
                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), msg->cid ));
     }
@@ -423,7 +423,7 @@ static int ompi_comm_revoke_internal_fw_ringleader(ompi_revoke_message_t* msg) {
 
 retry_send:
         proc = ompi_group_peer_lookup(grp, pred);
-        OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+        OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
             "%s ompi: comm_revoke: RL Send: preparing a fragment to %s to revoke %3d",
             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid));
         assert(proc->proc_bml);
@@ -438,14 +438,14 @@ retry_send:
         ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
-                OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle,
+                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                     "%s ompi: comm_revoke: RL Send: fragment to %s to revoke %3d is gone",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid));
             }
         }
         else {
             mca_bml_base_free(bml_btl, des);
-            OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+            OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                 "%s ompi: comm_revoke: RL Send: could not send a fragment to %s to revoke %3d (code %d)",
                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&proc->proc_name), msg->cid, ret ));
             if( (msg->leader == pred) && (msg->round == 1) ) {
@@ -456,7 +456,7 @@ retry_send:
             else if( (msg->leader == pred) && (msg->round == 2) ) {
                 /* Leader is dead, but the round 2 is complete,
                   the revoke is complete */
-                OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle, 
+                OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle, 
                     "%s ompi: comm_revoke: RL the leader %d is dead, but the second round is complete, so revoke %3d is done",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), msg->leader, msg->cid ));
                 /* mark completed*/
