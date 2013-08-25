@@ -74,10 +74,9 @@ int ompi_errhandler_internal_rte_finalize(void)
 
 int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state)
 {
-    int exit_status = OMPI_SUCCESS;
-    int max_num_comm = 0, i;
+    int exit_status = OMPI_SUCCESS, max_num_comm = 0, i, proc_rank;
     ompi_communicator_t *comm = NULL;
-    int proc_rank;
+    ompi_group_t* group = NULL;
     bool remote = false;
 
     /*
@@ -98,11 +97,6 @@ int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state
      * Update process state to failed
      */
     ompi_proc_mark_as_failed( ompi_proc );
-
-    /*
-     * Group State:
-     * Nothing to do.
-     */
 
     /*
      * Communicator State:
@@ -130,6 +124,12 @@ int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state
         /* Notify the communicator to update as necessary */
         ompi_comm_set_rank_failed(comm, proc_rank, remote);
 
+        if( NULL == group ) {  /* Build the group with the failed process */
+            (void)ompi_group_incl((remote ? comm->c_remote_group : comm->c_local_group),
+                                  1,
+                                  &proc_rank,
+                                  &group);
+        }
         OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                              "%s ompi: Process %s is in comm (%d) with rank %d. (%2d of %2d / %2d of %2d) [%s]",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -145,15 +145,18 @@ int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state
                                (OMPI_ERRHANDLER_TYPE_WIN == comm->errhandler_type ? "W" :
                                 (OMPI_ERRHANDLER_TYPE_FILE == comm->errhandler_type ? "F" : "U") ) ) )
                              ));
-        /*
-         * Invoke the users error handler for each communicator in which this
-         * process is found.
-         * Do not do this here, only activated when referenced.
-         *
-         * OMPI_ERRHANDLER_INVOKE(comm, MPI_ERR_PROC_FAILED, "ompi_errmgr_mark_failed_peer");
-         */
     }
 
+    /*
+     * Group State: Add the failed process to the global group of failed processes.
+     */
+    if( group != NULL ) {
+        ompi_group_t* old_failed = ompi_group_all_failed_procs;
+        (void)ompi_group_union(ompi_group_all_failed_procs,
+                               group,
+                               &ompi_group_all_failed_procs);
+        OBJ_RELEASE(old_failed);
+    }
     /*
      * Point-to-Point:
      * Let the active request know of the process state change.

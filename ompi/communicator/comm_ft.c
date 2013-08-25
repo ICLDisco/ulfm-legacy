@@ -358,66 +358,19 @@ bool ompi_comm_is_proc_active(ompi_communicator_t *comm, int peer_id, bool remot
 
 int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remote)
 {
-    int ret, exit_status = OMPI_SUCCESS;
-    ompi_group_t *tmp_group = NULL;
+    int ret;
 
     /* Disable ANY_SOURCE */
     comm->any_source_enabled = false;
     /* Disable collectives */
     comm->collectives_force_error = true;
 
-    tmp_group = OBJ_NEW(ompi_group_t);
-
     if( !remote ) {
         comm->num_active_local -= 1;
-
-        /* Extend the failed group */
-        ret = ompi_group_incl(comm->c_local_group,
-                              1,
-                              &peer_id,
-                              &tmp_group);
-        if( OMPI_SUCCESS != ret ) {
-            exit_status = ret;
-            goto cleanup;
-        }
-
-        ret = ompi_group_union(ompi_group_all_failed_procs,
-                               tmp_group,
-                               &ompi_group_all_failed_procs);
-        if( OMPI_SUCCESS != ret ) {
-            exit_status = ret;
-            goto cleanup;
-        }
     } else {
         comm->num_active_remote -= 1;
-
-        /* Extend the failed group */
-        ret = ompi_group_incl(comm->c_remote_group,
-                              1,
-                              &peer_id,
-                              &tmp_group);
-        if( OMPI_SUCCESS != ret ) {
-            exit_status = ret;
-            goto cleanup;
-        }
-
-        ret = ompi_group_union(ompi_group_all_failed_procs,
-                               tmp_group,
-                               &ompi_group_all_failed_procs);
-        if( OMPI_SUCCESS != ret ) {
-            exit_status = ret;
-            goto cleanup;
-        }
-
     }
-
- cleanup:
-    if( NULL != tmp_group ) {
-        OBJ_RELEASE(tmp_group);
-        tmp_group = NULL;
-    }
-
-    return exit_status;
+    return OMPI_SUCCESS;
 }
 
 int ompi_comm_allreduce_intra_ft( int *inbuf, int *outbuf, 
