@@ -188,7 +188,8 @@ mca_pml_ob1_match_completion_free( struct mca_btl_base_module_t* btl,
         mca_bml_base_endpoint_t* endpoint = (mca_bml_base_endpoint_t*)
                                          sendreq->req_send.req_base.req_proc->proc_bml;
         OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
-        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = (OMPI_ERR_UNREACH == status ?
+                                                                    MPI_ERR_PROC_FAILED : status);
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /**
          * Ideally we should release the BTL at this point. Unfortunately as we don't
@@ -239,7 +240,8 @@ mca_pml_ob1_rndv_completion( mca_btl_base_module_t* btl,
         mca_bml_base_endpoint_t* endpoint = (mca_bml_base_endpoint_t*)
                                              sendreq->req_send.req_base.req_proc->proc_bml;
         OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
-        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = (OMPI_ERR_UNREACH == status ?
+                                                                    MPI_ERR_PROC_FAILED : status);
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /**
          * Ideally we should release the BTL at this point. Unfortunately as we don't
@@ -284,7 +286,8 @@ mca_pml_ob1_rget_completion( mca_btl_base_module_t* btl,
         mca_bml_base_endpoint_t* endpoint = (mca_bml_base_endpoint_t*)
                                              sendreq->req_send.req_base.req_proc->proc_bml;
         OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
-        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = (OMPI_ERR_UNREACH == status ?
+                                                                    MPI_ERR_PROC_FAILED : status);
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /**
           * Ideally we should release the BTL at this point. Unfortunately as we don't
@@ -321,7 +324,8 @@ mca_pml_ob1_send_ctl_completion( mca_btl_base_module_t* btl,
         mca_bml_base_endpoint_t* endpoint = (mca_bml_base_endpoint_t*)
                                              sendreq->req_send.req_base.req_proc->proc_bml;
         OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
-        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = (OMPI_ERR_UNREACH == status ?
+                                                                    MPI_ERR_PROC_FAILED : status);
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /** Ideally we should release the BTL at this point. Unfortunately as we don't
          * know if other operations are pending on it we can't release it yet (or we
@@ -354,7 +358,8 @@ mca_pml_ob1_frag_completion( mca_btl_base_module_t* btl,
         mca_bml_base_endpoint_t* endpoint = (mca_bml_base_endpoint_t*)
                                          sendreq->req_send.req_base.req_proc->proc_bml;
         OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
-        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = (OMPI_ERR_UNREACH == status ?
+                                                                    MPI_ERR_PROC_FAILED : status);
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /**
           * Ideally we should release the BTL at this point. Unfortunately as we don't
@@ -1171,7 +1176,8 @@ static void mca_pml_ob1_put_completion( mca_btl_base_module_t* btl,
         mca_bml_base_endpoint_t* endpoint = (mca_bml_base_endpoint_t*)
                                          sendreq->req_send.req_base.req_proc->proc_bml;
         OPAL_OUTPUT_VERBOSE((mca_pml_base_output, 1, "pml:ob1: %s: operation failed with code %d", __func__, status));
-        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = status;
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = (OMPI_ERR_UNREACH == status ?
+                                                                    MPI_ERR_PROC_FAILED : status);
         mca_bml_base_btl_array_remove(&endpoint->btl_eager, btl);
         /**
           * Ideally we should release the BTL at this point. Unfortunately as we don't
