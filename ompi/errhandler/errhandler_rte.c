@@ -86,7 +86,7 @@ int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state
         goto cleanup;
     }
 
-    OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle,
+    OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                          "%s ompi: Process %s failed (state = %s).",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          ORTE_NAME_PRINT(&ompi_proc->proc_name),
