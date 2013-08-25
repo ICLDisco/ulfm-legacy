@@ -231,7 +231,7 @@ static inline int ompi_group_rank(ompi_group_t *group)
 /**
  * Set group rank in the input group structure
  *
- * @param group Group Pointer to ompi_group_t structure (IN)
+ * @param group Group Pointer to ompi_group_t structure (INOUT)
  * @param proc_pointer Pointer to ompi_proc_t structure for process.
  *                     MPI_PROC_NULL may be used to indicate proc not
  *                     in group
