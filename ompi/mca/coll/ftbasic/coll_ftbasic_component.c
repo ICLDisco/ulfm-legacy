@@ -47,7 +47,7 @@ const char *mca_coll_ftbasic_component_version_string =
  */
 int mca_coll_ftbasic_priority  = 0;
 int mca_coll_ftbasic_crossover = 4;
-mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_LOG_TWO_PHASE;
+mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_TERMINATION;
 bool mca_coll_ftbasic_use_agreement_timer = false;
 bool mca_coll_ftbasic_agreement_use_progress = true;
 int mca_coll_ftbasic_agreement_log_max_len = 2;
@@ -123,7 +123,7 @@ ftbasic_register(void)
 
     mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
                            "method",
-                           "Agreement method (see documentation)",
+                           "Agreement method (0 = AllReduce (unsafe), 1 = Two-Phase Commit (unsafe), 2 = Log Two-Phase Commit (unsafe), Early Consensus Termination (default))",
                            false, false,
                            mca_coll_ftbasic_cur_agreement_method,
                            &value);
