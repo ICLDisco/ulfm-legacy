@@ -129,7 +129,7 @@ struct ompi_communicator_t {
                to a child*/
     int c_id_start_index; /* the starting index of the block of cids 
                  allocated to this communicator*/
-    int                  epoch;  /**< Identified used to keep trace of the communicators revoked.
+    int                  epoch;  /**< Identifier used to keep trace of the communicators revoked.
                                   * This allows to avoid a race condition between the revoke-based
                                   * message arriving from late peers and the creation of new communicators.
                                   */
