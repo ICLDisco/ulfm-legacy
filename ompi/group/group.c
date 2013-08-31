@@ -577,18 +577,3 @@ int ompi_group_compare(ompi_group_t *group1,
 
     return return_value;
 }
-
-#if OPAL_ENABLE_FT_MPI
-int ompi_group_get_rank_state(ompi_group_t *group, int peer_id, bool *active)
-{
-    ompi_proc_t* ompi_proc = NULL;
-
-    if( NULL == (ompi_proc = ompi_group_get_proc_ptr(group, peer_id)) ) {
-        return OMPI_ERROR;
-    }
-
-    *active = ompi_proc_is_active(ompi_proc);
-
-    return OMPI_SUCCESS;
-}
-#endif /* OPAL_ENABLE_FT_MPI */

@@ -192,15 +192,6 @@ int ompi_group_init(void);
  */
 int ompi_group_finalize(void);
 
-#if OPAL_ENABLE_FT_MPI
-/**
- * Get the actual state of a rank in the group
- */
-OMPI_DECLSPEC int ompi_group_get_rank_state(ompi_group_t *group,
-                                            int peer_id,
-                                            bool *active);
-#endif /* OPAL_ENABLE_FT_MPI */
-
 /**
  * Get group size.
  *
