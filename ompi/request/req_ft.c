@@ -22,7 +22,7 @@
 #include "ompi_config.h"
 #include "ompi/constants.h"
 #include "ompi/request/request.h"
-#include "ompi/request/grequest.h"
+#include "ompi/errhandler/errcode.h"
 
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
@@ -33,8 +33,10 @@
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/base/pml_base_request.h"
 
-#define REQUEST_IS_COLLECTIVE(req) (((req)->req_tag <= MCA_COLL_BASE_TAG_MIN) && \
-                                    ((req)->req_tag >= MCA_COLL_BASE_TAG_MAX_PRE_AGREEMENT))
+#define REQUEST_IS_FT_RELATED(req) (((req)->req_tag > MCA_COLL_BASE_TAG_MAX_POST_AGREEMENT) && \
+                                    ((req)->req_tag < MCA_COLL_BASE_TAG_MAX_PRE_AGREEMENT))
+#define REQUEST_IS_COLLECTIVE(req) (((req)->req_tag >= MCA_COLL_BASE_TAG_MAX_PRE_AGREEMENT) && \
+                                    ((req)->req_tag <= MCA_COLL_BASE_TAG_MIN))
 
 /**************************
  * Support Routines
@@ -71,67 +73,72 @@ bool ompi_request_state_ok(ompi_request_t *req)
 
     /*
      * Has this communicator been 'revoked'?
-     * If so (unless we are in agreement) this should fail.
+     *
+     * If so unless we are in the FT part (propagate revoke, agreement or
+     * shrink) this should fail.
      */
-    if( ompi_comm_is_revoked(req->req_mpi_object.comm) &&
-        (req->req_tag >= MPI_ANY_TAG || REQUEST_IS_COLLECTIVE(req) ) ) {
+    if( ompi_comm_is_revoked(req->req_mpi_object.comm) && !REQUEST_IS_FT_RELATED(req) ) {
         /* Do not set req->req_status.MPI_SOURCE */
         req->req_status.MPI_ERROR  = MPI_ERR_REVOKED;
 
         opal_output_verbose(10, ompi_ftmpi_output_handle,
-                            "%s ompi_request_state_ok: Communicator has been revoked!",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
+                            "%s ompi_request_state_ok: %p Communicator %s(%d) has been revoked!",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), req,
+                            req->req_mpi_object.comm->c_name, req->req_mpi_object.comm->c_contextid);
         goto return_with_error;
     }
-    /*
-     * Point-to-Point Check:
-     * If the request is -not- part of a collective then it is point-to-point.
-     * Only need to check the specific peer target/source.
-     */
-    if( req->req_tag >= 0 ||
-        MPI_ANY_TAG == req->req_tag ||
-        !REQUEST_IS_COLLECTIVE(req) ) {
-        if( req->req_peer == MPI_PROC_NULL ) {
-            return true;
-        }
-        /* The call below handles the MPI_ANY_SOURCE case as well as the
-         * directed case.
-         */
-        if( !ompi_comm_is_proc_active( req->req_mpi_object.comm, req->req_peer,
-                                       OMPI_COMM_IS_INTRA(req->req_mpi_object.comm) ) ) {
-            /*
-             * MPI_ANY_SOURCE issues are marked as MPI_ERR_PENDING and -not-
-             * removed from the message queue. Keep the request active, so the
-             * user can keep waiting on it.
-             */
-            req->req_status.MPI_SOURCE = req->req_peer;
-            if( MPI_ANY_SOURCE == req->req_peer ) {
-                req->req_any_source_pending = true;
-            }
-            /*
-             * Directed peer errors are always critical, and return in error.
-             */
-            else {
-                req->req_status.MPI_ERROR  = MPI_ERR_PROC_FAILED;
-            }
 
-            opal_output_verbose(10, ompi_ftmpi_output_handle,
-                                "%s ompi_request_state_ok: Request %p rank %3d in commu (%3d) failed - Ret %s",
-                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                req,
-                                req->req_status.MPI_SOURCE,
-                                req->req_mpi_object.comm->c_contextid,
-                                (MPI_ERR_PROC_FAILED == req->req_status.MPI_ERROR ? "MPI_ERR_PROC_FAILED" : "MPI_ERR_PENDING") );
-            goto return_with_error;
-        }
+    /* Corner-cases: two processes that can't fail (NULL and myself) */
+    if((req->req_peer == MPI_PROC_NULL) ||
+       (req->req_peer == req->req_mpi_object.comm->c_local_group->grp_my_rank)) {
         return true;
     }
+
+    /* If any_source but not FT related then the request is always marked for return */
+    if( MPI_ANY_SOURCE == req->req_peer && !ompi_comm_is_any_source_enabled(req->req_mpi_object.comm)) {
+        if( !REQUEST_IS_FT_RELATED(req) )
+            req->req_status.MPI_ERROR  = MPI_ERR_PENDING;
+        /* If blocking request escalate the error */
+        if( (MCA_PML_REQUEST_MPROBE == ((mca_pml_base_request_t*)req)->req_type) ||
+            (MCA_PML_REQUEST_RECV == ((mca_pml_base_request_t*)req)->req_type)   ||
+            (MCA_PML_REQUEST_PROBE == ((mca_pml_base_request_t*)req)->req_type) ) {
+            req->req_status.MPI_ERROR  = MPI_ERR_PROC_FAILED;
+        }
+        /* Bail out if any error has been set */
+        if( MPI_SUCCESS != req->req_status.MPI_ERROR ) {
+            opal_output_verbose(10, ompi_ftmpi_output_handle,
+                                "%s ompi_request_state_ok: Request %p in comm %s(%d) peer ANY_SOURCE %s!",
+                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), req,
+                                req->req_mpi_object.comm->c_name, req->req_mpi_object.comm->c_contextid,
+                                ompi_mpi_errnum_get_string(req->req_status.MPI_ERROR));
+            goto return_with_error;
+        }
+    }
+    /* Any type of request with a dead process must be terminated with error */
+    if( !ompi_comm_is_proc_active(req->req_mpi_object.comm, req->req_peer,
+                                  OMPI_COMM_IS_INTRA(req->req_mpi_object.comm)) ) {
+        req->req_status.MPI_SOURCE = req->req_peer;
+        req->req_status.MPI_ERROR  = MPI_ERR_PROC_FAILED;
+        if( MPI_ANY_SOURCE == req->req_peer ) {
+            req->req_any_source_pending = true;
+        }
+
+        opal_output_verbose(10, ompi_ftmpi_output_handle,
+                            "%s ompi_request_state_ok: Request %p in comm %s(%d) peer %3d failed - Ret %s",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), req,
+                            req->req_mpi_object.comm->c_name, req->req_mpi_object.comm->c_contextid,
+                            req->req_status.MPI_SOURCE,
+                            ompi_mpi_errnum_get_string(req->req_status.MPI_ERROR));
+        goto return_with_error;
+    }
+
     /*
      * Collectives Check:
      * If the request is part of a collective, then the whole communicator
      * must be ok to continue. If not then return first failed process
      */
-    if( ompi_comm_force_error_on_collectives(req->req_mpi_object.comm) ) {
+    if( ompi_comm_force_error_on_collectives(req->req_mpi_object.comm) &&
+        REQUEST_IS_COLLECTIVE(req) ) {
         /* Return the last process known to have failed, may not have been the
          * first to cause the collectives to be disabled.
          */
@@ -147,9 +154,8 @@ bool ompi_request_state_ok(ompi_request_t *req)
     return true;
 
  return_with_error:
-    if( !req->req_complete && (MPI_ANY_SOURCE != req->req_peer)) {
+    if( MPI_ERR_PENDING != req->req_status.MPI_ERROR ) {
         ompi_request_cancel(req);
-        ompi_request_complete(req, false);
     }
     return (MPI_SUCCESS == req->req_status.MPI_ERROR);
 }
