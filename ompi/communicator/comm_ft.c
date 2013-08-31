@@ -321,6 +321,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
 
 bool ompi_comm_is_proc_active(ompi_communicator_t *comm, int peer_id, bool remote)
 {
+    ompi_proc_t* ompi_proc;
     bool active = false;
 
 #if OPAL_ENABLE_DEBUG
@@ -346,14 +347,9 @@ bool ompi_comm_is_proc_active(ompi_communicator_t *comm, int peer_id, bool remot
     else if( OPAL_UNLIKELY(peer_id == MPI_ANY_SOURCE) ) {
         return ompi_comm_is_any_source_enabled(comm);
     }
-    else if( !remote ) {
-        ompi_group_get_rank_state(comm->c_local_group, peer_id, &active);
-        return active;
-    }
-    else {
-        ompi_group_get_rank_state(comm->c_remote_group, peer_id, &active);
-        return active;
-    }
+    ompi_proc = ompi_group_get_proc_ptr((remote ? comm->c_remote_group : comm->c_local_group),
+                                        peer_id);
+    return (NULL == ompi_proc) ? false : ompi_proc_is_active(ompi_proc);
 }
 
 int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remote)
