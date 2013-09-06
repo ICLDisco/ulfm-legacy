@@ -71,15 +71,7 @@ int mca_pml_ob1_probe(int src,
     MCA_PML_OB1_RECV_REQUEST_START(&recvreq);
 
     ompi_request_wait_completion(&recvreq.req_recv.req_base.req_ompi);
-#if OPAL_ENABLE_FT_MPI
-    if( MPI_ANY_SOURCE == src ) {
-        ompi_request_cancel(&recvreq.req_recv.req_base.req_ompi);
-        assert(true == recvreq.req_recv.req_base.req_ompi.req_complete);
-        recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_PROC_FAILED;
-    }
-    assert(true == recvreq.req_recv.req_base.req_ompi.req_complete);
-    assert(recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR == MPI_ERR_PROC_FAILED);
-#endif /* OPAL_ENABLE_FT_MPI */
+
     rc = recvreq.req_recv.req_base.req_ompi.req_status.MPI_ERROR;
     if (NULL != status) {
         OMPI_STATUS_SET(status, &recvreq.req_recv.req_base.req_ompi.req_status);
@@ -149,6 +141,8 @@ mca_pml_ob1_mprobe(int src,
     int rc = OMPI_SUCCESS;
     mca_pml_ob1_recv_request_t *recvreq;
 
+    *message = MPI_MESSAGE_NULL;
+
     MCA_PML_OB1_RECV_REQUEST_ALLOC(recvreq, rc);
     if (NULL == recvreq)
         return rc;
@@ -160,22 +154,18 @@ mca_pml_ob1_mprobe(int src,
     MCA_PML_OB1_RECV_REQUEST_START(recvreq);
 
     ompi_request_wait_completion(&recvreq->req_recv.req_base.req_ompi);
-#if OPAL_ENABLE_FT_MPI
-    if( MPI_ANY_SOURCE == src &&
-        recvreq->req_recv.req_base.req_ompi.req_any_source_pending ) {
-        ompi_request_cancel(&recvreq->req_recv.req_base.req_ompi);
-        ompi_request_complete(&recvreq->req_recv.req_base.req_ompi, false);
-        recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_PROC_FAILED;
-    }
-#endif /* OPAL_ENABLE_FT_MPI */
+
+    rc = recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR;
     if( NULL != status ) {
         *status = recvreq->req_recv.req_base.req_ompi.req_status;
     }
-
-    *message = ompi_message_alloc();
-    (*message)->comm = comm;
-    (*message)->req_ptr = recvreq;
-    (*message)->count = recvreq->req_recv.req_base.req_ompi.req_status._ucount;
-
-    return OMPI_SUCCESS;
+    if( MPI_SUCCESS ==  rc ) {
+        *message = ompi_message_alloc();
+        (*message)->comm = comm;
+        (*message)->req_ptr = recvreq;
+        (*message)->count = recvreq->req_recv.req_base.req_ompi.req_status._ucount;
+    } else {
+        ompi_request_free((ompi_request_t**)&recvreq);
+    }
+    return rc;
 }
