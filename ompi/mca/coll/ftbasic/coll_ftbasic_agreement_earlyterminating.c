@@ -214,6 +214,8 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     }
 
  clean_and_exit:
+    OPAL_OUTPUT_VERBOSE((50, ompi_ftmpi_output_handle,
+                "%s ftbasis:agreement (ETA) decided in %d rounds ", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), out.round));
     for (i = 0; i < 2*np; ++i)
         if(MPI_REQUEST_NULL != reqs[i])
             ompi_request_free(&reqs[i]);
