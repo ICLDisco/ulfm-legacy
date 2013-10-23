@@ -124,15 +124,6 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     }
 
     /*
-     * The communicator must have been 'revoked' before calling this.
-     * Otherwise return an error.
-     */
-    if( !ompi_comm_is_revoked(comm) ) {
-        exit_status = MPI_ERR_ARG;
-        goto cleanup;
-    }
-
-    /*
      * Step 1: Agreement on failed group in comm
      */
     /* --------------------------------------------------------- */

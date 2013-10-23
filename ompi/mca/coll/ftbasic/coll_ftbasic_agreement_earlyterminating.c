@@ -89,7 +89,6 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
 
     np = ompi_comm_size(comm);
     me = ompi_comm_rank(comm);
-
     ag = (ftbasic_eta_proc_agreement_t*)calloc( np, sizeof(ftbasic_eta_proc_agreement_t) );
     /* This should go in the module query, and a module member should be used here */
     reqs = (ompi_request_t **)malloc( 2 * np * sizeof(ompi_request_t *) );
