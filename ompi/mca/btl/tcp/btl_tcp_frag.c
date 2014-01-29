@@ -40,6 +40,7 @@
 
 #include "opal/opal_socket_errno.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
+#include "ompi/mca/btl/tcp/btl_tcp_proc.h"
 #include "btl_tcp_frag.h" 
 #include "btl_tcp_endpoint.h"
 
@@ -133,7 +134,9 @@ bool mca_btl_tcp_frag_send(mca_btl_tcp_frag_t* frag, int sd)
             }
         }
     }
-
+    opal_output_verbose(1, mca_btl_base_output,
+                        "mca_btl_tcp_frag_send: writev %d bytes to peer %s\n",
+                        cnt, ORTE_NAME_PRINT(&frag->endpoint->endpoint_proc->proc_ompi->proc_name));
     /* if the write didn't complete - update the iovec state */
     num_vecs = frag->iov_cnt;
     for(i=0; i<num_vecs; i++) {
