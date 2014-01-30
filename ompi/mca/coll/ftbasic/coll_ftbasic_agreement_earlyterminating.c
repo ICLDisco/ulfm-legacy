@@ -95,13 +95,6 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     MPI_Status *statuses;
     int me, i, np, nbrecv, rc, ret = MPI_SUCCESS, nbknow = 0, nbcrashed = 0, round_complete;
 
-    static int UTAG = MCA_COLL_BASE_TAG_MAX_POST_AGREEMENT;
-    if( UTAG - 1 < MCA_COLL_BASE_TAG_MAX ) {
-        UTAG = MCA_COLL_BASE_TAG_MAX_POST_AGREEMENT;
-    } else {
-        UTAG = UTAG - 1;
-    }
-
     np = ompi_comm_size(comm);
     me = ompi_comm_rank(comm);
     ag = (ftbasic_eta_proc_agreement_t*)calloc( np, sizeof(ftbasic_eta_proc_agreement_t) );
@@ -127,7 +120,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
             if( me != i && (!(ag[i].status & STATUS_CRASHED)) && ( !(ag[i].status & STATUS_TOLD_ME_HE_KNOWS) ) ) {
                 /* Need to know more about this guy */
                 MCA_PML_CALL(irecv(&in[i], 3, MPI_INT, 
-                                   i, UTAG, comm, 
+                                   i, FTBASIC_ETA_TAG_AGREEMENT, comm, 
                                    &reqs[np+i]));
             } else {
                 reqs[np+i] = MPI_REQUEST_NULL;
@@ -138,7 +131,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
             if( me != i && (!(ag[i].status & STATUS_CRASHED)) && (!(ag[i].status & STATUS_KNOWS_I_KNOW)) ) {
                 /* Need to communicate with this guy */
                 MCA_PML_CALL(isend(&out, 3, MPI_INT, 
-                                   i, UTAG, 
+                                   i, FTBASIC_ETA_TAG_AGREEMENT, 
                                    MCA_PML_BASE_SEND_STANDARD, comm, 
                                    &reqs[i]));
                 ag[i].status |= out.knows * STATUS_KNOWS_I_KNOW;
