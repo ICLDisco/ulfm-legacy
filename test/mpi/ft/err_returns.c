@@ -10,10 +10,10 @@
  * $HEADER$
  */
 
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+#include <math.h>
 #include <mpi.h>
 
 int main( int argc, char* argv[] ) { 
@@ -21,34 +21,42 @@ int main( int argc, char* argv[] ) {
     int rc;
     double start, end;
     char estr[MPI_MAX_ERROR_STRING]=""; int strl;
+    MPI_Comm scomm;
     
     MPI_Init( &argc, &argv );
-    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
-    
+
     MPI_Comm_size( MPI_COMM_WORLD, &np );
     MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-    
+
+    MPI_Comm_split( MPI_COMM_WORLD, (rank==np-1)?1:0, rank, &scomm );
     MPI_Barrier( MPI_COMM_WORLD );
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );    
 
     if( rank == np-1 ) {
-        printf( "Rank %04d: %g committing suicide\n", rank, MPI_Wtime() );
+        printf( "Rank %04d: committing suicide\n", rank );
         raise( SIGKILL );
     }
     else {
         start=MPI_Wtime();
-        printf( "Rank %04d: date %g entering Barrier\n", rank, start );
+        printf( "Rank %04d: entering Barrier\n", rank );
         rc = MPI_Barrier( MPI_COMM_WORLD );
         end=MPI_Wtime();
         MPI_Error_string( rc, estr, &strl );
-        printf( "Rank %04d: duration %g (s) Barrier1 completed (rc=%s)\n", rank, end-start, estr );
-        sleep( 5 );
+        printf( "Rank %04d: Barrier1 completed (rc=%s) duration %g (s)\n", rank, estr, end-start );
+        int st = ceil(fmax(5., 5.*(end-start)));
+        /* operation on scomm should not raise an error, only procs 
+         * not appearing in scomm are dead */
+        MPI_Allreduce( MPI_IN_PLACE, &st, 1, MPI_INT, MPI_MAX, scomm );
+        if( 0 == rank ) printf( "Sleeping for %ds ... ... ...\n", st );
+        sleep( st );
         start=MPI_Wtime();
         rc = MPI_Barrier( MPI_COMM_WORLD );
         end=MPI_Wtime();
         MPI_Error_string( rc, estr, &strl );
-        printf( "Rank %04d: duration %g (s) Barrier2 completed (rc=%s)\n", rank, end-start, estr );
+        printf( "Rank %04d: Barrier2 completed (rc=%s) duration %g (s)\n", rank, estr, end-start );
     }
-    
+ 
+    MPI_Barrier( scomm );
     MPI_Finalize();
     return EXIT_SUCCESS;
 }
