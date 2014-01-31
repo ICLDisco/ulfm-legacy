@@ -19,44 +19,70 @@
 int main( int argc, char* argv[] ) { 
     int np, rank;
     int rc;
-    double start, end;
+    double start, tb, mtb, Mtb, tbf1, Mtbf1, mtbf1, tbf2, Mtbf2, mtbf2;
+    int st;
     char estr[MPI_MAX_ERROR_STRING]=""; int strl;
     MPI_Comm scomm;
+    int verbose=0;
     
     MPI_Init( &argc, &argv );
+    
+    if( !strcmp( argv[argc-1], "-v" ) ) verbose=1;
 
     MPI_Comm_size( MPI_COMM_WORLD, &np );
     MPI_Comm_rank( MPI_COMM_WORLD, &rank );
 
     MPI_Comm_split( MPI_COMM_WORLD, (rank==np-1)?1:0, rank, &scomm );
+    start=MPI_Wtime();
     MPI_Barrier( MPI_COMM_WORLD );
-    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );    
+    tb=MPI_Wtime()-start;
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
 
     if( rank == np-1 ) {
         printf( "Rank %04d: committing suicide\n", rank );
         raise( SIGKILL );
+        while(1); /* wait for the signal */
     }
-    else {
-        start=MPI_Wtime();
-        printf( "Rank %04d: entering Barrier\n", rank );
-        rc = MPI_Barrier( MPI_COMM_WORLD );
-        end=MPI_Wtime();
+    
+    if(verbose) printf( "Rank %04d: entering Barrier\n", rank );
+    start=MPI_Wtime();
+    rc = MPI_Barrier( MPI_COMM_WORLD );
+    tbf1=MPI_Wtime()-start;
+    if(verbose) { 
         MPI_Error_string( rc, estr, &strl );
-        printf( "Rank %04d: Barrier1 completed (rc=%s) duration %g (s)\n", rank, estr, end-start );
-        int st = ceil(fmax(5., 5.*(end-start)));
-        /* operation on scomm should not raise an error, only procs 
-         * not appearing in scomm are dead */
-        MPI_Allreduce( MPI_IN_PLACE, &st, 1, MPI_INT, MPI_MAX, scomm );
-        if( 0 == rank ) printf( "Sleeping for %ds ... ... ...\n", st );
-        sleep( st );
-        start=MPI_Wtime();
-        rc = MPI_Barrier( MPI_COMM_WORLD );
-        end=MPI_Wtime();
-        MPI_Error_string( rc, estr, &strl );
-        printf( "Rank %04d: Barrier2 completed (rc=%s) duration %g (s)\n", rank, estr, end-start );
+        printf( "Rank %04d: Barrier1 completed (rc=%s) duration %g (s)\n", rank, estr, tbf1 );
     }
- 
-    MPI_Barrier( scomm );
+    st = ceil(5*fmax(1., tb));
+
+    /* operation on scomm should not raise an error, only procs 
+     * not appearing in scomm are dead */
+    MPI_Allreduce( MPI_IN_PLACE, &st, 1, MPI_INT, MPI_MAX, scomm );
+    if( 0 == rank ) printf( "Sleeping for %ds ... ... ...\n", st );
+    sleep( st );
+
+    if(verbose) printf( "Rank %04d: entering Barrier\n", rank );
+    start=MPI_Wtime();
+    rc = MPI_Barrier( MPI_COMM_WORLD );
+    tbf2=MPI_Wtime()-start;
+    if(verbose) { 
+        MPI_Error_string( rc, estr, &strl );
+        printf( "Rank %04d: Barrier2 completed (rc=%s) duration %g (s)\n", rank, estr, tbf2 );
+    }
+
+    MPI_Reduce( &tb, &mtb, 1, MPI_DOUBLE, MPI_MIN, 0, scomm );
+    MPI_Reduce( &tb, &Mtb, 1, MPI_DOUBLE, MPI_MAX, 0, scomm );
+    MPI_Reduce( &tbf1, &mtbf1, 1, MPI_DOUBLE, MPI_MIN, 0, scomm );
+    MPI_Reduce( &tbf1, &Mtbf1, 1, MPI_DOUBLE, MPI_MAX, 0, scomm );
+    MPI_Reduce( &tbf2, &mtbf2, 1, MPI_DOUBLE, MPI_MIN, 0, scomm );
+    MPI_Reduce( &tbf2, &Mtbf2, 1, MPI_DOUBLE, MPI_MAX, 0, scomm );
+
+    if( 0 == rank ) printf( 
+        "## Timings ########### Min         ### Max         ##\n"
+        "Barrier (no fault)  # %13.5e # %13.5e\n"
+        "Barrier (new fault) # %13.5e # %13.5e\n"
+        "Barrier (old fault) # %13.5e # %13.5e\n",
+        mtb, Mtb, mtbf1, Mtbf1, mtbf2, Mtbf2 );
+
     MPI_Finalize();
     return EXIT_SUCCESS;
 }
