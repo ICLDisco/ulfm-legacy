@@ -1230,6 +1230,9 @@ AC_CONFIG_FILES([
     test/support/Makefile
     test/threads/Makefile
     test/util/Makefile
+	test/mpi/Makefile
+	test/mpi/ft/Makefile
+	test/mpi/environment/Makefile
 ])
 
 OPAL_CONFIG_FILES
