@@ -1,5 +1,16 @@
+/*
+ * Copyright (c) 2012-2014 The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
+ *
+ * $COPYRIGHT$
+ * 
+ * Additional copyrights may follow
+ * 
+ * $HEADER$
+ */
+
 #include <mpi.h>
-#include <mpi-ext.h>
 #include <stdio.h>
 
 int main(int argc, char *argv[]) {
