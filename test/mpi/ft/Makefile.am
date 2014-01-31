@@ -3,7 +3,7 @@
 # Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
-# Copyright (c) 2004-2012 The University of Tennessee and The University
+# Copyright (c) 2004-2014 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
 # Copyright (c) 2004-2009 High Performance Computing Center Stuttgart, 
@@ -22,28 +22,29 @@ EXTRA_DIST = CMakeLists.txt
 
 AM_LDFLAGS = -lpthread
 
-noinst_PROGRAMS = revoke revokeshrink revokeshrinkkill revokeshrinkkillrecover
+noinst_PROGRAMS = err_returns revoke revshrink revshrinkkill revshrinkkillrecover
+
+err_returns_SOURCES = err_returns.c
+err_returns_LDADD = \
+	$(top_builddir)/ompi/libmpi.la
+err_returns_DEPENDENCIES = $(err_returns_LDADD)
 
 revoke_SOURCES = revoke.c
 revoke_LDADD = \
-	$(top_builddir)/src/libmpi.la \
-	$(top_builddir)/src/libompi.la 
+	$(top_builddir)/ompi/libmpi.la
 revoke_DEPENDENCIES = $(revoke_LDADD)
 
-revokeshrink_SOURCES = revokeshrink.c
-revokeshrink_LDADD = \
-	$(top_builddir)/src/libmpi.la \
-	$(top_builddir)/src/libompi.la 
-revokeshrink_DEPENDENCIES = $(revokeshrink_LDADD)
+revshrink_SOURCES = revshrink.c
+revshrink_LDADD = \
+	$(top_builddir)/ompi/libmpi.la
+revshrink_DEPENDENCIES = $(revshrink_LDADD)
 
-revokeshrinkkill_SOURCES = revokeshrinkkill.c
-revokeshrinkkill_LDADD = \
-	$(top_builddir)/src/libmpi.la \
-	$(top_builddir)/src/libompi.la 
-revokeshrinkkill_DEPENDENCIES = $(revokeshrinkkill_LDADD)
+revshrinkkill_SOURCES = revshrinkkill.c
+revshrinkkill_LDADD = \
+	$(top_builddir)/ompi/libmpi.la
+revshrinkkill_DEPENDENCIES = $(revshrinkkill_LDADD)
 
-revokeshrinkkillrecover_SOURCES = revokeshrinkkillrecover.c
-revokeshrinkkillrecover_LDADD = \
-	$(top_builddir)/src/libmpi.la \
-	$(top_builddir)/src/libompi.la 
-revokeshrinkkillrecover_DEPENDENCIES = $(revokeshrinkkillrecover_LDADD)
+revshrinkkillrecover_SOURCES = revshrinkkillrecover.c
+revshrinkkillrecover_LDADD = \
+	$(top_builddir)/ompi/libmpi.la
+revshrinkkillrecover_DEPENDENCIES = $(revshrinkkillrecover_LDADD)

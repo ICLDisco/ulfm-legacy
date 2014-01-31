@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012      The University of Tennessee and The University
+ * Copyright (c) 2012-2014 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
@@ -12,7 +12,6 @@
  */
 
 #include <mpi.h>
-#include <mpi-ext.h>
 #include <stdio.h>
 
 int main(int argc, char *argv[]) {
