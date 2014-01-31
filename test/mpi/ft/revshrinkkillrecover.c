@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012      The University of Tennessee and The University
+ * Copyright (c) 2012-2014 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
@@ -12,7 +12,6 @@
  */
 
 #include <mpi.h>
-#include <mpi-ext.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -107,7 +106,7 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(*world, &size);
 
     /* Do a loop that keeps killing processes until there are none left */
-    while(true) {
+    while(1) {
         rnum = rand();
         
         if (rank != 0) {
