@@ -52,7 +52,8 @@ int main( int argc, char* argv[] ) {
         MPI_Error_string( rc, estr, &strl );
         printf( "Rank %04d: Barrier1 completed (rc=%s) duration %g (s)\n", rank, estr, tbf1 );
     }
-    st = ceil(5*fmax(1., tb));
+    if( rc != MPI_ERR_PROC_FAILED ) MPI_Abort( scomm, rc );
+    st = ceil(10*fmax(1., tb));
 
     /* operation on scomm should not raise an error, only procs 
      * not appearing in scomm are dead */
@@ -68,6 +69,7 @@ int main( int argc, char* argv[] ) {
         MPI_Error_string( rc, estr, &strl );
         printf( "Rank %04d: Barrier2 completed (rc=%s) duration %g (s)\n", rank, estr, tbf2 );
     }
+    if( rc != MPI_ERR_PROC_FAILED ) MPI_Abort( scomm, rc );
 
     MPI_Reduce( &tb, &mtb, 1, MPI_DOUBLE, MPI_MIN, 0, scomm );
     MPI_Reduce( &tb, &Mtb, 1, MPI_DOUBLE, MPI_MAX, 0, scomm );
