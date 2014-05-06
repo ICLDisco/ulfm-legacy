@@ -20,4 +20,4 @@
 
 EXTRA_DIST = CMakeLists.txt
 
-SUBDIRS = environment ft
+SUBDIRS = environment

@@ -8,4 +8,3 @@
 #
 
 ADD_SUBDIRECTORY(environment)
-ADD_SUBDIRECTORY(ft)

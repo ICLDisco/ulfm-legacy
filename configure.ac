@@ -1231,7 +1231,6 @@ AC_CONFIG_FILES([
     test/threads/Makefile
     test/util/Makefile
 	test/mpi/Makefile
-	test/mpi/ft/Makefile
 	test/mpi/environment/Makefile
 ])
 
