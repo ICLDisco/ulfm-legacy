@@ -123,7 +123,11 @@ ftbasic_register(void)
 
     mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
                            "method",
-                           "Agreement method (0 = AllReduce (unsafe), 1 = Two-Phase Commit (unsafe), 2 = Log Two-Phase Commit (unsafe), Early Consensus Termination (default))",
+                           "Agreement method (0 = AllReduce (unsafe),"
+                           " 1 = Two-Phase Commit (unsafe),"
+                           " 2 = Log Two-Phase Commit (unsafe),"
+                           " 3 = Early Consensus Termination (default),"
+                           " 4 = Early Returning Consensus)",
                            false, false,
                            mca_coll_ftbasic_cur_agreement_method,
                            &value);
@@ -146,10 +150,16 @@ ftbasic_register(void)
                             "%s ftbasic:register) Agreement Algorithm - Log Two-Phase Commit",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
         break;
+    case 4:
+        mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_RETURNING;
+        opal_output_verbose(6, ompi_ftmpi_output_handle,
+                            "%s ftbasic:register) Agreement Algorithm - Early Returning Consensus Algorithm",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
+        break;
     default:  /* Includes the valid case 3 */
         mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_TERMINATION;
         opal_output_verbose(6, ompi_ftmpi_output_handle,
-                            "%s ftbasic:register) Agreement Algorithm - Early Consensus Algorithm",
+                            "%s ftbasic:register) Agreement Algorithm - Early Terminating Consensus Algorithm",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
         break;
     }
