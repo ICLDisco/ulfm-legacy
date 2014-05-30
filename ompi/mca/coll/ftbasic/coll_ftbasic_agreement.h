@@ -96,6 +96,12 @@ BEGIN_C_DECLS
                                                                    mca_coll_ftbasic_module_t *ftbasic_module);
 
     /*
+     * Early Returning Specific
+     */
+    int mca_coll_ftbasic_agreement_era_init(mca_coll_ftbasic_module_t *module);
+    int mca_coll_ftbasic_agreement_era_fini(mca_coll_ftbasic_module_t *module);
+
+    /*
      * Log entry structure
      */
 typedef enum {
