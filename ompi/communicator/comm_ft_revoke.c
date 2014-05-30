@@ -79,7 +79,7 @@ int ompi_comm_init_revoke(void)
     mca_base_param_lookup_int(id, &rbcast);
     comm_revoke_rbcast = rbcast; }
 
-    ret = mca_bml.bml_register(MCA_BTL_TAG_FT, ompi_comm_revoke_bml_cb_fn, NULL);
+    ret = mca_bml.bml_register(MCA_BTL_TAG_FT_REVOKE, ompi_comm_revoke_bml_cb_fn, NULL);
     if( OMPI_SUCCESS != ret ) {
         return ret;
     }
@@ -110,7 +110,7 @@ static void ompi_comm_revoke_bml_cb_fn(
     ompi_revoke_message_t* msg;
     
     /* Parse the revoke fragment */
-    assert(MCA_BTL_TAG_FT == tag);
+    assert(MCA_BTL_TAG_FT_REVOKE == tag);
     assert(1 == descriptor->des_dst_cnt);
     assert(sizeof(ompi_revoke_message_t) == descriptor->des_dst->seg_len);
     msg = (ompi_revoke_message_t*) descriptor->des_dst->seg_addr.pval;
@@ -248,7 +248,7 @@ static int ompi_comm_revoke_internal_rbcast_n2(ompi_revoke_message_t* msg) {
      
         msgdes = des->des_src->seg_addr.pval;
         *msgdes = *msg;
-        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
+        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT_REVOKE);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
                 OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -312,7 +312,7 @@ static int ompi_comm_revoke_internal_rbcast_bmg(ompi_revoke_message_t* msg) {
         des->des_cbfunc = ompi_revoke_bml_complete_fn;
         msgdes = des->des_src->seg_addr.pval;
         *msgdes = *msg;
-        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
+        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT_REVOKE);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
                 OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -369,7 +369,7 @@ retry_send:
     msgdes->epoch = msg->epoch;
     msgdes->leader = leader;
     msgdes->round = 1;
-    ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
+    ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT_REVOKE);
     if(OPAL_LIKELY(ret >= 0)) {
         if(OPAL_LIKELY(1 == ret)) {
             OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -445,7 +445,7 @@ retry_send:
         assert(des->des_src->seg_len == sizeof(ompi_revoke_message_t));
         des->des_cbfunc = ompi_revoke_bml_complete_fn;
         (*(ompi_revoke_message_t*)des->des_src->seg_addr.pval) = *msg;
-        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
+        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT_REVOKE);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
                 OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
