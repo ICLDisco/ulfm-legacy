@@ -196,6 +196,9 @@ struct ompi_communicator_t {
     int                      num_active_remote;
     int                      lleader;
     int                      rleader;
+    /** Algorithm-Specific Communicator-local data
+     *   Will be OBJ_RELEASEd at communicator destructor time */
+    opal_object_t           *ft_data;
 #endif /* OPAL_ENABLE_FT_MPI */
 };
 typedef struct ompi_communicator_t ompi_communicator_t;
@@ -387,6 +390,7 @@ static inline int ompi_comm_peer_lookup_id(ompi_communicator_t* comm, ompi_proc_
         (COMM)->lleader             = 0;                                \
         (COMM)->rleader             = 0;                                \
         (COMM)->epoch               = (EPOCH);                          \
+        (COMM)->ft_data             = NULL;                             \
     } while (0)
 
 /*
