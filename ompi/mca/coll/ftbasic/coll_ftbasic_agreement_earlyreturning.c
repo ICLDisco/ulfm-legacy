@@ -27,7 +27,6 @@
 #include MCA_timer_IMPLEMENTATION_HEADER
 #include "coll_ftbasic.h"
 
-#define CONSENSUS_NEUTRAL_VALUE 1
 
 typedef enum {
     MSG_UP = 1,
@@ -57,9 +56,24 @@ typedef struct {
 #define ERAID_FIELDS u.fields
 
 typedef struct {
+    int32_t bits; /* Bitwise on 32 bits */
+    int32_t ret;  /* Return code */
+} era_value_t;
+#define ERA_VALUE_SET_UNDEF(_e) do {            \
+        (_e).bits = -1;                         \
+        (_e).ret  = -1;                         \
+    } while(0)
+#define ERA_VALUE_IS_UNDEF(_e)    ( (_e).bits == -1 && (_e).ret == -1 )
+#define ERA_VALUE_SET_NEUTRAL(_e) do {          \
+        (_e).bits = ~((int32_t)0);              \
+        (_e).ret  = OMPI_SUCCESS;               \
+    } while(0)
+#define ERA_VALUE_EQUAL(_a, _b)   ( (_a).bits == (_b).bits && (_a).ret == (_b).ret )
+
+typedef struct {
     era_msg_type_t   msg_type;
     era_identifier_t consensus_id;
-    int32_t          consensus_value;
+    era_value_t      consensus_value;
     union {
         int                 comm_based;
         orte_process_name_t proc_name_based;
@@ -67,8 +81,8 @@ typedef struct {
 } era_msg_t;
 
 typedef struct {
-    opal_object_t super;
-    int32_t       consensus_value;
+    opal_object_t   super;
+    era_value_t     consensus_value;
 } era_passed_agreement_t;
 
 OBJ_CLASS_INSTANCE(era_passed_agreement_t, opal_object_t, NULL, NULL);
@@ -83,7 +97,7 @@ OBJ_CLASS_INSTANCE(era_rank_list_item_t, opal_list_item_t, NULL, NULL);
 typedef struct {
     opal_object_t     super;
     era_identifier_t  consensus_id;
-    int32_t           current_value;
+    era_value_t       current_value;
     era_proc_status_t status;
     opal_list_t       gathered_info;
 } era_consensus_info_t;
@@ -92,7 +106,7 @@ static void  era_consensus_info_constructor (era_consensus_info_t *consensus_inf
 {
     consensus_info->status = NOT_CONTRIBUTED;
     consensus_info->consensus_id.ERAID_KEY = 0;
-    consensus_info->current_value = CONSENSUS_NEUTRAL_VALUE;
+    ERA_VALUE_SET_NEUTRAL(consensus_info->current_value);
     OBJ_CONSTRUCT(&consensus_info->gathered_info, opal_hash_table_t);
 }
 
@@ -153,7 +167,7 @@ static opal_hash_table_t era_future_agreements;
 
 #define ERA_TAG_AGREEMENT MCA_COLL_BASE_TAG_AGREEMENT
 
-static void era_combine_agreement_values(era_consensus_info_t *ni, int32_t value)
+static void era_combine_agreement_values(era_consensus_info_t *ni, era_value_t value)
 {
     opal_output(0, "%s: %s (%s:%d) -- Need to implement function\n",
                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -201,7 +215,7 @@ static void send_comm_msg(ompi_communicator_t *comm,
                           int dst, 
                           era_identifier_t consensus_id,
                           era_msg_type_t type,
-                          int value)
+                          era_value_t value)
 {
     mca_btl_base_descriptor_t *des;
     era_msg_t *src;
@@ -239,7 +253,7 @@ static void send_comm_msg(ompi_communicator_t *comm,
 static void send_proc_name_msg(orte_process_name_t dst, 
                                era_identifier_t consensus_id,
                                era_msg_type_t type,
-                               int value)
+                               era_value_t value)
 {
     mca_btl_base_descriptor_t *des;
     era_msg_t *src;
@@ -272,7 +286,7 @@ static void send_proc_name_msg(orte_process_name_t dst,
     btl->btl_send(btl, btl_endpoint, des, MCA_BTL_TAG_FT_AGREE);
 }
 
-static void era_decide(ompi_communicator_t *comm, era_identifier_t consensus_id, int32_t decided_value, era_consensus_info_t *ni)
+static void era_decide(ompi_communicator_t *comm, era_identifier_t consensus_id, era_value_t decided_value, era_consensus_info_t *ni)
 {
     era_comm_ft_data_t *ft_data;
     era_passed_agreement_t *da;
@@ -295,13 +309,18 @@ static void era_decide(ompi_communicator_t *comm, era_identifier_t consensus_id,
 static void result_request(era_msg_t *msg)
 {
     void *value;
-    int old_agreement_value;
+    era_value_t old_agreement_value;
     if( opal_hash_table_get_value_uint64(&era_passed_agreements,
                                          msg->consensus_id.ERAID_KEY,
                                          &value) == OPAL_SUCCESS ) {
         old_agreement_value = ((era_passed_agreement_t*)value)->consensus_value;
     } else {
-        old_agreement_value = -1; /* For "I don't know" */
+        /* Before talking too early, let's see if we are still working on that agreement */
+        /* Here, I should iterate on all my communcicators,
+         * OR on all ongoing agreements, and check if it
+         * corresponds to msg->consensus_id */
+        /* TODO !!! */
+        ERA_VALUE_SET_UNDEF(old_agreement_value);
     }
     send_proc_name_msg(msg->src.proc_name_based, msg->consensus_id, MSG_RESULT, old_agreement_value);
 }
@@ -313,13 +332,13 @@ static void result(era_msg_t *msg)
     if( opal_hash_table_get_value_uint64(&era_passed_agreements,
                                          msg->consensus_id.ERAID_KEY,
                                          &value) == OPAL_SUCCESS ) {
-        int old_agreement_value;
+        era_value_t old_agreement_value;
         /* This is an old agreement result. The answer, which is unneeded now,
          * should be compatible with the one stored
          */
         old_agreement_value = ((era_passed_agreement_t*)value)->consensus_value;
-        assert( old_agreement_value == msg->consensus_value ||
-                msg->consensus_value == -1 );
+        assert( ERA_VALUE_EQUAL(old_agreement_value, msg->consensus_value) ||
+                ERA_VALUE_IS_UNDEF(msg->consensus_value) );
     } else {
         /* If we don't know about the result of this agreement, 
          *   A) it should be about an ongoing agreement, so I haven't freed the communicator
@@ -353,7 +372,7 @@ static void result(era_msg_t *msg)
         }
         assert(rank < ompi_comm_size(comm));
 
-        if( msg->consensus_value != -1 ) {
+        if( !ERA_VALUE_IS_UNDEF(msg->consensus_value) ) {
             era_decide(comm, msg->consensus_id, msg->consensus_value, ni);
         } else {
             mark_as_undecided(ni, rank);
@@ -413,13 +432,14 @@ static void msg_up(era_msg_t *msg)
     era_rank_list_item_t *rank_item;
 
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) Received UP Message: Consensus ID = (%d.%d).%d, sender: %d, msg value: %d\n",
+                         "%s ftbasic:agreement (ERA) Received UP Message: Consensus ID = (%d.%d).%d, sender: %d, msg value: %08x.%d\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                          msg->consensus_id.ERAID_FIELDS.contextid,
                          msg->consensus_id.ERAID_FIELDS.epoch,
                          msg->consensus_id.ERAID_FIELDS.consensusid,
                          msg->src.comm_based,
-                         msg->consensus_value));
+                         msg->consensus_value.bits,
+                         msg->consensus_value.ret));
 
     comm = ompi_comm_lookup( msg->consensus_id.ERAID_FIELDS.contextid );
 
@@ -465,13 +485,14 @@ static void msg_down(era_msg_t *msg)
     int r;
  
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) Received DOWN Message: Consensus ID = (%d.%d).%d, sender: %d, msg value: %d\n",
+                         "%s ftbasic:agreement (ERA) Received DOWN Message: Consensus ID = (%d.%d).%d, sender: %d, msg value: %08x.%d\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                          msg->consensus_id.ERAID_FIELDS.contextid,
                          msg->consensus_id.ERAID_FIELDS.epoch,
                          msg->consensus_id.ERAID_FIELDS.consensusid,
                          msg->src.comm_based,
-                         msg->consensus_value));
+                         msg->consensus_value.bits,
+                         msg->consensus_value.ret));
 
     comm = ompi_comm_lookup( msg->consensus_id.ERAID_FIELDS.contextid );
     assert(NULL != comm); /* We can not go down without my participation */
@@ -605,7 +626,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_identifier_t consensus_id;
     era_comm_ft_data_t *ft_data;
     void *value;
-    int agreement_value;
+    era_value_t agreement_value;
 
     ft_data = era_lookup_create_ft_data_for_comm(comm);
     /* That's a new consensus */
@@ -620,7 +641,9 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     ni = era_lookup_info_for_comm(comm, consensus_id);
 
     /* I participate */
-    era_combine_agreement_values(ni, *flag);
+    agreement_value.bits = *flag;
+    agreement_value.ret  = OMPI_SUCCESS;
+    era_combine_agreement_values(ni, agreement_value);
 
     /* I start the state machine */
     ni->status = GATHERING;
@@ -639,7 +662,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
         }
     } 
     
-    *flag = agreement_value;
+    *flag = agreement_value.bits;
     
-    return OMPI_SUCCESS;
+    return agreement_value.ret;
 }
