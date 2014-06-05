@@ -437,8 +437,8 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
     }
 
 #if OPAL_ENABLE_FT_MPI
-    if( NULL != comm->ft_obj )
-        OBJ_RELEASE(comm->ft_obj);
+    if( NULL != comm->ft_data )
+        OBJ_RELEASE(comm->ft_data);
 #endif /* OPAL_ENABLE_FT_MPI */
 
     /* reset the ompi_comm_f_to_c_table entry */
