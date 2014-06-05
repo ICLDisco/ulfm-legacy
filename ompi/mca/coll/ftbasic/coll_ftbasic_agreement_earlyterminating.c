@@ -299,6 +299,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
         ompi_group_incl(comm->c_remote_group, pos, failed, group);
         free(proc_status);
     }
+    free(ag);
 
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ETA) return with flag %d and dead group with %d processes",
@@ -306,3 +307,4 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                          (NULL == group) ? 0 : (*group)->grp_proc_count));
     return ret;
 }
+
