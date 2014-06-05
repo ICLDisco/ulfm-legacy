@@ -118,6 +118,7 @@ static int plm_alps_init(void)
     
     if (ORTE_SUCCESS != (rc = orte_plm_base_comm_start())) {
         ORTE_ERROR_LOG(rc);
+        return rc;
     }
 
     if (orte_do_not_launch) {
