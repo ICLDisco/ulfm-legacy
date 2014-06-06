@@ -41,7 +41,9 @@ int
 mca_coll_ftbasic_init_query(bool enable_progress_threads,
                           bool enable_mpi_threads)
 {
-    /* Nothing to do */
+    if( mca_coll_ftbasic_cur_agreement_method == COLL_FTBASIC_EARLY_RETURNING ) {
+        return mca_coll_ftbasic_agreement_era_init();
+    }
 
     return OMPI_SUCCESS;
 }
@@ -54,7 +56,7 @@ mca_coll_ftbasic_init_query(bool enable_progress_threads,
  */
 mca_coll_base_module_t *
 mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm, 
-                          int *priority)
+                            int *priority)
 {
     int size;
     mca_coll_ftbasic_module_t *ftbasic_module;
