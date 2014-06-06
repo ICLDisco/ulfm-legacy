@@ -292,7 +292,7 @@ int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module)
         mca_coll_ftbasic_agreement_log_two_phase_init(module);
         break;
     case COLL_FTBASIC_EARLY_RETURNING:
-        mca_coll_ftbasic_agreement_era_init(module);
+        mca_coll_ftbasic_agreement_era_comm_init(module);
         break;
     default:
         break;
@@ -347,7 +347,7 @@ int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module)
         mca_coll_ftbasic_agreement_log_two_phase_finalize(module);
         break;
     case COLL_FTBASIC_EARLY_RETURNING:
-        mca_coll_ftbasic_agreement_era_fini(module);
+        mca_coll_ftbasic_agreement_era_comm_finalize(module);
         break;
     default:
         break;

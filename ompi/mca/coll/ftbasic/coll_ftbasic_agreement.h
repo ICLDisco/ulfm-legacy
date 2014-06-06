@@ -98,8 +98,10 @@ BEGIN_C_DECLS
     /*
      * Early Returning Specific
      */
-    int mca_coll_ftbasic_agreement_era_init(mca_coll_ftbasic_module_t *module);
-    int mca_coll_ftbasic_agreement_era_fini(mca_coll_ftbasic_module_t *module);
+    int mca_coll_ftbasic_agreement_era_comm_init(mca_coll_ftbasic_module_t *module);
+    int mca_coll_ftbasic_agreement_era_comm_finalize(mca_coll_ftbasic_module_t *module);
+    int mca_coll_ftbasic_agreement_era_init(void);
+    int mca_coll_ftbasic_agreement_era_finalize(void);
 
     /*
      * Log entry structure
