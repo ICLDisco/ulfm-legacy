@@ -436,11 +436,6 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
         comm->error_handler = NULL;
     }
 
-#if OPAL_ENABLE_FT_MPI
-    if( NULL != comm->ft_data )
-        OBJ_RELEASE(comm->ft_data);
-#endif /* OPAL_ENABLE_FT_MPI */
-
     /* reset the ompi_comm_f_to_c_table entry */
     if ( MPI_UNDEFINED != comm->c_f_to_c_index && 
          NULL != opal_pointer_array_get_item(&ompi_mpi_communicators,
