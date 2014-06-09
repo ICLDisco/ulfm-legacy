@@ -27,6 +27,11 @@
 #include MCA_timer_IMPLEMENTATION_HEADER
 #include "coll_ftbasic.h"
 
+static opal_hash_table_t era_passed_agreements;
+static opal_hash_table_t era_future_agreements;
+static opal_hash_table_t era_living_communicators;
+static int era_inited = 0;
+
 typedef enum {
     MSG_UP = 1,
     MSG_DOWN,
@@ -124,12 +129,10 @@ OBJ_CLASS_INSTANCE(era_consensus_info_t, opal_object_t,
 
 typedef struct {
     mca_coll_ftbasic_agreement_t  super;
+    uint32_t                      c_contextid;       /**< Copy of the contextid of the corresponding communicator,
+                                                      *   to remove from hash table when needed */
     opal_hash_table_t             ongoing_consensus; /**< Hash table of ongoing consensus on this communicator */
 } era_comm_agreement_t;
-
-/** FIXME: Or c_coll.comm_iagreement_module ? */
-#define ERA_COMM_AGREEMENT_FOR_COMM(_comm) \
-    (era_comm_agreement_t *)( ( (mca_coll_ftbasic_module_t*)((_comm)->c_coll.coll_agreement_module) )->agreement_info )
 
 static void era_comm_agreement_constructor (era_comm_agreement_t *comm_ag_info)
 {
@@ -164,15 +167,51 @@ OBJ_CLASS_INSTANCE(era_comm_agreement_t, mca_coll_ftbasic_agreement_t,
                    era_comm_agreement_constructor,
                    era_comm_agreement_destructor);
 
+static era_comm_agreement_t *era_comm_agreement_for_comm(ompi_communicator_t *comm)
+{
+    void *value;
+    mca_coll_ftbasic_module_t *module;
+
+    int rc = opal_hash_table_get_value_uint32(&era_living_communicators,
+                                              comm->c_contextid,
+                                              &value);
+    assert(rc == OMPI_SUCCESS);
+    module = (mca_coll_ftbasic_module_t *)value;
+
+    return (era_comm_agreement_t *)module->agreement_info;
+}
+
+int mca_coll_ftbasic_agreement_era_comm_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module)
+{
+    era_comm_agreement_t *comm_ag_info;
+
+    comm_ag_info = OBJ_NEW(era_comm_agreement_t);
+    comm_ag_info->c_contextid = comm->c_contextid;
+    module->agreement_info = (mca_coll_ftbasic_agreement_t *)comm_ag_info;
+
+    opal_hash_table_set_value_uint32(&era_living_communicators,
+                                     comm->c_contextid,
+                                     module);
+
+    return OMPI_SUCCESS;
+}
+
+int mca_coll_ftbasic_agreement_era_comm_finalize(mca_coll_ftbasic_module_t *module)
+{
+    era_comm_agreement_t *comm_ag_info;
+    comm_ag_info = (era_comm_agreement_t *)module->agreement_info;
+    opal_hash_table_remove_value_uint64(&era_living_communicators,
+                                        comm_ag_info->c_contextid);
+    OBJ_RELEASE(comm_ag_info);
+
+    return OMPI_SUCCESS;
+}
+
 static void send_comm_msg(ompi_communicator_t *comm,                          
                           int dst, 
                           era_identifier_t consensus_id,
                           era_msg_type_t type,
                           era_value_t value);
-
-static opal_hash_table_t era_passed_agreements;
-static opal_hash_table_t era_future_agreements;
-static int era_inited = 0;
 
 #define ERA_TAG_AGREEMENT MCA_COLL_BASE_TAG_AGREEMENT
 
@@ -252,9 +291,10 @@ static int era_next_child(era_consensus_info_t *ni, ompi_communicator_t *comm, i
 }
 #endif
 
-static void era_decide(ompi_communicator_t *comm, era_identifier_t consensus_id, era_value_t decided_value, era_consensus_info_t *ni)
+static void era_decide(ompi_communicator_t *comm, era_identifier_t consensus_id, era_value_t decided_value,
+                       era_consensus_info_t *ni,
+                       era_comm_agreement_t *comm_ag_info)
 {
-    era_comm_agreement_t *comm_ag_info;
     era_passed_agreement_t *da;
     int r;
 
@@ -267,9 +307,7 @@ static void era_decide(ompi_communicator_t *comm, era_identifier_t consensus_id,
                          consensus_id.ERAID_FIELDS.epoch,
                          consensus_id.ERAID_FIELDS.consensusid));
 
-    comm_ag_info = ERA_COMM_AGREEMENT_FOR_COMM(comm);
     assert( NULL != comm_ag_info ); /* we can't decide on a communicator without the decision structures */
-
     opal_hash_table_remove_value_uint64(&comm_ag_info->ongoing_consensus,
                                         consensus_id.ERAID_KEY);
 
@@ -287,7 +325,7 @@ static void era_decide(ompi_communicator_t *comm, era_identifier_t consensus_id,
     }
 }
 
-static void era_check_status(era_consensus_info_t *ni, ompi_communicator_t *comm)
+static void era_check_status(era_consensus_info_t *ni, ompi_communicator_t *comm, era_comm_agreement_t *comm_ag_info)
 {
     int r;
     era_rank_list_item_t *rl;
@@ -337,8 +375,10 @@ static void era_check_status(era_consensus_info_t *ni, ompi_communicator_t *comm
                                  ni->consensus_id.ERAID_FIELDS.contextid,
                                  ni->consensus_id.ERAID_FIELDS.epoch,
                                  ni->consensus_id.ERAID_FIELDS.consensusid));
+
             /* I'm root. I have to decide now. */
-            era_decide(comm, ni->consensus_id, ni->current_value, ni);
+            assert( NULL != comm_ag_info ); /* Better find the ag_info, if ni exists */
+            era_decide(comm, ni->consensus_id, ni->current_value, ni, comm_ag_info);
         } else {
             OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
                                  "%s ftbasic:agreement (ERA) check_status for Consensus ID = (%d.%d).%d, status = GATHERING, and all children of non-root have contributed\n",
@@ -517,7 +557,7 @@ static void result(era_msg_t *msg)
         assert(NULL != comm);
         assert(comm->epoch == msg->consensus_id.ERAID_FIELDS.epoch);
 
-        comm_ag_info = ERA_COMM_AGREEMENT_FOR_COMM(comm);
+        comm_ag_info = era_comm_agreement_for_comm(comm);
         assert( NULL != comm_ag_info ); /* same reasoning as above */
         rc = opal_hash_table_get_value_uint64(&comm_ag_info->ongoing_consensus,
                                               msg->consensus_id.ERAID_KEY,
@@ -535,21 +575,17 @@ static void result(era_msg_t *msg)
         assert(rank < ompi_comm_size(comm));
 
         if( !ERA_VALUE_IS_UNDEF(msg->consensus_value) ) {
-            era_decide(comm, msg->consensus_id, msg->consensus_value, ni);
+            era_decide(comm, msg->consensus_id, msg->consensus_value, ni, comm_ag_info);
         } else {
             mark_as_undecided(ni, rank);
         }
     }
 }
 
-static era_consensus_info_t *era_lookup_info_for_comm(ompi_communicator_t *comm, era_identifier_t consensus_id)
+static era_consensus_info_t *era_lookup_info_for_comm(ompi_communicator_t *comm, era_identifier_t consensus_id, era_comm_agreement_t *comm_ag_info)
 {
-    era_comm_agreement_t *comm_ag_info;
     void *value;
     era_consensus_info_t *ni;
-
-    comm_ag_info = ERA_COMM_AGREEMENT_FOR_COMM(comm);
-    assert( NULL != comm_ag_info );
 
     if( opal_hash_table_get_value_uint64(&comm_ag_info->ongoing_consensus,
                                          consensus_id.ERAID_KEY,
@@ -583,6 +619,7 @@ static void msg_up(era_msg_t *msg)
     ompi_communicator_t *comm;
     void *value;
     era_rank_list_item_t *rank_item;
+    era_comm_agreement_t *comm_ag_info = NULL;
 
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Received UP Message: Consensus ID = (%d.%d).%d, sender: %d, msg value: %08x.%d\n",
@@ -620,7 +657,9 @@ static void msg_up(era_msg_t *msg)
                              "%s ftbasic:agreement (ERA) Received UP Message: known communicator\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         /* OK, I have a communicator for that consensus... Let's try to find it */
-        ni = era_lookup_info_for_comm(comm, msg->consensus_id);
+        comm_ag_info = era_comm_agreement_for_comm(comm);
+        assert( NULL != comm_ag_info );
+        ni = era_lookup_info_for_comm(comm, msg->consensus_id, comm_ag_info);
     }
 
     /* ni holds the current consensus information structure */
@@ -634,7 +673,8 @@ static void msg_up(era_msg_t *msg)
                          rank_item->rank));
 
     if( NULL != comm ) {
-        era_check_status(ni, comm);
+        assert( NULL != comm_ag_info );
+        era_check_status(ni, comm, comm_ag_info);
     }
 }
 
@@ -659,7 +699,7 @@ static void msg_down(era_msg_t *msg)
     comm = ompi_comm_lookup( msg->consensus_id.ERAID_FIELDS.contextid );
     assert(NULL != comm); /* We can not go down without my participation */
 
-    comm_ag_info = ERA_COMM_AGREEMENT_FOR_COMM(comm);
+    comm_ag_info = era_comm_agreement_for_comm(comm);
     assert( NULL != comm_ag_info ); /* same reasoning as above */
     rc = opal_hash_table_get_value_uint64(&comm_ag_info->ongoing_consensus,
                                           msg->consensus_id.ERAID_KEY,
@@ -669,7 +709,7 @@ static void msg_down(era_msg_t *msg)
     ni = (era_consensus_info_t*)value;
     assert( NULL != ni );
 
-    era_decide(comm, msg->consensus_id, msg->consensus_value, ni);
+    era_decide(comm, msg->consensus_id, msg->consensus_value, ni, comm_ag_info);
 }
 
 static void era_cb_fn(struct mca_btl_base_module_t* btl,
@@ -700,36 +740,21 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
     }
 }
 
-int mca_coll_ftbasic_agreement_era_comm_init(mca_coll_ftbasic_module_t *module)
-{
-    era_comm_agreement_t *comm_ag_info;
-
-    /** FIXME: who does the OBJ_RELEASE? Couldn't find it in the other codes */
-    comm_ag_info = OBJ_NEW(era_comm_agreement_t);
-    module->agreement_info = (mca_coll_ftbasic_agreement_t *)comm_ag_info;
-
-    return OMPI_SUCCESS;
-}
-
-int mca_coll_ftbasic_agreement_era_comm_finalize(mca_coll_ftbasic_module_t *module)
-{
-    /** FIXME: who calls this? I couldn't find who does the OBJ_RELEASE(module->agreement_info) in the code. */
-    OBJ_RELEASE(module->agreement_info);
-
-    return OMPI_SUCCESS;
-}
-
 int mca_coll_ftbasic_agreement_era_init(void)
 {
     if( era_inited ) {
         return OMPI_SUCCESS;
     }
     
+    opal_output(0, "Calling ERA init\n");
+    
     OBJ_CONSTRUCT( &era_passed_agreements, opal_hash_table_t);
     opal_hash_table_init(&era_passed_agreements, 16 /* Why not? */);
     OBJ_CONSTRUCT( &era_future_agreements, opal_hash_table_t);
     opal_hash_table_init(&era_future_agreements, 4 /* We expect only a few */);
     mca_bml.bml_register(MCA_BTL_TAG_FT_AGREE, era_cb_fn, NULL);
+    OBJ_CONSTRUCT( &era_living_communicators, opal_hash_table_t);
+    opal_hash_table_init(&era_living_communicators, 16 /* Why not? */);
 
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Initialized\n",
@@ -745,8 +770,10 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
     void *node;
     void *value;
     uint64_t key;
-    era_passed_agreement_t *old_agreement;
-    era_consensus_info_t   *un_agreement;
+    era_passed_agreement_t    *old_agreement;
+    era_consensus_info_t      *un_agreement;
+    mca_coll_ftbasic_module_t *comm_module;
+    era_comm_agreement_t      *comm_ag_info;
 
     if( !era_inited ) {
         return OMPI_SUCCESS;
@@ -767,6 +794,19 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
                                                      node, &node) == OPAL_SUCCESS );
     }
     OBJ_DESTRUCT( &era_passed_agreements );
+
+    if( opal_hash_table_get_first_key_uint64(&era_living_communicators,
+                                             &key,
+                                             &value, &node) == OPAL_SUCCESS ) {
+        do {
+            comm_module  = (mca_coll_ftbasic_module_t *)value;
+            comm_ag_info = (era_comm_agreement_t*)comm_module->agreement_info;
+            OBJ_RELEASE( comm_ag_info );
+        } while( opal_hash_table_get_next_key_uint64(&era_living_communicators,
+                                                     &key, &value, 
+                                                     node, &node) == OPAL_SUCCESS );
+    }
+    OBJ_DESTRUCT( &era_living_communicators );
 
     if( opal_hash_table_get_first_key_uint64(&era_future_agreements,
                                              &key,
@@ -809,7 +849,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     void *value;
     era_value_t agreement_value;
 
-    comm_ag_info = ERA_COMM_AGREEMENT_FOR_COMM(comm);
+    comm_ag_info = (era_comm_agreement_t*)((mca_coll_ftbasic_module_t *)module)->agreement_info;
     assert(NULL != comm_ag_info);
 
     comm_ag_info->super.agreement_seq_num++;
@@ -820,7 +860,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     consensus_id.ERAID_FIELDS.epoch       = comm->epoch;
 
     /* Let's create or find the current value */
-    ni = era_lookup_info_for_comm(comm, consensus_id);
+    ni = era_lookup_info_for_comm(comm, consensus_id, comm_ag_info);
 
     /* I participate */
     agreement_value.bits = *flag;
@@ -831,7 +871,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     ni->status = GATHERING;
 
     /* And follow its logic */
-    era_check_status(ni, comm);
+    era_check_status(ni, comm, comm_ag_info);
 
     /* Wait for the consensus to be resolved */
     while(1) {

@@ -248,7 +248,7 @@ OBJ_CLASS_INSTANCE(mca_coll_ftbasic_request_t,
 /*************************************
  * Initalize and Finalize Operations
  *************************************/
-int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module)
+int mca_coll_ftbasic_agreement_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module)
 {
     int ret;
 
@@ -292,7 +292,7 @@ int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module)
         mca_coll_ftbasic_agreement_log_two_phase_init(module);
         break;
     case COLL_FTBASIC_EARLY_RETURNING:
-        mca_coll_ftbasic_agreement_era_comm_init(module);
+        mca_coll_ftbasic_agreement_era_comm_init(comm, module);
         break;
     default:
         break;

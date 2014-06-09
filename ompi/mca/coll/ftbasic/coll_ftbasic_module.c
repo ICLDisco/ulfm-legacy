@@ -125,7 +125,7 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
      */
     if( ompi_ftmpi_enabled && !OMPI_COMM_IS_INTER(comm) ) {
         /* Init the agreement function */
-        mca_coll_ftbasic_agreement_init(ftbasic_module);
+        mca_coll_ftbasic_agreement_init(comm, ftbasic_module);
 
         /* Choose the correct operations */
         switch( mca_coll_ftbasic_cur_agreement_method ) {
