@@ -125,7 +125,7 @@ int ompi_comm_init(void)
     OMPI_COMM_SET_FT(&ompi_mpi_comm_world.comm, group->grp_proc_count, 0);
     opal_pointer_array_set_item (&ompi_mpi_comm_epoch,
                                  ompi_mpi_comm_world.comm.c_f_to_c_index,
-                                 (void*)(uintptr_t)(ompi_mpi_comm_world.comm.epoch));
+                                 (void*)(uintptr_t)(ompi_mpi_comm_world.comm.c_epoch));
 #endif  /* OPAL_ENABLE_FT_MPI */
 
     /* Setup MPI_COMM_SELF */
@@ -165,7 +165,7 @@ int ompi_comm_init(void)
     OMPI_COMM_SET_FT(&ompi_mpi_comm_self.comm, group->grp_proc_count, 0);
     opal_pointer_array_set_item (&ompi_mpi_comm_epoch,
                                  ompi_mpi_comm_self.comm.c_f_to_c_index,
-                                 (void*)(uintptr_t)(ompi_mpi_comm_self.comm.epoch));
+                                 (void*)(uintptr_t)(ompi_mpi_comm_self.comm.c_epoch));
 #endif  /* OPAL_ENABLE_FT_MPI */
 
     /* Setup MPI_COMM_NULL */
@@ -192,7 +192,7 @@ int ompi_comm_init(void)
     OMPI_COMM_SET_FT(&ompi_mpi_comm_null.comm, 0, 0);
     opal_pointer_array_set_item (&ompi_mpi_comm_epoch,
                                  ompi_mpi_comm_null.comm.c_f_to_c_index,
-                                 (void*)(uintptr_t)(ompi_mpi_comm_null.comm.epoch));
+                                 (void*)(uintptr_t)(ompi_mpi_comm_null.comm.c_epoch));
 #endif  /* OPAL_ENABLE_FT_MPI */
 
 

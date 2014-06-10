@@ -125,14 +125,12 @@ struct ompi_communicator_t {
     uint32_t                  c_flags; /* flags, e.g. intercomm,
                                           topology, etc. */
 
-    int c_id_available; /* the currently available Cid for allocation 
-               to a child*/
-    int c_id_start_index; /* the starting index of the block of cids 
-                 allocated to this communicator*/
-    int                  epoch;  /**< Identifier used to keep trace of the communicators revoked.
-                                  * This allows to avoid a race condition between the revoke-based
-                                  * message arriving from late peers and the creation of new communicators.
-                                  */
+    int                c_id_available; /* the currently available Cid for allocation 
+                                          to a child*/
+    int              c_id_start_index; /* the starting index of the block of cids 
+                                          allocated to this communicator*/
+    uint32_t                  c_epoch;  /**< Identifier used to differenciate between two communicators
+                                         *   using the same c_contextid (not at the same time, obviously) */
     ompi_group_t        *c_local_group;
     ompi_group_t       *c_remote_group;
 
@@ -386,7 +384,7 @@ static inline int ompi_comm_peer_lookup_id(ompi_communicator_t* comm, ompi_proc_
         (COMM)->num_active_remote   = (NPROCS);                         \
         (COMM)->lleader             = 0;                                \
         (COMM)->rleader             = 0;                                \
-        (COMM)->epoch               = (EPOCH);                          \
+        (COMM)->c_epoch             = (EPOCH);                          \
     } while (0)
 
 /*
