@@ -23,6 +23,7 @@
 
 #include "opal/mca/base/base.h"
 #include "opal/util/output.h"
+#include "opal/util/printf.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "orte/constants.h"
 #include "orte/util/proc_info.h"
@@ -33,6 +34,11 @@
 /* Local variables */
 static int param_priority;
 static int param_read_attempts;
+static char* mca_ras_alps_apstat_cmd[]
+    = {"apstat",
+       "/usr/bin/apstat",
+       "/opt/cray/eslogin/eswrap/1.0.8/bin/apstat",
+       NULL};
 
 /* Local functions */
 static int ras_alps_open(void);
@@ -92,12 +98,12 @@ prep_job_id(const char *jid)
 static unsigned long int
 get_res_id(void)
 {
-    const char *apstat_cmd = "/usr/bin/apstat -r";
-    char *id = NULL;
+    char *apstat_cmd, *id = NULL;
     char read_buf[512];
     FILE *apstat_fp = NULL;
     /* zero is considered to be an invalid res id */
     unsigned long jid = 0;
+    int apstat_idx = 0;
 
     if (NULL != (id = getenv("BATCH_PARTITION_ID"))) {
         return strtoul(id, NULL, 10);
@@ -108,19 +114,40 @@ get_res_id(void)
             /* out of resources */
             return 0;
         }
-        if (NULL == (apstat_fp = popen(apstat_cmd, "r"))) {
-            /* popen failure */
+
+search_for_apstat:
+        if( NULL == mca_ras_alps_apstat_cmd[apstat_idx] ) {
+            opal_output(orte_ras_base.ras_output, "Could not find a working apstat command");
             free(prepped_jid);
             return 0;
+        }
+        apstat_cmd = opal_asprintf(&apstat_cmd, "%s -r", mca_ras_alps_apstat_cmd[apstat_idx]);
+        if (NULL == (apstat_fp = popen(apstat_cmd, "r"))) {
+            /* popen failure */
+            opal_output_verbose(1, orte_ras_base.ras_output,
+                        "ras:alps: popen failed -- %s", apstat_cmd);
+            free(apstat_cmd);
+            apstat_idx++;
+            goto search_for_apstat;
         }
         while (NULL != fgets(read_buf, 512, apstat_fp)) {
             /* does this line have the id that we care about? */
             if (NULL != strstr(read_buf, prepped_jid)) {
         /* the line is going to be in the form of something like:
         A 1450   571783 batch:138309     XT    80 - -   2000 conf,claim
+        or something like this (for the new versions):
+        Apid ResId    User PEs Nodes   Age State     Command
+        39751570  2446 kbferre 128     8 0h08m   run CNS.allprof
          */
                 char *t = read_buf;
-                for (t = read_buf; !isdigit(*t) && *t; ++t) {
+                for(; ' ' == *t; t++);  /* trim the \s */
+                if( 'A' == *t ) {
+                    for (t = read_buf; !isdigit(*t) && *t; ++t) {
+                        jid = strtoul(t, NULL, 10);
+                    }
+                } else {
+                    for(; isdigit(*t); ++t);  /* skip the first number */
+                    for(; ' ' == *t; t++);  /* skip the \s */
                     jid = strtoul(t, NULL, 10);
                 }
                 /* if we are here, then jid should be, given the example above,
@@ -130,6 +157,7 @@ get_res_id(void)
         }
         fclose(apstat_fp);
         free(prepped_jid);
+        free(apstat_cmd);
     }
     return jid;
 }
@@ -148,7 +176,12 @@ ras_alps_open(void)
                                "appinfo_read_attempts",
                                "Maximum number of attempts to read ALPS "
                                "appinfo file", false, false, 10, NULL);
-
+#if 0
+    mca_base_param_reg_string(&mca_ras_alps_component.base_version,
+                              "apstat_cmd", "Path of the apstat command",
+                              false, false,
+                              "/usr/bin/apstat", &mca_ras_alps_apstat_cmd);
+#endif
     return ORTE_SUCCESS;
 }
 
@@ -188,8 +221,9 @@ orte_ras_alps_component_query(mca_base_module_t **module,
     /* Sadly, no */
 
     opal_output(orte_ras_base.ras_output,
-                "ras:alps: NOT available for selection -- "
-                "OMPI_ALPS_RESID or BASIL_RESERVATION_ID not set?");
+                "ras:alps: NOT available for selection -- %s",
+                (NULL != jid_str) ? "OMPI_ALPS_RESID or BASIL_RESERVATION_ID not set"
+                                  : "wrong value for OMPI_ALPS_RESID or BASIL_RESERVATION_ID");
     *module = NULL;
     return ORTE_ERROR;
 }
