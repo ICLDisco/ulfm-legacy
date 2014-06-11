@@ -48,9 +48,16 @@ typedef enum {
 
 typedef struct {
     union {
+        /** Order is performance critical:
+         *   Hash tables (as of June 11, 2014) consider only the lower x bits for
+         *   hash value (key & mask). As a consequence, having mostly stable entries
+         *   like epoch or contextid at the low part of the 64bits key anihilates the
+         *   performance of the hash tables. The most varying 16 bits should be kept
+         *   first (assuming little endian).
+         */
         struct {
-            uint16_t contextid;    /**< Although context ids are 32 bit long, only the lower 16 bits are used */
             uint16_t consensusid;
+            uint16_t contextid;    /**< Although context ids are 32 bit long, only the lower 16 bits are used */
             uint32_t epoch;
         } fields;
         uint64_t uint64;
@@ -806,10 +813,10 @@ int mca_coll_ftbasic_agreement_era_init(void)
     OBJ_CONSTRUCT( &era_passed_agreements, opal_hash_table_t);
     opal_hash_table_init(&era_passed_agreements, 65537 /* Big Storage */);
     OBJ_CONSTRUCT( &era_future_agreements, opal_hash_table_t);
-    opal_hash_table_init(&era_future_agreements, 65537 /* We expect only a few */);
+    opal_hash_table_init(&era_future_agreements, 4 /* We expect only a few */);
     mca_bml.bml_register(MCA_BTL_TAG_FT_AGREE, era_cb_fn, NULL);
     OBJ_CONSTRUCT( &era_living_communicators, opal_hash_table_t);
-    opal_hash_table_init(&era_living_communicators, 65537 /* Why not? */);
+    opal_hash_table_init(&era_living_communicators, 16 /* Why not? */);
     OBJ_CONSTRUCT( &known_epoch_for_cid, opal_hash_table_t);
     opal_hash_table_init(&known_epoch_for_cid, 65537 /* This is a big one */);
 
