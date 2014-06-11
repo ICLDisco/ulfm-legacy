@@ -288,3 +288,4 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                          (NULL == group) ? 0 : (*group)->grp_proc_count));
     return ret;
 }
+
