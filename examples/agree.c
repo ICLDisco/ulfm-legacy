@@ -184,7 +184,8 @@ int main(int argc, char *argv[])
         if( create_comm > 0 && ( (i % create_comm) == 0 ) ) {
             MPI_Comm temp;
             MPI_Comm_dup(comm, &temp);
-            MPI_Comm_free(&comm);
+            if( comm != MPI_COMM_WORLD )
+                MPI_Comm_free(&comm);
             comm = temp;
             MPI_Comm_rank(comm, &rank);
             MPI_Comm_size(comm, &size);
