@@ -113,6 +113,21 @@ OMPI_DECLSPEC extern opal_pointer_array_t ompi_mpi_communicators;
  * system.
  */
 OMPI_DECLSPEC extern opal_pointer_array_t ompi_mpi_comm_epoch;
+
+/*
+ * Callback function that should be called when there is a fault.
+ *
+ * This callback function will be used anytime (other than during finalize) the
+ * runtime or BTLs detects and handles a process failure. The function is called
+ * once per communicator that possess the failed process, and per process failure.
+ *
+ * @param[in] comm the communicator to which the failed process belongs
+ * @param[in] rank the rank of the failed process in that communicator
+ * @param[in] remote is true iff rank is a remote process
+ */
+typedef void (ompi_comm_rank_failure_callback_t)(struct ompi_communicator_t *comm, int rank, bool remote);
+
+OMPI_DECLSPEC extern ompi_comm_rank_failure_callback_t *ompi_rank_failure_cbfunc;
 #endif  /* OPAL_ENABLE_FT_MPI */
 
 struct ompi_communicator_t {
