@@ -21,5 +21,8 @@
 EXTRA_DIST = CMakeLists.txt
 
 # support needs to be first for dependencies
-SUBDIRS = support asm class threads datatype util mpi
+SUBDIRS = support asm class threads util
+if PROJECT_OMPI
+SUBDIRS += datatype mpi
+endif # PROJECT_OMPI
 DIST_SUBDIRS = event $(SUBDIRS)
