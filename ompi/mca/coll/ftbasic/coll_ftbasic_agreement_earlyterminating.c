@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013      The University of Tennessee and The University
+ * Copyright (c) 2013-2014 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  *
@@ -36,15 +36,17 @@
 /** Those are the possible status of the process following the algorithm */
 #define STATUS_NO_INFO               0
 #define STATUS_CRASHED           (1<<0)
-#define STATUS_TOLD_ME_HE_KNOWS  (1<<1)
-#define STATUS_KNOWS_I_KNOW      (1<<2)
+#define STATUS_ACRASHED         ((1<<1) | STATUS_CRASHED)
+#define STATUS_TOLD_ME_HE_KNOWS  (1<<2)
+#define STATUS_KNOWS_I_KNOW      (1<<3)
 /** Those are used solely to track requests completion */
-#define STATUS_SEND_COMPLETE     (1<<3)
-#define STATUS_RECV_COMPLETE     (1<<4)
+#define STATUS_SEND_COMPLETE     (1<<4)
+#define STATUS_RECV_COMPLETE     (1<<5)
 
 typedef struct {
     int est;
     int knows;
+    int pf;
 } ftbasic_eta_agreement_msg_t;
 
 #define FTBASIC_ETA_TAG_AGREEMENT MCA_COLL_BASE_TAG_AGREEMENT
@@ -97,7 +99,22 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
 
     out.est = *flag;
     out.knows = 0;
+    out.pf = 0;
     round = 1;
+
+    { /* remove acked failures from the result */
+        MPI_Group ackedgrp; int npa; int *aranks, *cranks;
+        ompi_comm_failure_get_acked( &ackedgrp );
+        npa = ompi_group_size( ackedgrp );
+        aranks = calloc( npa, sizeof(int) );
+        for( i = 0; i < np; i++ ) aranks[i]=i;
+        cranks = calloc( npa, sizeof(int) );
+        ompi_group_translate_ranks( ackedgrp, npa, aranks, comm->c_remote_group, cranks );
+        for( i = 0; i < npa; i++ ) {
+            proc_status[cranks[i]] = STATUS_ACRASHED;
+        }
+        free(aranks); free(cranks);
+    }
 
 #define NEED_TO_RECV(_i) (me != _i && (!(proc_status[_i] & STATUS_CRASHED)) && (!(proc_status[_i] & STATUS_TOLD_ME_HE_KNOWS)))
 #define NEED_TO_SEND(_i) (me != _i && (!(proc_status[_i] & STATUS_CRASHED)) && (!(proc_status[_i] & STATUS_KNOWS_I_KNOW)))
@@ -116,7 +133,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
         for(i = 0; i < np; i++) {
             if( NEED_TO_RECV(i) ) {
                 /* Need to know more about this guy */
-                MCA_PML_CALL(irecv(&in[i], 2, MPI_INT, 
+                MCA_PML_CALL(irecv(&in[i], 3, MPI_INT, 
                                    i, FTBASIC_ETA_TAG_AGREEMENT, comm, 
                                    &reqs[nr++]));
                 proc_status[i] &= ~STATUS_RECV_COMPLETE;
@@ -128,7 +145,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
             }
             if( NEED_TO_SEND(i) ) {
                 /* Need to communicate with this guy */
-                MCA_PML_CALL(isend(&out, 2, MPI_INT, 
+                MCA_PML_CALL(isend(&out, 3, MPI_INT, 
                                    i, FTBASIC_ETA_TAG_AGREEMENT, 
                                    MCA_PML_BASE_SEND_STANDARD, comm, 
                                    &reqs[nr++]));
@@ -183,10 +200,13 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                             OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                                                  "%s ftbasic:agreement (ETA) recv with rank %d failed on request at index %d(%p). Mark it as dead!",
                                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, reqs[ri]));
-
+                            out.pf = 1;
+/* per spec this should already be completed; TODO remove of proven correct */
+#if 0
                             /* Release the request, it can't be subsequently completed */
                             if(MPI_REQUEST_NULL != reqs[ri])
                                 ompi_request_free(&reqs[ri]);
+#endif
                         } else if( (MPI_ERR_PENDING == statuses[ri].MPI_ERROR) ) {
                             /* The pending request(s) will be waited on at the next iteration. */
                             assert( ri >= nr );
@@ -223,10 +243,13 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                             OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                                                  "%s ftbasic:agreement (ETA) send with rank %d failed on Request %d(%p). Mark it as dead!",
                                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, reqs[ri]));
-
+                            out.pf = 1;
+/* per spec this should already be completed; TODO remove of proven correct */
+#if 0
                             /* Release the request, it can't be subsequently completed */
                             if(MPI_REQUEST_NULL != reqs[ri])
                                 ompi_request_free(&reqs[ri]);
+#endif
                         } else if( (MPI_ERR_PENDING == statuses[ri].MPI_ERROR) ) {
                             /* The pending request(s) will be waited on at the next iteration. */
                             assert( ri >= nr );
@@ -299,11 +322,11 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
         ompi_group_incl(comm->c_remote_group, pos, failed, group);
         free(proc_status);
     }
-    free(ag);
 
+    if( (MPI_SUCCESS == ret) && out.pf ) ret = MPI_ERR_PROC_FAILED;
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ETA) return with flag %d and dead group with %d processes",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), *flag,
+                         "%s ftbasic:agreement (ETA) return %d with flag %d and dead group with %d processes",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret, *flag,
                          (NULL == group) ? 0 : (*group)->grp_proc_count));
     return ret;
 }
