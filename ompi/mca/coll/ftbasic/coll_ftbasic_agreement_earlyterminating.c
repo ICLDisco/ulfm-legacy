@@ -183,14 +183,10 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                     if( (rc == MPI_SUCCESS) || (MPI_SUCCESS == statuses[ri].MPI_ERROR) ) {
                         assert(MPI_REQUEST_NULL == reqs[ri]);
 
-                        /* Implements the logical and of answers */
-                        if( in[i].est == 0 ) {
-                            out.est = 0;
-                        }
+                        /* Implements the binary and of answers */
+                        out.est &= in[i].est;
                         /* Implements the logical or of ERR_PROC_FAILED returns */
-                        if( in[i].pf == 1 ) {
-                            out.pf = 1;
-                        }
+                        out.pf |= in[i].pf;
                         proc_status[i] |= ( (in[i].knows * STATUS_TOLD_ME_HE_KNOWS) | STATUS_RECV_COMPLETE);
                         nbrecv++;
 
