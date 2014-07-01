@@ -187,6 +187,10 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                         if( in[i].est == 0 ) {
                             out.est = 0;
                         }
+                        /* Implements the logical or of ERR_PROC_FAILED returns */
+                        if( in[i].pf == 1 ) {
+                            out.pf = 1;
+                        }
                         proc_status[i] |= ( (in[i].knows * STATUS_TOLD_ME_HE_KNOWS) | STATUS_RECV_COMPLETE);
                         nbrecv++;
 
