@@ -249,7 +249,7 @@ int MPI_Intercomm_create(MPI_Comm local_comm, int local_leader,
     }
     if ( OMPI_SUCCESS != rc ) {
         *newintercomm = MPI_COMM_NULL;
-        return OMPI_ERRHANDLER_INVOKE(local_comm, MPI_ERR_INTERN,
+        return OMPI_ERRHANDLER_INVOKE(local_comm, rc,
                                       FUNC_NAME);
     }
 
