@@ -175,26 +175,26 @@ int ompi_comm_nextcid ( ompi_communicator_t* newcomm,
     int response, glresponse=0;
     int start;
     unsigned int i;
-    
+
     ompi_comm_cid_allredfct* allredfnct;
 
-    /** 
+    /**
      * Determine which implementation of allreduce we have to use
-     * for the current scenario 
+     * for the current scenario
      */
 
-    switch (mode) 
+    switch (mode)
         {
-        case OMPI_COMM_CID_INTRA: 
+        case OMPI_COMM_CID_INTRA:
             allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra;
             break;
         case OMPI_COMM_CID_INTER:
             allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_inter;
             break;
-        case OMPI_COMM_CID_INTRA_BRIDGE: 
+        case OMPI_COMM_CID_INTRA_BRIDGE:
             allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_bridge;
             break;
-        case OMPI_COMM_CID_INTRA_OOB: 
+        case OMPI_COMM_CID_INTRA_OOB:
             allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_oob;
             break;
 #if OPAL_ENABLE_FT_MPI
@@ -211,11 +211,11 @@ int ompi_comm_nextcid ( ompi_communicator_t* newcomm,
             allredfnct=(ompi_comm_cid_allredfct*)ompi_comm_allreduce_intra_oob_ft;
             break;
 #endif /* OPAL_ENABLE_FT_MPI */
-        default: 
+        default:
             return MPI_UNDEFINED;
             break;
         }
-    
+
     do {
         /* Only one communicator function allowed in same time on the
          * same communicator.
@@ -225,7 +225,7 @@ int ompi_comm_nextcid ( ompi_communicator_t* newcomm,
         OPAL_THREAD_UNLOCK(&ompi_cid_lock);
     } while (OMPI_SUCCESS != response );
     start = ompi_mpi_communicators.lowest_free;
-    
+
     while (!done) {
         /**
          * This is the real algorithm described in the doc 
@@ -731,7 +731,7 @@ static int ompi_comm_allreduce_intra_bridge (int *inbuf, int *outbuf,
          &ompi_mpi_op_max.op != op && &ompi_mpi_op_min.op  != op ) {
         return MPI_ERR_OP;
     }
-    
+
     local_rank = ompi_comm_rank ( comm );
     tmpbuf     = (int *) malloc ( count * sizeof(int));
     if ( NULL == tmpbuf ) {
@@ -743,29 +743,48 @@ static int ompi_comm_allreduce_intra_bridge (int *inbuf, int *outbuf,
     rc = comm->c_coll.coll_allreduce ( inbuf, tmpbuf, count, MPI_INT,
                                        op, comm, comm->c_coll.coll_allreduce_module );
     if ( OMPI_SUCCESS != rc ) {
+#if OPAL_ENABLE_FT_MPI
+        if( local_rank != local_leader ) {
+            goto exit;
+        }
+#else
         goto exit;
+#endif  /* OPAL_ENABLE_FT_MPI */
     }
 
     if (local_rank == local_leader ) {
         MPI_Request req;
-        
+
         rc = MCA_PML_CALL(irecv ( outbuf, count, MPI_INT, remote_leader,
                                   OMPI_COMM_ALLREDUCE_TAG, 
                                   bcomm, &req));
-        if ( OMPI_SUCCESS != rc ) {
-            goto exit;       
+        if ( OMPI_SUCCESS == rc ) {
+            rc = MCA_PML_CALL(send (tmpbuf, count, MPI_INT, remote_leader, 
+                                    OMPI_COMM_ALLREDUCE_TAG,
+                                    MCA_PML_BASE_SEND_STANDARD,  bcomm));
+            if ( OMPI_SUCCESS != rc ) {
+#if OPAL_ENABLE_FT_MPI
+                if( MPI_ERR_PROC_FAILED == rc ) {
+                    /* The peer is dead, continue with the local decision */
+                    ompi_datatype_copy_content_same_ddt(MPI_INT, count, outbuf, tmpbuf);
+                    goto skip_handshake;
+                }
+#endif  /* OPAL_ENABLE_FT_MPI */
+                goto exit;
+            }
+  skip_handshake:
+            rc = ompi_request_wait(&req, MPI_STATUS_IGNORE);
+            if ( OMPI_SUCCESS != rc ) {
+#if OPAL_ENABLE_FT_MPI
+                if( MPI_ERR_PROC_FAILED == rc ) {
+                    /* The peer is dead, continue with the local decision */
+                    ompi_datatype_copy_content_same_ddt(MPI_INT, count, outbuf, tmpbuf);
+                    /* Let it go don't break the leader execution flow here */
+                } else
+#endif  /* OPAL_ENABLE_FT_MPI */
+                goto exit;
+            }
         }
-        rc = MCA_PML_CALL(send (tmpbuf, count, MPI_INT, remote_leader, 
-                                OMPI_COMM_ALLREDUCE_TAG,
-                                MCA_PML_BASE_SEND_STANDARD,  bcomm));
-        if ( OMPI_SUCCESS != rc ) {
-            goto exit;
-        }
-        rc = ompi_request_wait_all ( 1, &req, MPI_STATUS_IGNORE);
-        if ( OMPI_SUCCESS != rc ) {
-            goto exit;
-        }
-
         if ( &ompi_mpi_op_max.op == op ) {
             for ( i = 0 ; i < count; i++ ) {
                 if (tmpbuf[i] > outbuf[i]) {

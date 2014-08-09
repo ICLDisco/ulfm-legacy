@@ -110,7 +110,7 @@ int MPI_Intercomm_create(MPI_Comm local_comm, int local_leader,
                 OPAL_CR_EXIT_LIBRARY();
                 return OMPI_ERRHANDLER_INVOKE ( local_comm, MPI_ERR_COMM, 
                                                 FUNC_NAME);
-            }            
+            }
             if ( (remote_leader < 0) || (remote_leader >= ompi_comm_size(bridge_comm))) {
                 OPAL_CR_EXIT_LIBRARY();
                 return OMPI_ERRHANDLER_INVOKE ( local_comm, MPI_ERR_ARG,
@@ -121,30 +121,50 @@ int MPI_Intercomm_create(MPI_Comm local_comm, int local_leader,
 
     if ( local_rank == local_leader ) {
         MPI_Request req;
-        
+
         /* local leader exchange group sizes lists */
         rc = MCA_PML_CALL(irecv(&rsize, 1, MPI_INT, rleader, tag, bridge_comm,
                                 &req));
         if ( rc != MPI_SUCCESS ) {
+#if OPAL_ENABLE_FT_MPI
+            if( MPI_ERR_PROC_FAILED == rc ) {
+                rsize = 0;
+                goto skip_handshake;
+            }
+#endif  /* OPAL_ENABLE_FT_MPI */
             goto err_exit;
         }
         rc = MCA_PML_CALL(send (&local_size, 1, MPI_INT, rleader, tag,
                                 MCA_PML_BASE_SEND_STANDARD, bridge_comm));
         if ( rc != MPI_SUCCESS ) {
+#if OPAL_ENABLE_FT_MPI
+            if( MPI_ERR_PROC_FAILED == rc ) {
+                rsize = 0;
+                goto skip_handshake;
+            }
+#endif  /* OPAL_ENABLE_FT_MPI */
             goto err_exit;
         }
+  skip_handshake:  /* nothing special */;
         rc = ompi_request_wait_all ( 1, &req, MPI_STATUS_IGNORE);
         if ( rc != MPI_SUCCESS ) {
-            goto err_exit;
+            rsize = 0;  /* participate in the collective and then done */
         }
     }
-    
+
     /* bcast size and list of remote processes to all processes in local_comm */
     rc = local_comm->c_coll.coll_bcast ( &rsize, 1, MPI_INT, lleader, 
                                          local_comm,
                                          local_comm->c_coll.coll_bcast_module);
     if ( rc != MPI_SUCCESS ) {
+#if OPAL_ENABLE_FT_MPI
+        if ( local_rank != local_leader ) {
+            goto err_exit;
+        }
+        /* the leaders must go in the ger_rprocs in order to avoid deadlocks */
+#else
         goto err_exit;
+#endif  /* OPAL_ENABLE_FT_MPI */
     }
 
     rprocs = ompi_comm_get_rprocs ( local_comm, bridge_comm, lleader,
@@ -208,7 +228,7 @@ int MPI_Intercomm_create(MPI_Comm local_comm, int local_leader,
     if ( MPI_SUCCESS != rc ) {
         goto err_exit;
     }
-    
+
     ompi_group_decrement_proc_count (new_group_pointer);
     OBJ_RELEASE(new_group_pointer);
     new_group_pointer = MPI_GROUP_NULL;
