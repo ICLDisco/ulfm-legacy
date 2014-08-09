@@ -279,7 +279,7 @@ ompi_datatype_set_element_count( const ompi_datatype_t* type, uint32_t count, si
 
 static inline int32_t
 ompi_datatype_copy_content_same_ddt( const ompi_datatype_t* type, size_t count,
-                                     char* pDestBuf, char* pSrcBuf )
+                                     void* pDestBuf, void* pSrcBuf )
 {
     int32_t length, rc;
 
