@@ -498,7 +498,7 @@ static char *era_status_to_string(era_proc_status_t s) {
 #endif /* OPAL_ENABLE_DEBUG */
 
 static void era_compute_local_return_value(era_agreement_info_t *ci) {
-    int r;
+    int r, nb_ack_before_agreement;
     era_rank_counter_item_t *rl;
     int found;
     ompi_group_t 
@@ -545,6 +545,13 @@ static void era_compute_local_return_value(era_agreement_info_t *ci) {
         if( nb_adug > 0 /**< There is at least a failure acknowledged by the children. */ ) {
             /* Okay.. We may need to compare the group I acknowledged (when entering the agreement)
              * and the 'group' my children acknowledged... */
+
+            if( ci->ack_offset == 0 ) {
+                /* My children have some acknowledged, failures, but not me */
+                ci->current_value.ret = MPI_ERR_PROC_FAILED;
+                return;
+            }
+
             ack_before_agreement_group = OBJ_NEW(ompi_group_t);
             tmp_sub_group = OBJ_NEW(ompi_group_t);
             abag_array[0] = 0;
@@ -554,7 +561,7 @@ static void era_compute_local_return_value(era_agreement_info_t *ci) {
             ompi_group_intersection(tmp_sub_group,
                                     ci->comm->c_local_group,
                                     &ack_before_agreement_group);
-
+            
             /** Did my children acknowledge the same number of ranks as me? */
             if( nb_adug != ack_before_agreement_group->grp_proc_count ) {
                 ci->current_value.ret = MPI_ERR_PROC_FAILED;
@@ -595,7 +602,7 @@ static void era_compute_local_return_value(era_agreement_info_t *ci) {
         ack_after_agreement_group = OBJ_NEW(ompi_group_t);
         tmp_sub_group = OBJ_NEW(ompi_group_t);
         abag_array[0] = 0;
-        abag_array[1] = ompi_group_all_failed_procs->grp_proc_count - 1;
+        abag_array[1] = ompi_group_all_failed_procs->grp_proc_count - 1; /**< >=0 since gpr_proc_count > ci->ack_offset >= 0 */
         abag_array[2] = 1;
         ompi_group_range_incl(ompi_group_all_failed_procs, 1, &abag_array, &tmp_sub_group);
         ompi_group_intersection(tmp_sub_group,
@@ -604,19 +611,26 @@ static void era_compute_local_return_value(era_agreement_info_t *ci) {
         OBJ_RELEASE(tmp_sub_group);
 
         if( NULL == ack_before_agreement_group ) {
-            ack_before_agreement_group = OBJ_NEW(ompi_group_t);
-            tmp_sub_group = OBJ_NEW(ompi_group_t);
-            abag_array[0] = 0;
-            abag_array[1] = ci->ack_offset - 1;
-            abag_array[2] = 1;
-            ompi_group_range_incl(ompi_group_all_failed_procs, 1, &abag_array, &tmp_sub_group);
-            ompi_group_intersection(tmp_sub_group,
-                                    ci->comm->c_local_group,
-                                    &ack_before_agreement_group);
-            OBJ_RELEASE(tmp_sub_group);
+            if( ci->ack_offset > 0 ) {
+                ack_before_agreement_group = OBJ_NEW(ompi_group_t);
+                tmp_sub_group = OBJ_NEW(ompi_group_t);
+                abag_array[0] = 0;
+                abag_array[1] = ci->ack_offset - 1;
+                abag_array[2] = 1;
+                ompi_group_range_incl(ompi_group_all_failed_procs, 1, &abag_array, &tmp_sub_group);
+                ompi_group_intersection(tmp_sub_group,
+                                        ci->comm->c_local_group,
+                                        &ack_before_agreement_group);
+                nb_ack_before_agreement = ack_before_agreement_group->grp_proc_count;
+                OBJ_RELEASE(tmp_sub_group);
+            } else {
+                nb_ack_before_agreement = 0;
+            }
+        } else {
+            nb_ack_before_agreement = 0;
         }
 
-        if( ack_after_agreement_group->grp_proc_count != ack_before_agreement_group->grp_proc_count ) {
+        if( ack_after_agreement_group->grp_proc_count != nb_ack_before_agreement ) {
             ci->current_value.ret = MPI_ERR_PROC_FAILED;
         }
         OBJ_RELEASE(ack_after_agreement_group);
@@ -769,29 +783,35 @@ static void message_sent(struct mca_btl_base_module_t* module,
 
 static  void send_up_msg(era_agreement_info_t *ci, int rank)
 {
-    ompi_group_t *acked_group, *tmp_sub_group;
+    ompi_group_t *acked_group = NULL, *tmp_sub_group;
     int *ack_rank_array, *co_rank_array;
-    int  r;
+    int  r, upsize;
     int  abag_array[3];
     int  nb_afa;
 
     assert( NULL != ci->comm );
 
-    acked_group = OBJ_NEW(ompi_group_t);
-    tmp_sub_group = OBJ_NEW(ompi_group_t);
-    abag_array[0] = 0;
-    abag_array[1] = ci->ack_offset - 1;
-    abag_array[2] = 1;
-    ompi_group_range_incl(ompi_group_all_failed_procs, 1, &abag_array, &acked_group);
-    ompi_group_intersection(tmp_sub_group,
-                            ci->comm->c_local_group,
-                            &acked_group);
-    OBJ_RELEASE(tmp_sub_group);
+    if( ci->ack_offset > 0 ) {
+        acked_group = OBJ_NEW(ompi_group_t);
+        tmp_sub_group = OBJ_NEW(ompi_group_t);
+        abag_array[0] = 0;
+        abag_array[1] = ci->ack_offset - 1;
+        abag_array[2] = 1;
+        ompi_group_range_incl(ompi_group_all_failed_procs, 1, &abag_array, &acked_group);
+        ompi_group_intersection(tmp_sub_group,
+                                ci->comm->c_local_group,
+                                &acked_group);
+        OBJ_RELEASE(tmp_sub_group);
 
-    nb_afa = ompi_group_size(acked_group);
+        nb_afa = ompi_group_size(acked_group);
+    } else {
+        nb_afa = 0;
+    }
 
-    co_rank_array = (int*)malloc(  MAX_ACK_FAILED_SIZE * (nb_afa/MAX_ACK_FAILED_SIZE + 1) * sizeof(int));
-    for(r = nb_afa; r < MAX_ACK_FAILED_SIZE * (nb_afa / MAX_ACK_FAILED_SIZE + 1); r++)
+    upsize = MAX_ACK_FAILED_SIZE * (nb_afa/MAX_ACK_FAILED_SIZE + 1);
+
+    co_rank_array = (int*)malloc(upsize * sizeof(int));
+    for(r = nb_afa; r < upsize; r++)
         co_rank_array[r] = -1;
 
     if( nb_afa > 0 ) {
@@ -801,11 +821,13 @@ static  void send_up_msg(era_agreement_info_t *ci, int rank)
         ompi_group_translate_ranks(acked_group, nb_afa, ack_rank_array, ci->comm->c_local_group, co_rank_array);
         free(ack_rank_array);
     }
-    OBJ_RELEASE(acked_group);
+    if( acked_group != NULL ) {
+        OBJ_RELEASE(acked_group);
+    }
 
-    for(r = 0; r < nb_afa; r += MAX_ACK_FAILED_SIZE) {
+    for(r = 0; r < upsize; r += MAX_ACK_FAILED_SIZE) {
         send_comm_msg(ci->comm, rank, ci->agreement_id, MSG_UP, &ci->current_value, 
-                      nb_afa / MAX_ACK_FAILED_SIZE, &co_rank_array[r]);
+                      upsize / MAX_ACK_FAILED_SIZE, &co_rank_array[r]);
     }
     free(co_rank_array);
 }
