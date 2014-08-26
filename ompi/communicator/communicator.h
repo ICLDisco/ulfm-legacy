@@ -209,6 +209,8 @@ struct ompi_communicator_t {
     int                      num_active_remote;
     int                      lleader;
     int                      rleader;
+
+    ompi_group_t            *agreed_failed_ranks;
 #endif /* OPAL_ENABLE_FT_MPI */
 };
 typedef struct ompi_communicator_t ompi_communicator_t;
@@ -400,6 +402,12 @@ static inline int ompi_comm_peer_lookup_id(ompi_communicator_t* comm, ompi_proc_
         (COMM)->lleader             = 0;                                \
         (COMM)->rleader             = 0;                                \
         (COMM)->c_epoch             = (EPOCH);                          \
+        if( (NPROCS) > 0 ) {                                            \
+            (COMM)->agreed_failed_ranks =                               \
+                ompi_group_allocate_bmap( NPROCS, 0 );                  \
+        } else {                                                        \
+            (COMM)->agreed_failed_ranks = NULL;                         \
+        }                                                               \
     } while (0)
 
 /*
