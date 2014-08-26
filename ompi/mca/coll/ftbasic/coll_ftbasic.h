@@ -64,7 +64,8 @@ enum mca_coll_ftbasic_agreement_method_t {
     COLL_FTBASIC_ALLREDUCE         = 0,
     COLL_FTBASIC_TWO_PHASE         = 1,
     COLL_FTBASIC_LOG_TWO_PHASE     = 2,
-    COLL_FTBASIC_EARLY_TERMINATION = 3
+    COLL_FTBASIC_EARLY_TERMINATION = 3,
+    COLL_FTBASIC_EARLY_RETURNING   = 4
 };
 typedef enum mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_agreement_method_t;
 
@@ -185,6 +186,13 @@ int mca_coll_ftbasic_iagreement_allreduce(ompi_communicator_t* comm,
 /* Early termination algorithm */
 int
 mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
+                                     ompi_group_t **group,
+                                     int *flag,
+                                     mca_coll_base_module_t *module);
+
+/* Early returning algorithm */
+int
+mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
                                      ompi_group_t **group,
                                      int *flag,
                                      mca_coll_base_module_t *module);

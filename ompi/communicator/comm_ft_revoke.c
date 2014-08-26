@@ -35,8 +35,8 @@ static void ompi_comm_revoke_bml_cb_fn(
         void* cbdata);
 
 typedef struct ompi_revoke_message_t {
-    int32_t    cid;
-    int32_t    epoch;
+    uint32_t   cid;
+    uint32_t   epoch;
     int32_t    leader;
     int8_t     round;
 } ompi_revoke_message_t;
@@ -79,7 +79,7 @@ int ompi_comm_init_revoke(void)
     mca_base_param_lookup_int(id, &rbcast);
     comm_revoke_rbcast = rbcast; }
 
-    ret = mca_bml.bml_register(MCA_BTL_TAG_FT, ompi_comm_revoke_bml_cb_fn, NULL);
+    ret = mca_bml.bml_register(MCA_BTL_TAG_FT_REVOKE, ompi_comm_revoke_bml_cb_fn, NULL);
     if( OMPI_SUCCESS != ret ) {
         return ret;
     }
@@ -110,7 +110,7 @@ static void ompi_comm_revoke_bml_cb_fn(
     ompi_revoke_message_t* msg;
     
     /* Parse the revoke fragment */
-    assert(MCA_BTL_TAG_FT == tag);
+    assert(MCA_BTL_TAG_FT_REVOKE == tag);
     assert(1 == descriptor->des_dst_cnt);
     assert(sizeof(ompi_revoke_message_t) == descriptor->des_dst->seg_len);
     msg = (ompi_revoke_message_t*) descriptor->des_dst->seg_addr.pval;
@@ -146,10 +146,10 @@ static int ompi_comm_revoke_internal_local(ompi_revoke_message_t* msg) {
     }
     assert( msg->cid == comm->c_contextid );
     /* Check if this is a delayed revoke for an old communicator whose CID has been reused */
-    if( comm->epoch != msg->epoch ) {
+    if( comm->c_epoch != msg->epoch ) {
         OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle, 
                              "%s ompi: comm_revoke: Info: Received a late revoke order for the communicator with CID %3d:%d when is is now at epoch %d - ignoring, nothing to do",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), msg->cid, msg->epoch, comm->epoch ));
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), msg->cid, msg->epoch, comm->c_epoch ));
         return false;
     }
     /* Ignore duplicates */
@@ -182,7 +182,7 @@ static ompi_group_t* ompi_comm_revoke_internal_fw_grp(ompi_revoke_message_t* msg
     ompi_communicator_t* comm = (ompi_communicator_t *)ompi_comm_lookup(msg->cid);
 
     if(NULL == comm || comm->c_contextid != msg->cid ||
-       comm->epoch != msg->epoch || comm->comm_revoked) {
+       comm->c_epoch != msg->epoch || comm->comm_revoked) {
         return NULL;
     }
     if(OMPI_COMM_IS_INTER(comm)) {
@@ -204,13 +204,13 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
     if( comm->comm_revoked ) return OMPI_SUCCESS;
 
     msg.cid = comm->c_contextid;
-    msg.epoch = comm->epoch;
+    msg.epoch = comm->c_epoch;
     /*
      * Broadcast the 'revoke' signal to all other processes.
      */
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                          "%s ompi: comm_revoke: API: Ask others to revoke communicator %3d:%d",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), comm->c_contextid, comm->epoch ));
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), comm->c_contextid, comm->c_epoch ));
     ret = ompi_comm_revoke_internal_rbcast(&msg);
     ompi_comm_revoke_internal_local(&msg);
     return ret;
@@ -248,7 +248,7 @@ static int ompi_comm_revoke_internal_rbcast_n2(ompi_revoke_message_t* msg) {
      
         msgdes = des->des_src->seg_addr.pval;
         *msgdes = *msg;
-        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
+        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT_REVOKE);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
                 OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -312,7 +312,7 @@ static int ompi_comm_revoke_internal_rbcast_bmg(ompi_revoke_message_t* msg) {
         des->des_cbfunc = ompi_revoke_bml_complete_fn;
         msgdes = des->des_src->seg_addr.pval;
         *msgdes = *msg;
-        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
+        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT_REVOKE);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
                 OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -335,16 +335,20 @@ static int ompi_comm_revoke_internal_rbcast_bmg(ompi_revoke_message_t* msg) {
 
 static int ompi_comm_revoke_internal_rbcast_ringleader(ompi_revoke_message_t* msg) {
     ompi_group_t* grp = ompi_comm_revoke_internal_fw_grp(msg);
-    if(NULL == grp) { 
-        return OMPI_ERR_NOT_FOUND;
-    }
-    int leader = ompi_group_rank(grp);
-    int pred = (leader-1) % ompi_group_size(grp);
+    int leader;
+    int pred;
     int ret, exit_status = OMPI_SUCCESS;
     ompi_proc_t* proc;
     mca_bml_base_btl_t *bml_btl;
     mca_btl_base_descriptor_t *des;
     ompi_revoke_message_t* msgdes;
+
+    if(NULL == grp) { 
+        return OMPI_ERR_NOT_FOUND;
+    }
+
+    leader = ompi_group_rank(grp);
+    pred = (leader-1) % ompi_group_size(grp);
     
 retry_send:
     proc = ompi_group_peer_lookup(grp, pred);
@@ -369,7 +373,7 @@ retry_send:
     msgdes->epoch = msg->epoch;
     msgdes->leader = leader;
     msgdes->round = 1;
-    ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
+    ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT_REVOKE);
     if(OPAL_LIKELY(ret >= 0)) {
         if(OPAL_LIKELY(1 == ret)) {
             OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
@@ -394,7 +398,7 @@ retry_send:
 }
 
 static int ompi_comm_revoke_internal_fw_ringleader(ompi_revoke_message_t* msg) {
-    int me, leader, exit_status = OMPI_SUCCESS; 
+    int me, exit_status = OMPI_SUCCESS; 
     ompi_communicator_t* comm;
     ompi_group_t* grp;
 
@@ -445,7 +449,7 @@ retry_send:
         assert(des->des_src->seg_len == sizeof(ompi_revoke_message_t));
         des->des_cbfunc = ompi_revoke_bml_complete_fn;
         (*(ompi_revoke_message_t*)des->des_src->seg_addr.pval) = *msg;
-        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT);
+        ret = mca_bml_base_send(bml_btl, des, MCA_BTL_TAG_FT_REVOKE);
         if(OPAL_LIKELY(ret >= 0)) {
             if(OPAL_LIKELY(1 == ret)) {
                 OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
