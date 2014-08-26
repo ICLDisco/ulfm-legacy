@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sched.h>
+#include <signal.h>
 
 typedef struct {
     int  size;
@@ -51,6 +52,7 @@ int main(int argc, char *argv[])
     int benchmark    = 0;
     int nb_test      = 20;
     int debug        = 0;
+    int failures     = 0;
     char *help_msg   = NULL;
 
     start = MPI_Wtime();
@@ -65,11 +67,12 @@ int main(int argc, char *argv[])
             { "benchmark",    0, 0, 'b' },
             { "nb-test",      1, 0, 'n' },
             { "help",         0, 0, 'h' },
+            { "failures",     1, 0, 'F' },
             { "debug",        0, 0, 'd' },
             { NULL,           0, 0, 0   }
         };
 
-        c = getopt_long(argc, argv, "vsirc:bn:hd", long_options, NULL);
+        c = getopt_long(argc, argv, "vsirc:bn:hdF:", long_options, NULL);
         if (c == -1)
             break;
 
@@ -97,6 +100,9 @@ int main(int argc, char *argv[])
             break;
         case 'd':
             debug = 1;
+            break;
+        case 'F':
+            failures = atoi(optarg);
             break;
         case 'h':
             help_msg = "";
@@ -132,6 +138,9 @@ int main(int argc, char *argv[])
     comm = MPI_COMM_WORLD;
 
     MPI_Init(&argc, &argv);
+
+    MPI_Comm_set_errhandler(MPI_COMM_WORLD,MPI_ERRORS_RETURN);
+
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &size);
 
@@ -155,6 +164,7 @@ int main(int argc, char *argv[])
                     "--benchmark       | -b        To measure the times\n"
                     "--nb-test <I>     | -n <I>    To do I iterations of the agreement\n"
                     "--debug           | -d        Wait that a gdb attaches to the process and call stop=1 to continue\n"
+                    "--failures <I>    | -F <I>    Introduce random process failures every I iterations\n"
                     "--help            | -h        To display this help\n",
                     argv[0]);
         }
@@ -190,19 +200,46 @@ int main(int argc, char *argv[])
             MPI_Comm_rank(comm, &rank);
             MPI_Comm_size(comm, &size);
         }
+
+        if( failures > 0 && ( ((i+1) % failures) == 0 ) ) {
+            if( ((rand_r(&seed) % (size - 1)) + 1) == rank ) {
+                if( verbose ) {
+                    printf("Rank %d/%d fails\n", rank, size);
+                }
+                raise(SIGKILL);
+            }
+        }
+
         flag = result[i].input[rank];
         if( check_result ) {
             result[i].size = size;
         }
         if( verbose ) {
-            printf("Rank %d/%d enters MPI_Comm_agree with %08x\n", rank, size, flag);
+            printf("Rank %d/%d enters MPI_Comm_agree %d with %08x\n", rank, size, i, flag);
         }
         if( de_sync_loop ) {
             usleep_random();
         }
         ret = OMPI_Comm_agree(comm, &flag);
         if( verbose ) {
-            printf("Rank %d/%d leaves MPI_Comm_agree with %08x and %d\n", rank, size, flag, ret);
+            printf("Rank %d/%d leaves MPI_Comm_agree %d with %08x and %d\n", rank, size, i, flag, ret);
+        }
+        if( ret != MPI_SUCCESS ) {
+            MPI_Comm temp;
+            int orank = rank;
+            int osize = size;
+            if(verbose) {
+                printf("Rank %d/%d needs to shrink after a failure\n", rank, size);
+            }
+            OMPI_Comm_shrink(comm, &temp);
+            if( comm != MPI_COMM_WORLD )
+                MPI_Comm_free(&comm);
+            comm = temp;
+            MPI_Comm_rank(comm, &rank);
+            MPI_Comm_size(comm, &size);
+            if(verbose) {
+                printf("Rank %d/%d in previous comm is now %d/%d after shrink\n", orank, osize, rank, size);
+            }
         }
         if( check_result ) {
             MPI_Allgather(&flag, 1, MPI_INT, result[i].output, 1, MPI_INT, comm);
