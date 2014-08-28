@@ -160,12 +160,20 @@ static void  era_agreement_info_constructor (era_agreement_info_t *agreement_inf
     agreement_info->waiting_down_from = -1;
     OBJ_CONSTRUCT(&agreement_info->gathered_info, opal_list_t);
     OBJ_CONSTRUCT(&agreement_info->union_of_dead_ack, opal_list_t);
+    OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ERA) Constructing Agreement Info %p\n",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         (void*)agreement_info));
 }
 
 static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info)
 {
     opal_list_item_t *li;
     ompi_communicator_t *comm;
+    OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ERA) Destructing Agreement Info %p\n",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         (void*)agreement_info));
     while( NULL != (li = opal_list_remove_first(&agreement_info->gathered_info)) ) {
         OBJ_RELEASE(li);
     }
@@ -367,36 +375,86 @@ static void mark_as_undecided(era_agreement_info_t *ci, int rank)
                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                 __FUNCTION__,
                 __FILE__, __LINE__);
+    exit(0);
 }
 
-#define ERA_TOPOLOGY_STRING
+#define ERA_TOPOLOGY_BINARY_TREE
 
 #if defined ERA_TOPOLOGY_BINARY_TREE
+static int find_biggest_alive_lower_than_in_subtree(ompi_communicator_t *comm, int m, int sr)
+{
+    int c;
+    if( sr >= comm->c_local_group->grp_proc_count )
+        return -1;
+
+    if( sr >= m )
+        return -1; /**< Everything in that subtree is bigger than m */
+
+    if( ompi_comm_is_proc_active(comm, sr, false) && sr < m )
+        return sr;
+
+    /* Look in right-hand tree */
+    c = find_biggest_alive_lower_than_in_subtree(comm, m, sr*2 + 2);
+    if( c >= 0 )
+        return c; /**< Right hand tree is larger than left hand tree */
+
+    c = find_biggest_alive_lower_than_in_subtree(comm, m, sr*2 + 1);
+    if( c >= 0 )
+        return c;
+
+    return -1;
+}
+
+static int bt_parent(ompi_communicator_t *comm, int r) {
+    int p;
+    int st;
+
+    if(r == 0) {
+        return 0;
+    }
+    p = (r-1) / 2;
+    if( !ompi_comm_is_proc_active(comm, p, false) ) {
+        st = p;
+        do {
+            p = find_biggest_alive_lower_than_in_subtree(comm, r, st);
+            if( st == 0 )
+                break;
+            st = (st-1)/2;
+        } while(p == -1);
+        if( p == -1 )
+            p = r;
+    }
+    return p;
+}
+
+static int bt_children(ompi_communicator_t *comm, int r, int prev_child) {
+    int next_child;
+    if( prev_child == -1 )
+        next_child = r+1;
+    else
+        next_child = prev_child + 1;
+
+    /** Anybody with an ID > r is a potentation child */
+    while(next_child < comm->c_local_group->grp_proc_count) {
+        if( ompi_comm_is_proc_active(comm, next_child, false) && r == bt_parent(comm, next_child) )
+            break;
+        next_child++;
+    }
+
+    return next_child;
+}
+
 static int era_parent(era_agreement_info_t *ci)
 {
     ompi_communicator_t *comm = ci->comm;
-    if( comm->c_my_rank == 0 )
-        return 0;
-    return (comm->c_my_rank - 1) / 2;
+
+    return bt_parent(comm, comm->c_my_rank);
 }
 
 static int era_next_child(era_agreement_info_t *ci, int prev_child)
 {
     ompi_communicator_t *comm = ci->comm;
-    int l, r;
-    l = (comm->c_my_rank + 1) * 2 - 1;
-    r = l + 1;
-    if( prev_child == -1 ) {
-        if( l < ompi_comm_size(comm) )
-            return l;
-        return ompi_comm_size(comm);
-    } else if(prev_child == l) {
-        if( r < ompi_comm_size(comm) )
-            return r;
-        return ompi_comm_size(comm);
-    } else {
-        return ompi_comm_size(comm);
-    }
+    return bt_children(comm, comm->c_my_rank, prev_child);
 }
 #endif
 
@@ -451,6 +509,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 {
     era_passed_agreement_t *da;
     ompi_communicator_t *comm;
+    ompi_group_t *new_deads_group, *new_agreed;
     int r;
 
     da = OBJ_NEW(era_passed_agreement_t);
@@ -467,20 +526,31 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                          ci->agreement_id.ERAID_FIELDS.agreementid));
 
     opal_hash_table_remove_value_uint64(&era_ongoing_agreements, ci->agreement_id.ERAID_KEY);
+    opal_hash_table_set_value_uint64(&era_passed_agreements,
+                                     ci->agreement_id.ERAID_KEY,
+                                     da);
 
     comm = ci->comm;
     assert( NULL != comm );
 
-    opal_hash_table_set_value_uint64(&era_passed_agreements,
-                                     ci->agreement_id.ERAID_KEY,
-                                     da);
+    if( decided_value->new_dead[0] != -1 ) {
+        for(r = 0; r < MAX_NEW_DEAD_SIZE && decided_value->new_dead[0] != -1; r++)
+            /*nothing*/;
+        new_deads_group = OBJ_NEW(ompi_group_t);
+        new_agreed      = OBJ_NEW(ompi_group_t);
+        ompi_group_incl(comm->c_local_group, r, decided_value->new_dead, &new_deads_group);
+        ompi_group_union(comm->agreed_failed_ranks, new_deads_group, &new_agreed);
+        OBJ_RELEASE(comm->agreed_failed_ranks);
+        comm->agreed_failed_ranks = new_agreed;
+        OBJ_RELEASE(new_deads_group);
+    }
 
     r = -1;
     while( (r = era_next_child(ci, r)) < ompi_comm_size(comm) ) {
         send_comm_msg(comm, r, ci->agreement_id, MSG_DOWN, &da->agreement_value, 0, NULL);
     }
 
-    OBJ_RELEASE(ci); /* This will take care of the content of ni too */
+    OBJ_RELEASE(ci); /* This will take care of the content of ci too */
 }
 
 #if OPAL_ENABLE_DEBUG
@@ -1061,15 +1131,16 @@ static void msg_up(era_msg_t *msg)
     }
 
     ci = era_lookup_agreeement_info( msg->agreement_id );
+
+    OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ERA) Managing UP Message, agreement is %s\n",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         ci == NULL ? "unknown" : "known"));
+
     if( NULL == ci ) {
         ci = era_create_agreement_info( msg->agreement_id );
         /* We will attach the communicator when we contribute to it */
     }
-
-    OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) Received UP Message for %s agreement\n",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         ci == NULL ? "unknown" : "known"));
 
     if( ci->status == BROADCASTING ) {
         /** This can happen: a child gives me its contribution,
@@ -1081,6 +1152,9 @@ static void msg_up(era_msg_t *msg)
          *  So, let's ignore the message(s), we will send the result when
          *  we receive the DOWN message.
          */
+        OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
+                             "%s ftbasic:agreement (ERA) Managing UP Message -- Already in BROADCASTING state: ignoring message\n",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         return;
     }
 
@@ -1116,20 +1190,25 @@ static void msg_up(era_msg_t *msg)
         if( rank_item->rank == msg->src.comm_based ) {
             assert(rank_item->counter > 0);
             rank_item->counter--;
+            OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
+                                 "%s ftbasic:agreement (ERA) Received UP Message: found %d in list of people that contributed (wait for %d more)\n",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 rank_item->rank,
+                                 rank_item->counter));
             break;
         }
     }
-    if( rank_item == (era_rank_counter_item_t *)opal_list_get_next( &rank_item->super ) ) {
+    if( rank_item == (era_rank_counter_item_t *)opal_list_get_end( &ci->gathered_info ) ) {
         rank_item = OBJ_NEW(era_rank_counter_item_t);
         rank_item->rank = msg->src.comm_based;
         rank_item->counter = msg->nb_up_messages - 1;
         opal_list_append(&ci->gathered_info, &rank_item->super);
+        OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
+                             "%s ftbasic:agreement (ERA) Received UP Message: adding %d in list of people that contributed (wait for %d more)\n",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             rank_item->rank,
+                             rank_item->counter));
     }
-
-    OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) Received UP Message: adding %d in list of people that contributed\n",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         rank_item->rank));
 
     era_check_status(ci);
 }
