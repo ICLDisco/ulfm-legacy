@@ -1201,8 +1201,8 @@ static void send_msg(ompi_communicator_t *comm,
                              NULL != proc_name ? ORTE_NAME_PRINT(proc_name) : "(null)"));
     }
 
-    assert( agreement_id.ERAID_FIELDS.contextid == ompi_comm_get_cid(comm) );
-    assert( agreement_id.ERAID_FIELDS.epoch == comm->c_epoch );
+    assert( NULL == comm || agreement_id.ERAID_FIELDS.contextid == ompi_comm_get_cid(comm) );
+    assert( NULL == comm || agreement_id.ERAID_FIELDS.epoch == comm->c_epoch );
 
     if( NULL == comm ) {
         assert(NULL != proc_name);
@@ -1357,6 +1357,31 @@ static void msg_up(era_msg_t *msg)
                              "%s ftbasic:agreement (ERA) Managing UP Message -- Already in BROADCASTING state: ignoring message\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         return;
+    }
+
+    /** Did we receive enough contributions from that rank already?
+     *  He could be re-sending his data, because of some failure that
+     *  was discovered, and I requested it because I became root (because
+     *  of another failure), but it discovered the first failure at the 
+     *  same time, and started sending without me requesting.
+     */
+    for( rank_item = (era_rank_counter_item_t *)opal_list_get_first( &ci->gathered_info );
+         rank_item != (era_rank_counter_item_t *)opal_list_get_end( &ci->gathered_info );
+         rank_item = (era_rank_counter_item_t *)opal_list_get_next( &rank_item->super ) ) {
+        if( rank_item->rank == msg->src_comm_rank ) {
+            break; /* Ah ah: we heard from you already */
+        }
+    }
+    if( rank_item != (era_rank_counter_item_t *)opal_list_get_end( &ci->gathered_info ) ) {
+        if( rank_item->counter == 0 ) {
+            /* We are not waiting from more messages, thank you */
+            /* NOTE: there may be a race here... What if we received twice the packet 0, and no of the packets 1?...
+             * We can have the wrong list of ADR...
+             * Check this carefully.
+             */
+            era_check_status(ci);
+            return;
+        }
     }
 
     /* ci holds the current agreement information structure */
