@@ -60,6 +60,10 @@ mca_coll_ftbasic_component;
 extern int mca_coll_ftbasic_priority;
 extern int mca_coll_ftbasic_crossover;
 
+#if defined(OPAL_ENABLE_DEBUG)
+OMPI_DECLSPEC extern int coll_ftbasic_era_debug_rank_may_fail;
+#endif
+
 enum mca_coll_ftbasic_agreement_method_t {
     COLL_FTBASIC_ALLREDUCE         = 0,
     COLL_FTBASIC_TWO_PHASE         = 1,
