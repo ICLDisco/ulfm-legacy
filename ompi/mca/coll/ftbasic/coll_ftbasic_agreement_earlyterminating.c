@@ -103,8 +103,9 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     round = 1;
 
     { /* remove acked failures from the result */
-        MPI_Group ackedgrp; int npa; int *aranks, *cranks;
-        ompi_comm_failure_get_acked( &ackedgrp );
+        ompi_group_t* ackedgrp = NULL; int npa; int *aranks, *cranks;
+        ackedgrp = OBJ_NEW(ompi_group_t);
+        ompi_comm_failure_get_acked( comm, ackedgrp );
         npa = ompi_group_size( ackedgrp );
         aranks = calloc( npa, sizeof(int) );
         for( i = 0; i < np; i++ ) aranks[i]=i;
