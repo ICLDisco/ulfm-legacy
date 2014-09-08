@@ -104,17 +104,22 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
 
     { /* remove acked failures from the result */
         ompi_group_t* ackedgrp = NULL; int npa; int *aranks, *cranks;
-        ackedgrp = OBJ_NEW(ompi_group_t);
-        ompi_comm_failure_get_acked( comm, ackedgrp );
-        npa = ompi_group_size( ackedgrp );
-        aranks = calloc( npa, sizeof(int) );
-        for( i = 0; i < np; i++ ) aranks[i]=i;
-        cranks = calloc( npa, sizeof(int) );
-        ompi_group_translate_ranks( ackedgrp, npa, aranks, comm->c_remote_group, cranks );
-        for( i = 0; i < npa; i++ ) {
-            proc_status[cranks[i]] = STATUS_ACRASHED;
+        ompi_comm_failure_get_acked_internal( comm, &ackedgrp );
+        if( MPI_GROUP_EMPTY == ackedgrp ) {
+            OBJ_RELEASE( ackedgrp );
         }
-        free(aranks); free(cranks);
+        else {
+            npa = ompi_group_size( ackedgrp );
+            aranks = calloc( npa, sizeof(int) );
+            for( i = 0; i < np; i++ ) aranks[i]=i;
+            cranks = calloc( npa, sizeof(int) );
+            ompi_group_translate_ranks( ackedgrp, npa, aranks, comm->c_remote_group, cranks );
+            ompi_group_free( &ackedgrp );
+            for( i = 0; i < npa; i++ ) {
+                proc_status[cranks[i]] = STATUS_ACRASHED;
+            }
+            free(aranks); free(cranks);
+        }
     }
 
 #define NEED_TO_RECV(_i) (me != _i && (!(proc_status[_i] & STATUS_CRASHED)) && (!(proc_status[_i] & STATUS_TOLD_ME_HE_KNOWS)))
