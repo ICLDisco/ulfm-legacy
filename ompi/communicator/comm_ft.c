@@ -30,7 +30,19 @@
 #include "ompi/mca/coll/base/coll_tags.h"
 
 
-
+/**
+ * The handling of known failed processes is based on a two level process. On one
+ * side the MPI library itself must know the failed processes (in order to be able
+ * to correctly handle complex operations such as shrink). On the other side, the
+ * failed processes acknowledged by the users shuould not be altered during any of
+ * the internal calls, as they must only be updated upon user request.
+ * Thus, the global list (ompi_group_all_failed_procs) is the list of all known
+ * failed processes (by the MPI library internals), and it is allegedly updated
+ * by the MPI library whenever new failure are noticed. However, the user interact
+ * with this list via the MPI functions, and all failure notifications are reported
+ * in the context of a communicator. Thus, using a single index to know the user-level
+ * acknowledged failure is the simplest solution.
+ */
 int ompi_comm_failure_ack_internal(ompi_communicator_t* comm)
 {
     /* Re-enable ANY_SOURCE */
@@ -106,7 +118,7 @@ int ompi_comm_failure_get_acked_internal(ompi_communicator_t* comm, ompi_group_t
 int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** newcomm)
 {
     int ret, exit_status = OMPI_SUCCESS;
-    int flag;
+    int flag = 1;
     ompi_group_t *failed_group = NULL, *comm_group = NULL, *alive_group = NULL;
     ompi_communicator_t *comp = NULL;
     ompi_communicator_t *newcomp = NULL;
@@ -131,19 +143,21 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                          "%s ompi: comm_shrink: Agreement on failed processes",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
     failed_group = OBJ_NEW(ompi_group_t);
-    flag = (OMPI_SUCCESS == OMPI_SUCCESS);
+    start = MPI_Wtime();
     do {
-        start = MPI_Wtime();
+        /* We need to create the list of alive processes. Thus, we don't care aout
+         * the value of flag, instead we are only using the globally consistent
+         * return value.
+         */
         ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
                                            &failed_group,
                                            &flag,
                                            comm->c_coll.coll_agreement_module);
-        stop = MPI_Wtime();
-        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                             "%s ompi: comm_shrink: AGREE: %g seconds", 
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
-        ompi_comm_failure_ack_internal(comm);
     } while( MPI_ERR_PROC_FAILED == ret );
+    stop = MPI_Wtime();
+    OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+                         "%s ompi: comm_shrink: AGREE: %g seconds",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
     if( OMPI_SUCCESS != ret ) {
         exit_status = ret;
         goto cleanup;
@@ -258,7 +272,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ompi: comm_shrink: COLL SELECT: %g seconds\n", 
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
- decide_commit:    
+ decide_commit:
     /*
      * Step 5: Agreement on whether the operation was successful or not
      */
@@ -275,6 +289,11 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     start = MPI_Wtime();
     failed_group = OBJ_NEW(ompi_group_t);
     flag = (OMPI_SUCCESS == exit_status);
+    /* We only need to execute this agreement once, as we don't care about failed
+     * processes. The only thing that matters here is the return of the flag,
+     * indicating if all alive processes have agreed upon a new communicator. If
+     * the agreement fails, the entire process is repeted, including the cid selection.
+     */
     ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
                                        &failed_group,
                                        &flag,
@@ -316,7 +335,6 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
 bool ompi_comm_is_proc_active(ompi_communicator_t *comm, int peer_id, bool remote)
 {
     ompi_proc_t* ompi_proc;
-    bool active = false;
 
 #if OPAL_ENABLE_DEBUG
     /* Sanity check
@@ -348,8 +366,6 @@ bool ompi_comm_is_proc_active(ompi_communicator_t *comm, int peer_id, bool remot
 
 int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remote)
 {
-    int ret;
-
     /* Disable ANY_SOURCE */
     comm->any_source_enabled = false;
     /* Disable collectives */
@@ -363,6 +379,12 @@ int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remot
     return OMPI_SUCCESS;
 }
 
+/**
+ * This is a trivial linear implementation of a reduction operation. As such
+ * it can return non-consistent return codes, faliing on some processes while
+ * succeeding on others. The only case when the return code is globally consistent
+ * is when the root (leader) is dead before any participants call this function.
+ */
 int ompi_comm_allreduce_intra_ft( int *inbuf, int *outbuf, 
                                   int count, struct ompi_op_t *op, 
                                   ompi_communicator_t *comm,
