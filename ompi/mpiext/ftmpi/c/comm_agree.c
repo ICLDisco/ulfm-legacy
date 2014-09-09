@@ -44,9 +44,5 @@ int OMPI_Comm_agree(MPI_Comm comm, int *flag)
                                       NULL, /* Group is ignored */
                                       flag,
                                       comm->c_coll.coll_agreement_module);
-    if( OMPI_SUCCESS != rc ) {
-        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-    }
-
-    return MPI_SUCCESS;
+    OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }

@@ -1218,7 +1218,7 @@ int ompi_comm_free ( ompi_communicator_t **comm )
     }
     OBJ_RELEASE ( (*comm) );
 
-    if ( is_extra_retain) {
+    if (is_extra_retain) {
         /* This communicator has been marked as an "extra retain"
          * communicator. This can happen if a communicator creates
          * 'dependent' subcommunicators (e.g. for inter
@@ -1235,10 +1235,8 @@ int ompi_comm_free ( ompi_communicator_t **comm )
          * makes sure that the pointer to the dependent communicator
          * still contains a valid object.
          */
-        ompi_communicator_t *tmpcomm = (ompi_communicator_t *) opal_pointer_array_get_item(&ompi_mpi_communicators, cid);
-        if ( NULL != tmpcomm ){
-            OBJ_RELEASE (tmpcomm);
-        }
+        assert( NULL != (*comm) );
+        OBJ_RELEASE ( (*comm) );
     }
 
 

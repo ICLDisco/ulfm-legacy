@@ -41,7 +41,9 @@ int
 mca_coll_ftbasic_init_query(bool enable_progress_threads,
                           bool enable_mpi_threads)
 {
-    /* Nothing to do */
+    if( mca_coll_ftbasic_cur_agreement_method == COLL_FTBASIC_EARLY_RETURNING ) {
+        return mca_coll_ftbasic_agreement_era_init();
+    }
 
     return OMPI_SUCCESS;
 }
@@ -54,7 +56,7 @@ mca_coll_ftbasic_init_query(bool enable_progress_threads,
  */
 mca_coll_base_module_t *
 mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm, 
-                          int *priority)
+                            int *priority)
 {
     int size;
     mca_coll_ftbasic_module_t *ftbasic_module;
@@ -123,7 +125,7 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
      */
     if( ompi_ftmpi_enabled && !OMPI_COMM_IS_INTER(comm) ) {
         /* Init the agreement function */
-        mca_coll_ftbasic_agreement_init(ftbasic_module);
+        mca_coll_ftbasic_agreement_init(comm, ftbasic_module);
 
         /* Choose the correct operations */
         switch( mca_coll_ftbasic_cur_agreement_method ) {
@@ -138,6 +140,10 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
         case COLL_FTBASIC_LOG_TWO_PHASE:
             ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_log_two_phase;
             ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_log_two_phase;
+            break;
+        case COLL_FTBASIC_EARLY_RETURNING:
+            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_intra;
+            ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
             break;
         default:
             ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_eta_intra;

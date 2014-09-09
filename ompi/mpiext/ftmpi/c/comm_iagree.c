@@ -48,9 +48,5 @@ int OMPI_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *request)
                                        flag,
                                        comm->c_coll.coll_iagreement_module,
                                        request);
-    if( OMPI_SUCCESS != rc ) {
-        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-    }
-
-    return MPI_SUCCESS;
+    OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }

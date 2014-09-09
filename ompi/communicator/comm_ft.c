@@ -29,6 +29,7 @@
 #include "ompi/mca/coll/base/base.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 
+ompi_comm_rank_failure_callback_t *ompi_rank_failure_cbfunc = NULL;
 
 /**
  * The handling of known failed processes is based on a two level process. On one
@@ -158,7 +159,8 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ompi: comm_shrink: AGREE: %g seconds",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
-    if( OMPI_SUCCESS != ret ) {
+    if( (OMPI_SUCCESS != ret) && (MPI_ERR_PROC_FAILED != ret) ) {
+        opal_output(0, "%s:%d Agreement failure: %d\n", __FILE__, __LINE__, ret);
         exit_status = ret;
         goto cleanup;
     }
@@ -172,7 +174,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                          "%s ompi: comm_shrink: Determine ranking for new communicator",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
     start = MPI_Wtime();
-    comp = (ompi_communicator_t *) comm;
+    comp = comm;
 
     if ( OMPI_COMM_IS_INTER(comp) ) {
         exit_status = MPI_ERR_UNSUPPORTED_OPERATION;
@@ -298,7 +300,8 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                                        &failed_group,
                                        &flag,
                                        comm->c_coll.coll_agreement_module);
-    if( OMPI_SUCCESS != ret ) {
+    if( OMPI_SUCCESS != ret && MPI_ERR_PROC_FAILED != ret ) {
+        opal_output(0, "%s:%d Agreement failure: %d\n", __FILE__, __LINE__, ret);
         exit_status = ret;
         goto cleanup;
     }
@@ -376,6 +379,11 @@ int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remot
     } else {
         comm->num_active_remote -= 1;
     }
+
+    if( NULL != ompi_rank_failure_cbfunc ) {
+        (*ompi_rank_failure_cbfunc)(comm, peer_id, remote);
+    }
+
     return OMPI_SUCCESS;
 }
 
