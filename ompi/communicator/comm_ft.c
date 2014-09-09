@@ -132,15 +132,18 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
     failed_group = OBJ_NEW(ompi_group_t);
     flag = (OMPI_SUCCESS == OMPI_SUCCESS);
-    start = MPI_Wtime();
-    ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
-                                       &failed_group,
-                                       &flag,
-                                       comm->c_coll.coll_agreement_module);
-    stop = MPI_Wtime();
-    OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                         "%s ompi: comm_shrink: AGREE: %g seconds", 
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
+    do {
+        start = MPI_Wtime();
+        ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
+                                           &failed_group,
+                                           &flag,
+                                           comm->c_coll.coll_agreement_module);
+        stop = MPI_Wtime();
+        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+                             "%s ompi: comm_shrink: AGREE: %g seconds", 
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
+        ompi_comm_failure_ack_internal(comm);
+    } while( MPI_ERR_PROC_FAILED == ret );
     if( OMPI_SUCCESS != ret ) {
         exit_status = ret;
         goto cleanup;
