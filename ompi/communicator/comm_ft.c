@@ -298,17 +298,20 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                                        &failed_group,
                                        &flag,
                                        comm->c_coll.coll_agreement_module);
-    if( OMPI_SUCCESS != ret ) {
+    if( OMPI_SUCCESS != ret && OMPI_ERR_PROC_FAILED != ret ) {
         exit_status = ret;
         goto cleanup;
     }
     stop = MPI_Wtime();
-    OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                         "%s ompi: comm_shrink: COMMIT: %g seconds\n", 
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
-    if( flag ) {
+    if( OMPI_SUCCESS == ret && flag ) {
+        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+                             "%s ompi: comm_shrink: COMMIT: %g seconds\n", 
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
         *newcomm = newcomp;
     } else {
+        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+                             "%s ompi: comm_shrink: RETRY: %g seconds\n", 
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
         exit_status = OMPI_SUCCESS;
         goto retry_shrink;
     }
