@@ -41,9 +41,5 @@ int OMPI_Comm_revoke(MPI_Comm comm)
     }
 
     rc = ompi_comm_revoke_internal( (ompi_communicator_t*)comm );
-    if( OMPI_SUCCESS != rc ) {
-        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-    }
-
-    return MPI_SUCCESS;
+    OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }

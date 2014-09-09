@@ -45,9 +45,5 @@ int OMPI_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm)
     }
 
     rc = ompi_comm_shrink_internal(comm, newcomm);
-    if( OMPI_SUCCESS != rc ) {
-        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-    }
-
-    return MPI_SUCCESS;
+    OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }
