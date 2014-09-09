@@ -110,13 +110,13 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
         }
         else {
             npa = ompi_group_size( ackedgrp );
-            aranks = calloc( np, sizeof(int) );
-            for( i = 0; i < np; i++ ) aranks[i]=i;
+            aranks = calloc( npa, sizeof(int) );
+            for( i = 0; i < npa; i++ ) aranks[i]=i;
             cranks = calloc( npa, sizeof(int) );
             ompi_group_translate_ranks( ackedgrp, npa, aranks, comm->c_remote_group, cranks );
             ompi_group_free( &ackedgrp );
             for( i = 0; i < npa; i++ ) {
-                OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+                OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
                     "%s has acknowledged rank %d, ignoring\n", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cranks[i] ));
                 proc_status[cranks[i]] = STATUS_ACRASHED;
             }
