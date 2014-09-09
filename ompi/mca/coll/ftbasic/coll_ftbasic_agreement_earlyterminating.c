@@ -102,7 +102,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     out.pf = 0;
     round = 1;
 
-    { /* remove acked failures from the result */
+    { /* ignore acked failures (add them later to the result) */
         ompi_group_t* ackedgrp = NULL; int npa; int *aranks, *cranks;
         ompi_comm_failure_get_acked_internal( comm, &ackedgrp );
         if( MPI_GROUP_EMPTY == ackedgrp ) {
@@ -110,18 +110,20 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
         }
         else {
             npa = ompi_group_size( ackedgrp );
-            aranks = calloc( npa, sizeof(int) );
+            aranks = calloc( np, sizeof(int) );
             for( i = 0; i < np; i++ ) aranks[i]=i;
             cranks = calloc( npa, sizeof(int) );
             ompi_group_translate_ranks( ackedgrp, npa, aranks, comm->c_remote_group, cranks );
             ompi_group_free( &ackedgrp );
             for( i = 0; i < npa; i++ ) {
+                OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+                    "%s has acknowledged rank %d, ignoring\n", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cranks[i] ));
                 proc_status[cranks[i]] = STATUS_ACRASHED;
             }
             free(aranks); free(cranks);
         }
     }
-
+    
 #define NEED_TO_RECV(_i) (me != _i && (!(proc_status[_i] & STATUS_CRASHED)) && (!(proc_status[_i] & STATUS_TOLD_ME_HE_KNOWS)))
 #define NEED_TO_SEND(_i) (me != _i && (!(proc_status[_i] & STATUS_CRASHED)) && (!(proc_status[_i] & STATUS_KNOWS_I_KNOW)))
 
@@ -163,6 +165,9 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                 proc_status[i] |= STATUS_SEND_COMPLETE;
             }
         }
+        for(i = nr; i < 2*np; i++) {
+            reqs[i] = MPI_REQUEST_NULL;
+        }
 
         do {
             OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
@@ -184,7 +189,6 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
             /* Long loop if somebody failed */
             ri = 0;
             for(i = 0; i < np; i++) {
-
                 if( !(proc_status[i] & STATUS_RECV_COMPLETE) ) {
                     if( (rc == MPI_SUCCESS) || (MPI_SUCCESS == statuses[ri].MPI_ERROR) ) {
                         assert(MPI_REQUEST_NULL == reqs[ri]);
@@ -208,11 +212,9 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, reqs[ri]));
                             out.pf = 1;
 /* per spec this should already be completed; TODO remove of proven correct */
-#if 0
                             /* Release the request, it can't be subsequently completed */
                             if(MPI_REQUEST_NULL != reqs[ri])
                                 ompi_request_free(&reqs[ri]);
-#endif
                         } else if( (MPI_ERR_PENDING == statuses[ri].MPI_ERROR) ) {
                             /* The pending request(s) will be waited on at the next iteration. */
                             assert( ri >= nr );
@@ -222,7 +224,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                                  "%s ftbasic:agreement (ETA) Request %d(%p) for recv of rank %d remains pending. Renaming it as Request %d\n",
                                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, reqs[ri], i, nr));
                             reqs[nr] = reqs[ri];
-                            if( ri != nr ) 
+                            if( ri != nr )
                                 reqs[ri] = MPI_REQUEST_NULL;
                             nr++;
                         } else {
@@ -250,12 +252,10 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                                  "%s ftbasic:agreement (ETA) send with rank %d failed on Request %d(%p). Mark it as dead!",
                                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, reqs[ri]));
                             out.pf = 1;
-/* per spec this should already be completed; TODO remove of proven correct */
-#if 0
+/* per spec this should already be completed; TODO understand why not */
                             /* Release the request, it can't be subsequently completed */
                             if(MPI_REQUEST_NULL != reqs[ri])
                                 ompi_request_free(&reqs[ri]);
-#endif
                         } else if( (MPI_ERR_PENDING == statuses[ri].MPI_ERROR) ) {
                             /* The pending request(s) will be waited on at the next iteration. */
                             assert( ri >= nr );
