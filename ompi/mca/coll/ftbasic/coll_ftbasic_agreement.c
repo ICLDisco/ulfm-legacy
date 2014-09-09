@@ -1,5 +1,8 @@
 /*
  * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2014      The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
  *
  * $COPYRIGHT$
  * 
@@ -245,7 +248,7 @@ OBJ_CLASS_INSTANCE(mca_coll_ftbasic_request_t,
 /*************************************
  * Initalize and Finalize Operations
  *************************************/
-int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module)
+int mca_coll_ftbasic_agreement_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module)
 {
     int ret;
 
@@ -287,6 +290,9 @@ int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module)
         break;
     case COLL_FTBASIC_LOG_TWO_PHASE:
         mca_coll_ftbasic_agreement_log_two_phase_init(module);
+        break;
+    case COLL_FTBASIC_EARLY_RETURNING:
+        mca_coll_ftbasic_agreement_era_comm_init(comm, module);
         break;
     default:
         break;
@@ -339,6 +345,9 @@ int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module)
         break;
     case COLL_FTBASIC_LOG_TWO_PHASE:
         mca_coll_ftbasic_agreement_log_two_phase_finalize(module);
+        break;
+    case COLL_FTBASIC_EARLY_RETURNING:
+        mca_coll_ftbasic_agreement_era_comm_finalize(module);
         break;
     default:
         break;

@@ -42,9 +42,5 @@ int OMPI_Comm_failure_ack(MPI_Comm comm)
     }
 
     rc = ompi_comm_failure_ack_internal( (ompi_communicator_t*)comm );
-    if( OMPI_SUCCESS != rc ) {
-        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-    }
-
-    return MPI_SUCCESS;
+    OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }

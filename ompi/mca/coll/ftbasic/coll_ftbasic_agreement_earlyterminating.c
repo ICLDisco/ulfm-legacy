@@ -51,24 +51,6 @@ typedef struct {
 
 #define FTBASIC_ETA_TAG_AGREEMENT MCA_COLL_BASE_TAG_AGREEMENT
 
-static void ftbasic_eta_received_message(ftbasic_eta_agreement_msg_t  *out, 
-                                         ftbasic_eta_agreement_msg_t  *in, 
-                                         int *proc_status)
-{
-    OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ETA) Received Message (est = %d, knows = %d) in Aggregate (status = %d), out = (est = %d, knows = %d)\n",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
-                         in->est, in->knows,
-                         *proc_status,
-                         out->est, out->knows));
-
-    OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ETA) Changed State with Aggregate (status = %d), out = (est = %d)\n",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
-                         *proc_status,
-                         out->est));
-}
-
 /*
  *	agreement_eta_intra
  *
@@ -87,7 +69,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     int *proc_status; /**< char would be enough, but we use the same area to build the group of dead processes at the end */
     ompi_request_t **reqs;
     MPI_Status *statuses;
-    int me, i, ri, nr, np, redo_i, nbrecv, rc, ret = MPI_SUCCESS, nbknow = 0, nbcrashed = 0, round, pnr;
+    int me, i, ri, nr, np, nbrecv, rc, ret = MPI_SUCCESS, nbknow = 0, nbcrashed = 0, round;
 
     np = ompi_comm_size(comm);
     me = ompi_comm_rank(comm);
@@ -147,7 +129,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                 proc_status[i] &= ~STATUS_RECV_COMPLETE;
                 OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
                                      "%s ftbasic:agreement (ETA) Request for recv of rank %d is at %d(%p)\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, nr-1, reqs[nr-1]));
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, nr-1, (void*)reqs[nr-1]));
             } else {
                 proc_status[i] |= STATUS_RECV_COMPLETE;
             }
@@ -160,7 +142,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                 proc_status[i] &= ~STATUS_SEND_COMPLETE;
                 OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
                                      "%s ftbasic:agreement (ETA) Request for send of rank %d is at %d(%p)\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, nr-1, reqs[nr-1]));
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, nr-1, (void*)reqs[nr-1]));
             } else {
                 proc_status[i] |= STATUS_SEND_COMPLETE;
             }
@@ -202,14 +184,14 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
 
                         OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
                                              "%s ftbasic:agreement (ETA) Request %d(%p) for recv of rank %d is completed.\n",
-                                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, reqs[ri], i));
+                                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, (void*)reqs[ri], i));
                     } else {
                         if( (MPI_ERR_PROC_FAILED == statuses[ri].MPI_ERROR) ) {
                             /* Failure detected */
                             proc_status[i] |= (STATUS_CRASHED | STATUS_RECV_COMPLETE);
                             OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                                                  "%s ftbasic:agreement (ETA) recv with rank %d failed on request at index %d(%p). Mark it as dead!",
-                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, reqs[ri]));
+                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, (void*)reqs[ri]));
                             out.pf = 1;
 /* per spec this should already be completed; TODO remove of proven correct */
                             /* Release the request, it can't be subsequently completed */
@@ -222,7 +204,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                             assert( ri == nr || reqs[nr] == MPI_REQUEST_NULL );
                             OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
                                                  "%s ftbasic:agreement (ETA) Request %d(%p) for recv of rank %d remains pending. Renaming it as Request %d\n",
-                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, reqs[ri], i, nr));
+                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, (void*)reqs[ri], i, nr));
                             reqs[nr] = reqs[ri];
                             if( ri != nr )
                                 reqs[ri] = MPI_REQUEST_NULL;
@@ -242,7 +224,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
 
                         OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
                                              "%s ftbasic:agreement (ETA) Request %d(%p) for send of rank %d is completed.\n",
-                                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, reqs[ri], i));
+                                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, (void*)reqs[ri], i));
                     } else {
                         if( (MPI_ERR_PROC_FAILED == statuses[ri].MPI_ERROR) ) {
                             /* Failure detected */
@@ -250,7 +232,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
 
                             OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                                                  "%s ftbasic:agreement (ETA) send with rank %d failed on Request %d(%p). Mark it as dead!",
-                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, reqs[ri]));
+                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, (void*)reqs[ri]));
                             out.pf = 1;
 /* per spec this should already be completed; TODO understand why not */
                             /* Release the request, it can't be subsequently completed */
@@ -263,7 +245,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                             assert( ri == nr || reqs[nr] == MPI_REQUEST_NULL );
                             OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
                                                  "%s ftbasic:agreement (ETA) Request %d(%p) for send of rank %d remains pending. Renaming it as Request %d\n",
-                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, reqs[ri], i, nr));
+                                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ri, (void*)reqs[ri], i, nr));
                             reqs[nr] = reqs[ri];
                             if( ri != nr ) 
                                 reqs[ri] = MPI_REQUEST_NULL;
