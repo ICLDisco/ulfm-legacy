@@ -184,7 +184,7 @@ do {                                                                    \
  * @param status (OUT)   Status of completed request.
  * @return               OMPI_SUCCESS or failure status.
  *
- * Note that upon completion, the request is freed, and the
+ * Note that upon completion, the request completed without error is freed, and the
  * request handle at index set to NULL.
  */
 typedef int (*ompi_request_test_fn_t)(ompi_request_t ** rptr,
@@ -200,7 +200,7 @@ typedef int (*ompi_request_test_fn_t)(ompi_request_t ** rptr,
  * @param status (OUT)   Status of completed request.
  * @return               OMPI_SUCCESS or failure status.
  *
- * Note that upon completion, the request is freed, and the
+ * Note that upon completion, the request completed without error is freed, and the
  * request handle at index set to NULL.
  */
 typedef int (*ompi_request_test_any_fn_t)(size_t count,
@@ -217,10 +217,10 @@ typedef int (*ompi_request_test_any_fn_t)(size_t count,
  * @param statuses (OUT)  Array of completion statuses.
  * @return                OMPI_SUCCESS or failure status.
  *
- * This routine returns completed==true if all requests have completed.
- * The statuses parameter is only updated if all requests completed. Likewise,
- * the requests array is not modified (no requests freed), unless all requests
- * have completed.
+ * This routine returns completed==true if all requests completed without errors
+ * have completed. The statuses parameter is only updated if all requests completed.
+ * Likewise, the requests array is not modified (no requests freed), unless all
+ * requests have completed.
  */
 typedef int (*ompi_request_test_all_fn_t)(size_t count,
                                           ompi_request_t ** requests,
@@ -243,7 +243,10 @@ typedef int (*ompi_request_test_some_fn_t)(size_t count,
                                            int * indices,
                                            ompi_status_public_t * statuses);
 /**
- * Wait (blocking-mode) for one requests to complete.
+ * Wait (blocking-mode) for one requests to complete. This function is slightly
+ * different from the MPI counter-part as it does not release the requests
+ * completed with error. Instead, the caller is responsible to call the
+ * ompi_request_free.
  *
  * @param request (IN)    Pointer to request.
  * @param status (OUT)    Status of completed request.
@@ -253,7 +256,10 @@ typedef int (*ompi_request_test_some_fn_t)(size_t count,
 typedef int (*ompi_request_wait_fn_t)(ompi_request_t ** req_ptr,
                                       ompi_status_public_t * status);
 /**
- * Wait (blocking-mode) for one of N requests to complete.
+ * Wait (blocking-mode) for one of N requests to complete. This function is
+ * slightly different from the MPI counter-part as it does not release the
+ * requests completed with error. Instead, the caller is responsible to call
+ * the ompi_request_free.
  *
  * @param count (IN)      Number of requests
  * @param requests (IN)   Array of requests
@@ -267,7 +273,10 @@ typedef int (*ompi_request_wait_any_fn_t)(size_t count,
                                           int *index,
                                           ompi_status_public_t * status);
 /**
- * Wait (blocking-mode) for all of N requests to complete.
+ * Wait (blocking-mode) for all of N requests to complete. This function is
+ * slightly different from the MPI counter-part as it does not release the
+ * requests completed with error. Instead, the caller is responsible to call
+ * the ompi_request_free.
  *
  * @param count (IN)      Number of requests
  * @param requests (IN)   Array of requests
@@ -279,7 +288,10 @@ typedef int (*ompi_request_wait_all_fn_t)(size_t count,
                                           ompi_request_t ** requests,
                                           ompi_status_public_t * statuses);
 /**
- * Wait (blocking-mode) for some of N requests to complete.
+ * Wait (blocking-mode) for some of N requests to complete. This function is
+ * slightly different from the MPI counter-part as it does not release the
+ * requests completed with error. Instead, the caller is responsible to call
+ * the ompi_request_free.
  *
  * @param count (IN)        Number of requests
  * @param requests (INOUT)  Array of requests
