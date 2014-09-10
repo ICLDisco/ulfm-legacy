@@ -296,7 +296,7 @@ static void era_debug_print_group(ompi_group_t *group, ompi_communicator_t *comm
         p = strlen(str);
     }
     snprintf(str + p, s-p, ")");
-    OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+    OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) %s %s\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          info,
@@ -324,6 +324,8 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
     assert( ci->comm          == NULL                                    );
     ci->comm = comm;
     OBJ_RETAIN(comm);
+
+    assert( comm->agreed_failed_ranks != NULL );
 
     ci->acked_group = acked_group; /**< We assume that it is not necessary to copy the group, just keep the pointer */
     era_debug_print_group(acked_group, comm, "Acked group before Agreement");
@@ -461,6 +463,9 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
                 tmp = ni->current_value.new_dead[ir];
                 ni->current_value.new_dead[ir] = to_insert;
                 to_insert = tmp;
+            } else if( ni->current_value.new_dead[ir] == to_insert ) {
+                /* No dupplicate! */
+                break;
             }
         }
     }
@@ -653,7 +658,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
         for(r = 0; r < MAX_NEW_DEAD_SIZE && decided_value->new_dead[r] != -1; r++)
             /*nothing*/;
 
-        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: adding %d processes to the list of agreed deaths\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              decided_value->bits,
@@ -666,9 +671,14 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 
 #if defined(OPAL_ENABLE_DEBUG)
         {
-            int _i;
-            for(_i = 0; _i < r; _i++) assert(decided_value->new_dead[_i] >= 0 &&
-                                             decided_value->new_dead[_i] < ompi_comm_size(comm));
+            int _i, _j;
+            for(_i = 0; _i < r; _i++) {
+                assert(decided_value->new_dead[_i] >= 0 &&
+                       decided_value->new_dead[_i] < ompi_comm_size(comm));
+                for(_j = _i+1; _j < r; _j++) {
+                    assert(decided_value->new_dead[_i] != decided_value->new_dead[_j]);
+                }
+            }
         }
 #endif /*OPAL_ENABLE_DEBUG*/
 
@@ -678,6 +688,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
         ompi_group_union(comm->agreed_failed_ranks, new_deads_group, &new_agreed);
         OBJ_RELEASE(comm->agreed_failed_ranks);
         comm->agreed_failed_ranks = new_agreed;
+        era_debug_print_group(comm->agreed_failed_ranks, comm, "Added elements in agreed_failed_Groups");
         OBJ_RELEASE(new_deads_group);
     }
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
@@ -1877,7 +1888,11 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     *flag = agreement_value.bits;
     
     /* Update the group of failed processes */
-    ompi_group_intersection(ompi_group_all_failed_procs, comm->c_local_group, group);
+    if(NULL != group) {
+        OBJ_RELEASE(*group);
+    }
+    *group = comm->agreed_failed_ranks;
+    OBJ_RETAIN(comm->agreed_failed_ranks);
     era_debug_print_group(*group, comm, "Acked group after Agreement");
 
     return agreement_value.ret;
