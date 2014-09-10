@@ -47,7 +47,7 @@ int OMPI_Comm_agree(MPI_Comm comm, int *flag)
                                       flag,
                                       comm->c_coll.coll_agreement_module);
     ompi_group_free( &acked );
-	if( OMPI_SUCCESS != rc ) {
+    if( OMPI_SUCCESS != rc ) {
         OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
     }
 
