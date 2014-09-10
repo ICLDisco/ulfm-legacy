@@ -317,7 +317,7 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
     ompi_group_t *new_deads;
     int *nd_rank_array;
     int *co_rank_array;
-    int r, p, nd_size;
+    int r, p, nd_size, min, t;
 
     assert( comm->c_contextid == ci->agreement_id.ERAID_FIELDS.contextid );
     assert( comm->c_epoch     == ci->agreement_id.ERAID_FIELDS.epoch     );
@@ -339,18 +339,30 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
         for(r = 0 ; r < nd_size; r++)
             nd_rank_array[r] = r;
         ompi_group_translate_ranks(new_deads, nd_size, nd_rank_array, comm->c_local_group, co_rank_array);
-        for(r = 0, p = 0; r < nd_size && p < MAX_NEW_DEAD_SIZE; r++) {
-            if( co_rank_array[r] == MPI_UNDEFINED )
-                continue; /**< This new dead process does not belong to the associated communicator */
-            OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                                 "%s ftbasic:agreement (ERA) add rank %d as a new discovered dead process #%d on agreement (%d.%d).%d\n",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                 co_rank_array[r],
-                                 p,
-                                 ci->agreement_id.ERAID_FIELDS.contextid,
-                                 ci->agreement_id.ERAID_FIELDS.epoch,                         
-                                 ci->agreement_id.ERAID_FIELDS.agreementid));
-            ci->current_value.new_dead[p++] = co_rank_array[r];
+        for(p = 0; p < MAX_NEW_DEAD_SIZE; p++) {
+            min = MPI_UNDEFINED;
+            for(r = 0; r < nd_size; r++) {
+                if( co_rank_array[r] == MPI_UNDEFINED )
+                    continue; /**< This new dead process does not belong to the associated communicator */
+                if( min == MPI_UNDEFINED || co_rank_array[r] < min ) {
+                    t = co_rank_array[r];
+                    co_rank_array[r] = min;
+                    min = t;
+                }
+            }
+            if( min != MPI_UNDEFINED ) {
+                OPAL_OUTPUT_VERBOSE((0, ompi_ftmpi_output_handle,
+                                     "%s ftbasic:agreement (ERA) add rank %d as a new discovered dead process #%d on agreement (%d.%d).%d\n",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     min,
+                                     p,
+                                     ci->agreement_id.ERAID_FIELDS.contextid,
+                                     ci->agreement_id.ERAID_FIELDS.epoch,                         
+                                     ci->agreement_id.ERAID_FIELDS.agreementid));
+                ci->current_value.new_dead[p++] = min;
+            } else {
+                break;
+            }
         }
         free(nd_rank_array);
         free(co_rank_array);
@@ -436,16 +448,27 @@ static void send_msg(ompi_communicator_t *comm,
 static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *value)
 {
     int r, ir, to_insert, tmp;
+#if defined(OPAL_ENABLE_DEBUG)
+    int pr = 0;
+#endif
 
     ni->current_value.bits &= value->bits;
     if( value->ret > ni->current_value.ret )
         ni->current_value.ret = value->ret;
 
-    OPAL_OUTPUT_VERBOSE((50, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) COMBINE %d,%d with %d,%d",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         ni->current_value.new_dead[0], ni->current_value.new_dead[1],
-                         value->new_dead[0], value->new_dead[1]));
+#if defined(OPAL_ENABLE_DEBUG)
+    if( (ni->current_value.new_dead[0] != -1) ||
+        (ni->current_value.new_dead[1] != -1) ||
+        (value->new_dead[0] != -1) ||
+        (value->new_dead[1] != -1) ) {
+        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
+                             "%s ftbasic:agreement (ERA) COMBINE %d,%d with %d,%d",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ni->current_value.new_dead[0], ni->current_value.new_dead[1],
+                             value->new_dead[0], value->new_dead[1]));
+        pr = 1;
+    } 
+#endif
 
     /* Merge the new_dead lists: keep the lowest ranks that belong to both,
      * knowing that -1 means end of list
@@ -470,10 +493,13 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
         }
     }
 
-    OPAL_OUTPUT_VERBOSE((50, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) COMBINE GIVES %d,%d",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         ni->current_value.new_dead[0], ni->current_value.new_dead[1]));
+#if defined(OPAL_ENABLE_DEBUG)
+    if( pr )
+        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
+                             "%s ftbasic:agreement (ERA) COMBINE GIVES %d,%d",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ni->current_value.new_dead[0], ni->current_value.new_dead[1]));
+#endif
 }
 
 #define ERA_TOPOLOGY_BINARY_TREE
@@ -676,7 +702,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                 assert(decided_value->new_dead[_i] >= 0 &&
                        decided_value->new_dead[_i] < ompi_comm_size(comm));
                 for(_j = _i+1; _j < r; _j++) {
-                    assert(decided_value->new_dead[_i] != decided_value->new_dead[_j]);
+                    assert(decided_value->new_dead[_i] < decided_value->new_dead[_j]);
                 }
             }
         }
