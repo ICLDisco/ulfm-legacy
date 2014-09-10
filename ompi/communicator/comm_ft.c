@@ -280,25 +280,20 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ompi: comm_shrink: Agreement on failed processes",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
-    /* Refresh the group here, so that if we need to iterate again we have the
-     * most current list to work with */
-    if( NULL != failed_group ) {
-        OBJ_RELEASE(failed_group);
-        failed_group = NULL;
-    }
     start = MPI_Wtime();
-    failed_group = OBJ_NEW(ompi_group_t);
     flag = (OMPI_SUCCESS == exit_status);
     /* We only need to execute this agreement once, as we don't care about failed
      * processes. The only thing that matters here is the return of the flag,
      * indicating if all alive processes have agreed upon a new communicator. If
      * the agreement fails, the entire process is repeted, including the cid selection.
+     * For this to have a chance to succeed, we need to reuse the previously computed 
+     * failed_group.
      */
     ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
                                        &failed_group,
                                        &flag,
                                        comm->c_coll.coll_agreement_module);
-    if( OMPI_SUCCESS != ret && OMPI_ERR_PROC_FAILED != ret ) {
+    if( OMPI_SUCCESS != ret && MPI_ERR_PROC_FAILED != ret ) {
         exit_status = ret;
         goto cleanup;
     }
