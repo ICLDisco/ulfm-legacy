@@ -402,7 +402,7 @@ static inline int ompi_comm_peer_lookup_id(ompi_communicator_t* comm, ompi_proc_
         (COMM)->lleader             = 0;                                \
         (COMM)->rleader             = 0;                                \
         (COMM)->c_epoch             = (EPOCH);                          \
-        if( (NPROCS) > 0 ) {                                            \
+        if( (NPROCS) != 0 ) {                                           \
             (COMM)->agreed_failed_ranks =                               \
                 ompi_group_allocate_bmap( NPROCS, 0 );                  \
         } else {                                                        \
