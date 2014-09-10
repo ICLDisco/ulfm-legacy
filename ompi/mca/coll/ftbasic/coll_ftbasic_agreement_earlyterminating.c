@@ -87,7 +87,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     int *proc_status; /**< char would be enough, but we use the same area to build the group of dead processes at the end */
     ompi_request_t **reqs;
     MPI_Status *statuses;
-    int me, i, ri, nr, np, redo_i, nbrecv, rc, ret = MPI_SUCCESS, nbknow = 0, nbcrashed = 0, round, pnr;
+    int me, i, ri, nr, np, nbrecv, rc, ret = MPI_SUCCESS, nbknow = 0, nbcrashed = 0, round;
 
     np = ompi_comm_size(comm);
     me = ompi_comm_rank(comm);
@@ -105,18 +105,18 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     { /* ignore acked failures (add them later to the result) */
         ompi_group_t* ackedgrp = NULL; int npa; int *aranks, *cranks;
         ackedgrp = *group;
-        npa = ompi_group_size( ackedgrp );
-        aranks = calloc( npa, sizeof(int) );
-        for( i = 0; i < npa; i++ ) aranks[i]=i;
-        cranks = calloc( npa, sizeof(int) );
-        ompi_group_translate_ranks( ackedgrp, npa, aranks, comm->c_remote_group, cranks );
-        for( i = 0; i < npa; i++ ) {
-            OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
-                "%s has acknowledged rank %d, ignoring\n", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cranks[i] ));
-            proc_status[cranks[i]] = STATUS_ACRASHED;
-        }
-        if( npa ) {
-            free(aranks); 
+        if( 0 != (npa = ompi_group_size(ackedgrp)) ) {
+            aranks = calloc( npa, sizeof(int) );
+            for( i = 0; i < npa; i++ ) aranks[i] = i;
+            cranks = calloc( npa, sizeof(int) );
+            ompi_group_translate_ranks( ackedgrp, npa, aranks, comm->c_remote_group, cranks );
+            for( i = 0; i < npa; i++ ) {
+                OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+                                     "%s has acknowledged rank %d, ignoring\n",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), cranks[i] ));
+                proc_status[cranks[i]] = STATUS_ACRASHED;
+            }
+            free(aranks);
             free(cranks);
         }
     }
@@ -172,7 +172,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), nr));
 
             rc = ompi_request_wait_all(nr, reqs, statuses);
-            
+
             /**< If we need to re-wait on some requests, we're going to pack them at index nr */
             nr = 0;
 
@@ -316,17 +316,19 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
         int pos;
         /* We overwrite proc_status because it is not used anymore */
         int *failed = proc_status;
-        
+
         for( pos = i = 0; i < np; i++ ) {
             if( STATUS_CRASHED & proc_status[i] ) {
                 failed[pos++] = i;
             }
         }
+        OBJ_RELEASE(*group);
         ompi_group_incl(comm->c_remote_group, pos, failed, group);
-        free(proc_status);
     }
+    free(proc_status);
 
-    if( (MPI_SUCCESS == ret) && out.pf ) ret = MPI_ERR_PROC_FAILED;
+    if( (MPI_SUCCESS == ret) && out.pf )
+        ret = MPI_ERR_PROC_FAILED;
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ETA) return %d with flag %d and dead group with %d processes",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret, *flag,
