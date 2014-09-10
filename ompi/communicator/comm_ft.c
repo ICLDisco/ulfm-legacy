@@ -127,9 +127,6 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     int *rranks = NULL;
     int mode;
     double start, stop;
-#if defined(OPAL_ENABLE_DEBUG)
-    int prev_group_size = 0;
-#endif
 
     /*
      * JJH: Do not support intercommunicators (for now)
@@ -157,11 +154,6 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                                            &failed_group,
                                            &flag,
                                            comm->c_coll.coll_agreement_module);
-#if defined(OPAL_ENABLE_DEBUG)
-        assert( ret == MPI_SUCCESS ||
-                prev_group_size < ompi_group_size(failed_group) );
-        prev_group_size = ompi_group_size(failed_group);
-#endif
     } while( MPI_ERR_PROC_FAILED == ret );
     stop = MPI_Wtime();
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
