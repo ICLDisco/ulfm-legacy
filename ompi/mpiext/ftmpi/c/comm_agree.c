@@ -41,7 +41,7 @@ int OMPI_Comm_agree(MPI_Comm comm, int *flag)
         OMPI_ERRHANDLER_CHECK(rc, comm, rc, FUNC_NAME);
     }
 
-    ompi_comm_failures_get_acked( comm, &acked );
+    ompi_comm_failure_get_acked_internal( comm, &acked );
     rc = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
                                       &acked, /* Acked failures are ignored */
                                       flag,
