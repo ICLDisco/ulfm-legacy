@@ -20,6 +20,8 @@
 #include <unistd.h>
 #include <sched.h>
 #include <signal.h>
+#include <dlfcn.h>
+#include <assert.h>
 
 typedef struct {
     int  size;
@@ -37,7 +39,7 @@ int main(int argc, char *argv[])
 {
     int rank, size;
     MPI_Comm comm;
-    int c, i, r;
+    int c, i, r, rc;
     double start, init, loop;
     int common, flag, ret;
     unsigned int seed = 1789;
@@ -54,6 +56,10 @@ int main(int argc, char *argv[])
     int debug        = 0;
     int failures     = 0;
     char *help_msg   = NULL;
+    char host[256];
+
+    void *handle;
+    int *coll_ftbasic_era_debug_rank_may_fail;
 
     start = MPI_Wtime();
 
@@ -113,11 +119,10 @@ int main(int argc, char *argv[])
         }
     }
 
+    gethostname(host, 256);
     if( debug ) {
         int stop = 0;
-        char hostname[255];
-        gethostname(hostname, 255);
-        fprintf(stderr, "ssh -t %s gdb -p %d\n", hostname, getpid());
+        fprintf(stderr, "ssh -t %s gdb -p %d\n", host, getpid());
         while( stop == 0 ) {
             sched_yield();
         }
@@ -138,6 +143,13 @@ int main(int argc, char *argv[])
     comm = MPI_COMM_WORLD;
 
     MPI_Init(&argc, &argv);
+
+    handle = dlopen(NULL, RTLD_LAZY|RTLD_LOCAL);
+    coll_ftbasic_era_debug_rank_may_fail = dlsym(handle, "coll_ftbasic_era_debug_rank_may_fail");
+    dlclose(handle);
+    if( NULL == coll_ftbasic_era_debug_rank_may_fail ) {
+        fprintf(stderr, "Could not find Open MPI internal symbol coll_ftbasic_era_debug_rank_may_fail. Resort to simple raise(SIGKILL) type of failure\n");
+    }
 
     MPI_Comm_set_errhandler(MPI_COMM_WORLD,MPI_ERRORS_RETURN);
 
@@ -193,20 +205,60 @@ int main(int argc, char *argv[])
     for(i = 0; i < nb_test; i++) {
         if( create_comm > 0 && ( (i % create_comm) == 0 ) ) {
             MPI_Comm temp;
-            MPI_Comm_dup(comm, &temp);
-            if( comm != MPI_COMM_WORLD )
-                MPI_Comm_free(&comm);
-            comm = temp;
-            MPI_Comm_rank(comm, &rank);
-            MPI_Comm_size(comm, &size);
+            rc = MPI_Comm_dup(comm, &temp);
+            flag = (rc == MPI_SUCCESS);
+            ret = OMPI_Comm_agree(comm, &flag);
+            if( ret != MPI_SUCCESS || flag == 0 ) {
+                int orank = rank;
+                int osize = size;
+
+                if(verbose) {
+                    printf("Communicator Creation (with DUP) failed during test. Shrinking to continue.\n");
+                }
+                if( rc == MPI_SUCCESS && MPI_COMM_NULL != temp ) {
+                    MPI_Comm_free(&temp);
+                }
+                rc = OMPI_Comm_shrink(comm, &temp);
+                if( rc != MPI_SUCCESS ) {
+                    fprintf(stderr, "MPI_Comm_shrink returned %d instead of MPI_SUCCESS on rank %d/%d!\n", rc, rank, size);
+                }
+                if( temp == MPI_COMM_NULL ) {
+                    fprintf(stderr, "MPI_Comm_shrink returned MPI_COMM_NULL and MPI_SUCCESS on rank %d/%d!\n", rank, size);
+                }
+                if( comm != MPI_COMM_WORLD )
+                    MPI_Comm_free(&comm);
+                comm = temp;
+                MPI_Comm_rank(comm, &rank);
+                MPI_Comm_size(comm, &size);
+                if(verbose) {
+                    printf("Rank %d/%d in previous comm is now %d/%d after shrink\n", orank, osize, rank, size);
+                }
+            } else {
+                if( comm != MPI_COMM_WORLD )
+                    MPI_Comm_free(&comm);
+                comm = temp;
+                MPI_Comm_rank(comm, &rank);
+                MPI_Comm_size(comm, &size);
+            }
         }
 
         if( failures > 0 && ( ((i+1) % failures) == 0 ) ) {
-            if( ((rand_r(&seed) % (size - 1)) + 1) == rank ) {
-                if( verbose ) {
-                    printf("Rank %d/%d fails\n", rank, size);
+            if( (rand_r(&seed) % size) == rank ) {
+                if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
+                    if( verbose ) {
+                        fprintf(stderr, "Rank %d/%d may fail\n", rank, size);
+                    }
+                    *coll_ftbasic_era_debug_rank_may_fail = 1;
+                } else {
+                    if( verbose ) {
+                        fprintf(stderr, "Rank %d/%d fails\n", rank, size);
+                    }
+                    raise(SIGKILL);
                 }
-                raise(SIGKILL);
+            } else {
+                if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
+                    *coll_ftbasic_era_debug_rank_may_fail = 0;
+                }
             }
         }
 
@@ -231,7 +283,13 @@ int main(int argc, char *argv[])
             if(verbose) {
                 printf("Rank %d/%d needs to shrink after a failure\n", rank, size);
             }
-            OMPI_Comm_shrink(comm, &temp);
+            rc = OMPI_Comm_shrink(comm, &temp);
+            if( rc != MPI_SUCCESS ) {
+                fprintf(stderr, "MPI_Comm_shrink returned %d instead of MPI_SUCCESS on rank %d/%d!\n", rc, rank, size);
+            }
+            if( temp == MPI_COMM_NULL ) {
+                fprintf(stderr, "MPI_Comm_shrink returned MPI_COMM_NULL and MPI_SUCCESS on rank %d/%d!\n", rank, size);
+            }
             if( comm != MPI_COMM_WORLD )
                 MPI_Comm_free(&comm);
             comm = temp;
