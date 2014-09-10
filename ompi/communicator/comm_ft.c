@@ -145,7 +145,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     failed_group = OBJ_NEW(ompi_group_t);
     start = MPI_Wtime();
     do {
-        /* We need to create the list of alive processes. Thus, we don't care aout
+        /* We need to create the list of alive processes. Thus, we don't care about
          * the value of flag, instead we are only using the globally consistent
          * return value.
          */
