@@ -30,6 +30,7 @@ static const char FUNC_NAME[] = "OMPI_Comm_agree";
 int OMPI_Comm_agree(MPI_Comm comm, int *flag)
 {
     int rc = MPI_SUCCESS;
+    ompi_group_t* acked; 
 
     /* Argument checking */
     if (MPI_PARAM_CHECK) {
@@ -40,11 +41,13 @@ int OMPI_Comm_agree(MPI_Comm comm, int *flag)
         OMPI_ERRHANDLER_CHECK(rc, comm, rc, FUNC_NAME);
     }
 
+    ompi_comm_failures_get_acked( comm, &acked );
     rc = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
-                                      NULL, /* Group is ignored */
+                                      &acked, /* Acked failures are ignored */
                                       flag,
                                       comm->c_coll.coll_agreement_module);
-    if( OMPI_SUCCESS != rc ) {
+    ompi_group_free( &acked );
+	if( OMPI_SUCCESS != rc ) {
         OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
     }
 
