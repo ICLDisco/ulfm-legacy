@@ -116,7 +116,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
     }
     /* Any type of request with a dead process must be terminated with error */
     if( !ompi_comm_is_proc_active(req->req_mpi_object.comm, req->req_peer,
-                                  OMPI_COMM_IS_INTRA(req->req_mpi_object.comm)) ) {
+                                  OMPI_COMM_IS_INTER(req->req_mpi_object.comm)) ) {
         req->req_status.MPI_SOURCE = req->req_peer;
         req->req_status.MPI_ERROR  = MPI_ERR_PROC_FAILED;
         if( MPI_ANY_SOURCE == req->req_peer ) {
