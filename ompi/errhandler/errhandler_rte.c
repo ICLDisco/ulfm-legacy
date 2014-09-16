@@ -192,9 +192,13 @@ static int ompi_errmgr_callback(orte_process_name_t proc, orte_proc_state_t stat
      * Find the ompi_proc_t
      */
     if( NULL == (ompi_proc = ompi_proc_find(&proc)) ) {
-        ret = OMPI_ERROR;
-        ORTE_ERROR_LOG(ret);
-        return ret;
+        /** TODO: RACE CONDITION -- This may be the notification for a process we don't know about
+         *        yet -- We should keep this information for later notification / check when
+         *        adding this proc
+         */
+        return OMPI_SUCCESS; /** Ignore if this is an unknown processor: it can happen and should
+                              *   not interrupt the loop in caller
+                              */
     }
 
     return ompi_errmgr_mark_failed_peer(ompi_proc, state);
