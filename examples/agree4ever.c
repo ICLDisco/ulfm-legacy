@@ -122,7 +122,8 @@ int main(int argc, char *argv[])
     int state[STATE_SIZE];
     int rank, size;
     MPI_Comm comm, parent;
-    int c, rc;
+    int c, rc, i, simultaneous, fail_this_round;
+    int *victims;
     int common, flag, ret;
     void *handle;
     int *coll_ftbasic_era_debug_rank_may_fail;
@@ -200,13 +201,34 @@ int main(int argc, char *argv[])
                 state[INITIAL_SIZE], state[AG_IDX], state[AG_CID], state[SEED], state[VERBOSE], state[FAILURES], state[DEBUG]);
     }
 
+    victims = (int*)malloc(state[FAILURES] * sizeof(int));
+
     while(1) {
-        state[AG_IDX]++;
-        if( state[FAILURES] > 0 && ( ((state[AG_IDX]+1) % state[FAILURES]) == 0 ) ) {
-            if( (rand_r((unsigned int*)&state[SEED]) % size) == rank ) {
+        if( state[FAILURES] > 0 ) {
+            simultaneous = (rand_r((unsigned int*)&state[SEED]) % state[FAILURES]);
+            if( state[VERBOSE] && rank == 0 ) {
+                printf("Decided to do %d failures at this round\n", simultaneous);
+            }
+            fail_this_round = 0;
+            for(c = 0; c < simultaneous; c++) {
+                do {
+                    rc = rand_r((unsigned int*)&state[SEED]) % state[INITIAL_SIZE];
+                    for(i = 0; i < c; i++) {
+                        if( rc == victims[i] )
+                            break;
+                    }
+                    if( i == c ) {
+                        victims[i] = rc;
+                        if( rc == rank ) {
+                            fail_this_round = 1;
+                        }
+                    }
+                } while(i != c);
+            }
+            if( fail_this_round ) {
                 if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
                     if( state[VERBOSE] ) {
-                        fprintf(stderr, "Rank %d/%d may fail\n", rank, size);
+                        fprintf(stderr, "Rank %d/%d will fail\n", rank, size);
                     }
                     *coll_ftbasic_era_debug_rank_may_fail = 1;
                 } else {
@@ -222,40 +244,47 @@ int main(int argc, char *argv[])
             }
         }
 
-        common = rand_r((unsigned int*)&state[SEED]);
-        flag = common & rand();
-        if( state[VERBOSE] ) {
-            printf("Rank %d/%d enters MPI_Comm_agree %d.%d with %08x\n", rank, size, state[AG_CID], state[AG_IDX], flag);
-        }
-        ret = OMPI_Comm_agree(comm, &flag);
-        if( state[VERBOSE] ) {
-            printf("Rank %d/%d leaves MPI_Comm_agree %d.%d with %08x and %d\n", rank, size, state[AG_CID], state[AG_IDX], flag, ret);
-        }
-        if( ret != MPI_SUCCESS ) {
-            MPI_Comm temp;
-            int orank = rank;
-            int osize = size;
-            if(state[VERBOSE]) {
-                printf("Rank %d/%d after Agree %d.%d needs to shrink after a failure.\n", rank, size, state[AG_CID], state[AG_IDX]);
-            }
-            rc = OMPI_Comm_shrink(comm, &temp);
-            if( rc != MPI_SUCCESS ) {
-                fprintf(stderr, "MPI_Comm_shrink returned %d instead of MPI_SUCCESS on rank %d/%d!\n", rc, rank, size);
-            }
-            if( temp == MPI_COMM_NULL ) {
-                fprintf(stderr, "MPI_Comm_shrink returned MPI_COMM_NULL and MPI_SUCCESS on rank %d/%d!\n", rank, size);
-            }
-            if( comm != MPI_COMM_WORLD )
-                MPI_Comm_free(&comm);
-            comm = temp;
-            MPI_Comm_rank(comm, &rank);
-            MPI_Comm_size(comm, &size);
-            if(state[VERBOSE]) {
-                printf("Fix after Agree %d.%d: rank %d/%d in previous comm is now %d/%d after shrink (state[INITIAL_SIZE] is %d)\n",
-                       state[AG_CID], state[AG_IDX], orank, osize, rank, size, state[INITIAL_SIZE]);
-            }
-        }
+        while( size > state[INITIAL_SIZE] - simultaneous ) {
 
+            if( state[VERBOSE] ) {
+                printf("Size = %d, INITIAL_SIZE = %d, simultaneous = %d\n", size, state[INITIAL_SIZE], simultaneous );
+            }
+
+            common = rand_r((unsigned int*)&state[SEED]);
+            flag = common & rand();
+            state[AG_IDX]++;
+            if( state[VERBOSE] ) {
+                printf("Rank %d/%d enters MPI_Comm_agree %d.%d with %08x\n", rank, size, state[AG_CID], state[AG_IDX], flag);
+            }
+            ret = OMPI_Comm_agree(comm, &flag);
+            if( state[VERBOSE] ) {
+                printf("Rank %d/%d leaves MPI_Comm_agree %d.%d with %08x and %d\n", rank, size, state[AG_CID], state[AG_IDX], flag, ret);
+            }
+            if( ret != MPI_SUCCESS ) {
+                MPI_Comm temp;
+                int orank = rank;
+                int osize = size;
+                if(state[VERBOSE]) {
+                    printf("Rank %d/%d after Agree %d.%d needs to shrink after a failure.\n", rank, size, state[AG_CID], state[AG_IDX]);
+                }
+                rc = OMPI_Comm_shrink(comm, &temp);
+                if( rc != MPI_SUCCESS ) {
+                    fprintf(stderr, "MPI_Comm_shrink returned %d instead of MPI_SUCCESS on rank %d/%d!\n", rc, rank, size);
+                }
+                if( temp == MPI_COMM_NULL ) {
+                    fprintf(stderr, "MPI_Comm_shrink returned MPI_COMM_NULL and MPI_SUCCESS on rank %d/%d!\n", rank, size);
+                }
+                if( comm != MPI_COMM_WORLD )
+                    MPI_Comm_free(&comm);
+                comm = temp;
+                MPI_Comm_rank(comm, &rank);
+                MPI_Comm_size(comm, &size);
+                if(state[VERBOSE]) {
+                    printf("Fix after Agree %d.%d: rank %d/%d in previous comm is now %d/%d after shrink (state[INITIAL_SIZE] is %d)\n",
+                           state[AG_CID], state[AG_IDX], orank, osize, rank, size, state[INITIAL_SIZE]);
+                }
+            }
+        }
         if( size < state[INITIAL_SIZE] ) {
             spawn_new_processes(&comm, state);
             MPI_Comm_rank(comm, &rank);
