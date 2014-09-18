@@ -253,49 +253,39 @@ int main(int argc, char *argv[])
         }
 
         if( failures > 0 && success == 0 ) {
-            success = nb_success;
-            simultaneous = (rand_r((unsigned int*)&seed) % failures);
-            if( verbose && rank == 0 ) {
-                printf("Decided to do %d failures at this round\n", simultaneous);
-            }
             fail_this_round = 0;
-            for(c = 0; c < simultaneous; c++) {
-                do {
-                    rc = rand_r((unsigned int*)&seed) % size;
-                    for(i = 0; i < c; i++) {
-                        if( rc == victims[i] )
-                            break;
-                    }
-                    if( i == c ) {
-                        victims[i] = rc;
-                        if( rc == rank ) {
-                            fail_this_round = 1;
+            failures = (failures < size-1) ? failures : size-1;
+            if( failures == 0 ) {
+                if( verbose ) {
+                    printf("Cannot kill more processes without stopping the execution. No more failures\n");
+                }
+            } else {
+                success = nb_success;
+                simultaneous = (rand_r((unsigned int*)&seed) % failures);
+                if( verbose && rank == 0 ) {
+                    printf("Decided to do %d failures at this round\n", simultaneous);
+                }
+                for(c = 0; c < simultaneous; c++) {
+                    do {
+                        rc = rand_r((unsigned int*)&seed) % size;
+                        for(i = 0; i < c; i++) {
+                            if( rc == victims[i] )
+                                break;
                         }
-                    }
-                } while(i != c);
+                        if( i == c ) {
+                            victims[i] = rc;
+                            if( rc == rank ) {
+                                fail_this_round = 1;
+                            }
+                        }
+                    } while(i != c);
+                }
             }
+
             if( fail_this_round ) {
                 if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
                     if( verbose ) {
                         fprintf(stderr, "Rank %d/%d will fail\n", rank, size);
-                    }
-                    *coll_ftbasic_era_debug_rank_may_fail = 1;
-                } else {
-                    if( verbose ) {
-                        fprintf(stderr, "Rank %d/%d fails\n", rank, size);
-                    }
-                    raise(SIGKILL);
-                }
-            } else {
-                if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
-                    *coll_ftbasic_era_debug_rank_may_fail = 0;
-                }
-            }
-
-            if( (rand_r(&seed) % size) == rank ) {
-                if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
-                    if( verbose ) {
-                        fprintf(stderr, "Rank %d/%d may fail\n", rank, size);
                     }
                     *coll_ftbasic_era_debug_rank_may_fail = 1;
                 } else {
