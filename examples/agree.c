@@ -54,10 +54,13 @@ int main(int argc, char *argv[])
     int benchmark    = 0;
     int nb_test      = 20;
     int debug        = 0;
-    int failures     = 0;
+    unsigned int nb_success = (unsigned int)-1;
+    int failures     = 1;
     char *help_msg   = NULL;
     char host[256];
 
+    int fail_this_round, success, simultaneous;
+    int *victims;
     void *handle;
     int *coll_ftbasic_era_debug_rank_may_fail;
 
@@ -74,11 +77,12 @@ int main(int argc, char *argv[])
             { "nb-test",      1, 0, 'n' },
             { "help",         0, 0, 'h' },
             { "failures",     1, 0, 'F' },
+            { "successes",    1, 0, 'S' },
             { "debug",        0, 0, 'd' },
             { NULL,           0, 0, 0   }
         };
 
-        c = getopt_long(argc, argv, "vsirc:bn:hdF:", long_options, NULL);
+        c = getopt_long(argc, argv, "vsirc:bn:hdF:S:", long_options, NULL);
         if (c == -1)
             break;
 
@@ -109,6 +113,9 @@ int main(int argc, char *argv[])
             break;
         case 'F':
             failures = atoi(optarg);
+            break;
+        case 'S':
+            nb_success = atoi(optarg);
             break;
         case 'h':
             help_msg = "";
@@ -176,7 +183,8 @@ int main(int argc, char *argv[])
                     "--benchmark       | -b        To measure the times\n"
                     "--nb-test <I>     | -n <I>    To do I iterations of the agreement\n"
                     "--debug           | -d        Wait that a gdb attaches to the process and call stop=1 to continue\n"
-                    "--failures <I>    | -F <I>    Introduce random process failures every I iterations\n"
+                    "--failures <I>    | -F <I>    Introduce random process failures of at most I processes\n"
+                    "--success <I>     | -S <I>    Don't introduce new failures before I agreements succeed\n"
                     "--help            | -h        To display this help\n",
                     argv[0]);
         }
@@ -184,6 +192,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    victims = (int*)malloc(size * sizeof(int));
     result = (result_t*)malloc( nb_test * sizeof(result_t) );
     for(i = 0; i < nb_test; i++) {
         result[i].input = (int*)malloc( size * sizeof(int) );
@@ -202,6 +211,7 @@ int main(int argc, char *argv[])
     init = MPI_Wtime() - start;
 
     start = MPI_Wtime();
+    success = nb_success;
     for(i = 0; i < nb_test; i++) {
         if( create_comm > 0 && ( (i % create_comm) == 0 ) ) {
             MPI_Comm temp;
@@ -242,7 +252,46 @@ int main(int argc, char *argv[])
             }
         }
 
-        if( failures > 0 && ( ((i+1) % failures) == 0 ) ) {
+        if( failures > 0 && success == 0 ) {
+            success = nb_success;
+            simultaneous = (rand_r((unsigned int*)&seed) % failures);
+            if( verbose && rank == 0 ) {
+                printf("Decided to do %d failures at this round\n", simultaneous);
+            }
+            fail_this_round = 0;
+            for(c = 0; c < simultaneous; c++) {
+                do {
+                    rc = rand_r((unsigned int*)&seed) % size;
+                    for(i = 0; i < c; i++) {
+                        if( rc == victims[i] )
+                            break;
+                    }
+                    if( i == c ) {
+                        victims[i] = rc;
+                        if( rc == rank ) {
+                            fail_this_round = 1;
+                        }
+                    }
+                } while(i != c);
+            }
+            if( fail_this_round ) {
+                if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
+                    if( verbose ) {
+                        fprintf(stderr, "Rank %d/%d will fail\n", rank, size);
+                    }
+                    *coll_ftbasic_era_debug_rank_may_fail = 1;
+                } else {
+                    if( verbose ) {
+                        fprintf(stderr, "Rank %d/%d fails\n", rank, size);
+                    }
+                    raise(SIGKILL);
+                }
+            } else {
+                if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
+                    *coll_ftbasic_era_debug_rank_may_fail = 0;
+                }
+            }
+
             if( (rand_r(&seed) % size) == rank ) {
                 if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
                     if( verbose ) {
@@ -298,6 +347,8 @@ int main(int argc, char *argv[])
             if(verbose) {
                 printf("Rank %d/%d in previous comm is now %d/%d after shrink\n", orank, osize, rank, size);
             }
+        } else {
+            success--;
         }
         if( check_result ) {
             MPI_Allgather(&flag, 1, MPI_INT, result[i].output, 1, MPI_INT, comm);
