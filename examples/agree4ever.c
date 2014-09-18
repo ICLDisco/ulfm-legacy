@@ -251,7 +251,7 @@ int main(int argc, char *argv[])
             }
 
             common = rand_r((unsigned int*)&state[SEED]);
-            flag = common & rand();
+            flag = common | rand();
             state[AG_IDX]++;
             if( state[VERBOSE] ) {
                 printf("Rank %d/%d enters MPI_Comm_agree %d.%d with %08x\n", rank, size, state[AG_CID], state[AG_IDX], flag);
