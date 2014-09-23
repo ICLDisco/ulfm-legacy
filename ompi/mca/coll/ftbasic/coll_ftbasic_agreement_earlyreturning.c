@@ -22,6 +22,7 @@
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/bml/bml.h"
+#include "ompi/op/op.h"
 #include "ompi/mca/bml/base/base.h"
 #include "orte/mca/errmgr/errmgr.h"
 
@@ -44,12 +45,14 @@ typedef enum {
  * This enum defines the status of processes
  * when the consensus has not been decided yet
  */
-typedef enum {
+enum {
     /* These values are for the current process */
     NOT_CONTRIBUTED = 1,
     GATHERING,
     BROADCASTING
-} era_proc_status_t;
+};
+typedef uint32_t era_proc_status_t;
+#define OP_NOT_DEFINED     (1<<31)
 
 typedef struct {
     union {
@@ -74,29 +77,24 @@ typedef struct {
 
 #define MAX_ACK_FAILED_SIZE 2
 #define MAX_NEW_DEAD_SIZE   2
+#define MAX_FLAG_LENGTH    64 /**< Must be greater than sizeof(int) per the standard
+                               *   and 2*sizeof(int) per internal requirements
+                               */
 
 #if defined(OPAL_ENABLE_DEBUG)
 #define PROGRESS_FAILURE_PROB .05
 #endif
 
 typedef struct {
-    int32_t  bits; /* Bitwise on 32 bits */
-    int32_t  ret;  /* Return code */
+    int      operand;                        /**< operand applied on bytes. 
+                                              *   One of OMPI_OP_BASE_FORTRAN_* values in mca/op/op.h */
+    int      dt_count;                       /**< The number of datatypes in bytes */
+    int      datatype;                       /**< Fortran index of predefined basic datatype in bytes */
+    uint8_t  bytes[MAX_FLAG_LENGTH];         /**< content of flags. */
+    int32_t  ret;                            /**< Return code */
     int      new_dead[MAX_NEW_DEAD_SIZE];    /**< -1 terminated bounded list of newly
                                               *      discovered dead ranks */
 } era_value_t;
-
-#define ERA_VALUE_SET_UNDEF(_e) do {            \
-        (_e).bits = -1;                         \
-        (_e).ret  = -1;                         \
-    } while(0)
-#define ERA_VALUE_IS_UNDEF(_e)    ( (_e).bits == -1 && (_e).ret == -1 )
-#define ERA_VALUE_SET_NEUTRAL(_e) do {                              \
-        (_e).bits = ~((int32_t)0);                                  \
-        (_e).ret  = OMPI_SUCCESS;                                   \
-        memset((_e).new_dead, -1, MAX_NEW_DEAD_SIZE*sizeof(int));   \
-    } while(0)
-#define ERA_VALUE_EQUAL(_a, _b)   ( (_a).bits == (_b).bits && (_a).ret == (_b).ret )
 
 typedef struct {
     era_msg_type_t      msg_type;
@@ -176,9 +174,13 @@ typedef struct {
 
 static void  era_agreement_info_constructor (era_agreement_info_t *agreement_info)
 {
+    int r;
+
     agreement_info->agreement_id.ERAID_KEY = 0;
-    ERA_VALUE_SET_NEUTRAL(agreement_info->current_value);
-    agreement_info->status = NOT_CONTRIBUTED;
+    agreement_info->status = NOT_CONTRIBUTED | OP_NOT_DEFINED;
+    for(r = 0; r < MAX_NEW_DEAD_SIZE; r++)
+        agreement_info->current_value.new_dead[r] = -1;
+    agreement_info->current_value.ret = 0;
     agreement_info->comm = NULL;
     agreement_info->alive_size = 0;
     agreement_info->alive_ta   = NULL;
@@ -238,11 +240,20 @@ OBJ_CLASS_INSTANCE(era_seq_num_record_t, opal_object_t, NULL, NULL);
 static char *era_status_to_string(era_proc_status_t s) {
     switch(s) {
     case NOT_CONTRIBUTED:
-        return "NOT_CONTRIBUTED";
+        if( s & OP_NOT_DEFINED )
+            return "NOT_CONTRIBUTED | OP_NOT_DEFINED";
+        else
+            return "NOT_CONTRIBUTED";
     case GATHERING:
-        return "GATHERING";
+        if( s & OP_NOT_DEFINED )
+            return "GATHERING | OP_NOT_DEFINED";
+        else
+            return "GATHERING";
     case BROADCASTING:
-        return "BROADCASTING";
+        if( s & OP_NOT_DEFINED )
+            return "BROADCASTING | OP_NOT_DEFINED";
+        else
+            return "BROADCASTING";
     }
     return "UNDEFINED STATUS";
 }
@@ -442,11 +453,33 @@ static void send_msg(ompi_communicator_t *comm,
 static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *value)
 {
     int r, ir, to_insert, tmp;
+    ompi_op_t *op;
+    ompi_datatype_t *dt;
 #if defined(OPAL_ENABLE_DEBUG)
     int pr = 0;
 #endif
 
-    ni->current_value.bits &= value->bits;
+    if( ni->status & OP_NOT_DEFINED ) {
+        ni->current_value.operand = value->operand;
+        ni->current_value.dt_count = value->dt_count;
+        ni->current_value.datatype = value->datatype;
+        memcpy(ni->current_value.bytes, value->bytes, MAX_FLAG_LENGTH);
+        ni->current_value.ret = value->ret;
+        ni->status &= ~OP_NOT_DEFINED;
+    } else {
+        assert( ni->current_value.operand == value->operand );
+        assert( ni->current_value.dt_count == value->dt_count );
+        assert( ni->current_value.datatype == value->datatype );
+        op = opal_pointer_array_get_item(ompi_op_f_to_c_table,
+                                         ni->current_value.operand);
+        assert(NULL != op);
+        dt = opal_pointer_array_get_item(&ompi_datatype_f_to_c_table,
+                                         ni->current_value.datatype);
+        assert(NULL != dt);
+        ompi_op_reduce( op, value->bytes, ni->current_value.bytes,
+                        ni->current_value.dt_count, dt);
+    }
+
     if( value->ret > ni->current_value.ret )
         ni->current_value.ret = value->ret;
 
@@ -579,6 +612,9 @@ static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm)
         next_child_in_alive++;
     }
 
+    if( next_child_in_alive == ci->alive_size )
+        return ompi_comm_size(ci->comm);
+
     return ci->alive_ta[next_child_in_alive];
 }
 #endif
@@ -657,7 +693,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d\n",                         
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         decided_value->bits,
+                         *(int*)decided_value->bytes,
                          decided_value->ret,
                          decided_value->new_dead[0],
                          ci->agreement_id.ERAID_FIELDS.contextid,
@@ -679,7 +715,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
         OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: adding %d processes to the list of agreed deaths\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             decided_value->bits,
+                             *(int*)decided_value->bytes,
                              decided_value->ret,
                              decided_value->new_dead[0],
                              ci->agreement_id.ERAID_FIELDS.contextid,
@@ -712,7 +748,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: group of agreed deaths is of size %d\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         decided_value->bits,
+                         *(int*)decided_value->bytes,
                          decided_value->ret,
                          decided_value->new_dead[0],
                          ci->agreement_id.ERAID_FIELDS.contextid,
@@ -1257,7 +1293,7 @@ static void send_msg(ompi_communicator_t *comm,
                              agreement_id.ERAID_FIELDS.epoch,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
-                             value->bits,
+                             *(int*)value->bytes,
                              value->ret,
                              value->new_dead[0],
                              dst,
@@ -1274,7 +1310,7 @@ static void send_msg(ompi_communicator_t *comm,
                              agreement_id.ERAID_FIELDS.epoch,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
-                             value->bits,
+                             *(int*)value->bytes,
                              value->ret,
                              value->new_dead[0],
                              nb_up_msg,
@@ -1289,7 +1325,7 @@ static void send_msg(ompi_communicator_t *comm,
                              agreement_id.ERAID_FIELDS.epoch,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
-                             value->bits,
+                             *(int*)value->bytes,
                              value->ret,
                              value->new_dead[0],
                              dst,
@@ -1414,7 +1450,7 @@ static void msg_up(era_msg_t *msg)
                          msg->agreement_id.ERAID_FIELDS.agreementid,
                          msg->src_comm_rank,
                          ORTE_NAME_PRINT(&msg->src_proc_name),
-                         msg->agreement_value.bits,
+                         *(int*)msg->agreement_value.bytes,
                          msg->agreement_value.ret,
                          msg->agreement_value.new_dead[0],
                          msg->nb_up_messages,
@@ -1571,7 +1607,7 @@ static void msg_down(era_msg_t *msg)
                          msg->agreement_id.ERAID_FIELDS.agreementid,
                          msg->src_comm_rank,
                          ORTE_NAME_PRINT(&msg->src_proc_name),
-                         msg->agreement_value.bits,
+                         *(int*)msg->agreement_value.bytes,
                          msg->agreement_value.ret,
                          msg->agreement_value.new_dead[0]));
 
@@ -1619,7 +1655,7 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
                              msg->agreement_id.ERAID_FIELDS.epoch,
                              msg->agreement_id.ERAID_FIELDS.agreementid,
                              msg->msg_type,
-                             msg->agreement_value.bits,
+                             *(int*)msg->agreement_value.bytes,
                              msg->agreement_value.ret,
                              msg->agreement_value.new_dead[0],
                              msg->src_comm_rank,
@@ -1785,7 +1821,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_value_t agreement_value;
     era_passed_agreement_t *pa;
     mca_coll_ftbasic_agreement_t *ag_info;
-
+    int r;
 
     ag_info = ( (mca_coll_ftbasic_module_t *)module )->agreement_info;
     assert( NULL != ag_info );
@@ -1847,8 +1883,13 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     }
 
     /* I participate */
-    ERA_VALUE_SET_NEUTRAL(agreement_value);
-    agreement_value.bits = *flag;
+    *(int*)agreement_value.bytes = *flag;
+    agreement_value.operand = ompi_mpi_op_band.op.o_f_to_c_index;
+    agreement_value.dt_count = 1;
+    agreement_value.datatype = ompi_mpi_int.dt.id;
+    for(r = 0; r < MAX_NEW_DEAD_SIZE; r++)
+        agreement_value.new_dead[r] = -1;
+    agreement_value.ret = 0;
 
     era_combine_agreement_values(ci, &agreement_value);
 
@@ -1869,7 +1910,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
         }
     } 
     
-    *flag = agreement_value.bits;
+    *flag = *(int*)agreement_value.bytes;
     
     /* Update the group of failed processes */
     if(NULL != group) {
