@@ -28,10 +28,13 @@
 
 #include MCA_timer_IMPLEMENTATION_HEADER
 #include "coll_ftbasic.h"
+
+static int era_inited = 0;
 static opal_hash_table_t era_passed_agreements;
 static opal_hash_table_t era_ongoing_agreements;
-static int era_inited = 0;
+static opal_hash_table_t era_incomplete_messages;
 static ompi_comm_rank_failure_callback_t *ompi_stacked_rank_failure_callback_fct = NULL;
+static uint64_t msg_seqnum = 1;
 
 int coll_ftbasic_era_debug_rank_may_fail;
 
@@ -75,7 +78,6 @@ typedef struct {
 #define ERAID_KEY    u.uint64
 #define ERAID_FIELDS u.fields
 
-#define MAX_ACK_FAILED_SIZE 2
 #define MAX_NEW_DEAD_SIZE   2
 #define MAX_FLAG_LENGTH    64 /**< Must be greater than sizeof(int) per the standard
                                *   and 2*sizeof(int) per internal requirements
@@ -99,7 +101,6 @@ typedef struct {
 typedef struct {
     era_msg_type_t      msg_type;
     era_identifier_t    agreement_id;
-    era_value_t         agreement_value;
 
     /** We give the source ID as both the rank in the communicator
      *  and the proc_name_t, because 90% of the time, the receiver
@@ -111,14 +112,26 @@ typedef struct {
     int                 src_comm_rank;
     orte_process_name_t src_proc_name;
 
+    era_value_t         agreement_value;
+
     /* The following fields are defined only for messages of type MSG_UP */
-    int      nb_up_messages;                  /**< Informs how many of these messages types 
-                                               *   will be sent upward (in case ack_failed must
-                                               *   be split in multiple messages. */
-    int      ack_failed[MAX_ACK_FAILED_SIZE]; /**< -1 terminated list of ranks that are
-                                                *  known to be failed by the processes in
-                                                *  that branch of the tree */
+    int      nb_ack;         /**< Informs how many of these messages types 
+                              *   will be sent upward (in case ack_failed must
+                              *   be split in multiple messages. */
+    int      ack_failed[1]; /**< list of nb_ack ranks that are
+                             *  known to be failed by the processes in
+                             *  that branch of the tree */
 } era_msg_t;
+#define ERA_MSG_SIZE(_nb_ack) (sizeof(era_msg_t) + ((_nb_ack) - 1) * sizeof(int))
+
+typedef struct {
+    orte_process_name_t       src;  /**< src + msg_seqnum build a unique (up to rotation on msg_seqnum) */
+    uint64_t           msg_seqnum;  /*   message identifier.*/
+    unsigned int          msg_len;
+    unsigned int      frag_offset;
+    unsigned int         frag_len;
+    uint8_t              bytes[1];
+} era_frag_t;
 
 typedef struct {
     opal_object_t   super;
@@ -129,8 +142,7 @@ OBJ_CLASS_INSTANCE(era_passed_agreement_t, opal_object_t, NULL, NULL);
 
 /**
  * Direct descendents provide information that is reduced as we go up.
- * This information may be transmitted in multiple messages (when lists of
- *  dead ack processes > MAX_ACK_FAILED_SIZE).
+ * This information may be transmitted in multiple fragments.
  * How many messages / if the message has been received by a given
  * descendent is kept in a list with elements of this type
  */
@@ -1223,10 +1235,10 @@ static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
     }
 }
 
-static void message_sent(struct mca_btl_base_module_t* module,
-                         struct mca_btl_base_endpoint_t* endpoint,
-                         struct mca_btl_base_descriptor_t* descriptor,
-                         int status)
+static void fragment_sent(struct mca_btl_base_module_t* module,
+                          struct mca_btl_base_endpoint_t* endpoint,
+                          struct mca_btl_base_descriptor_t* descriptor,
+                          int status)
 {
     (void)module;
     (void)endpoint;
@@ -1237,31 +1249,26 @@ static void message_sent(struct mca_btl_base_module_t* module,
 static  void send_up_msg(era_agreement_info_t *ci, int rank)
 {
     int *ack_rank_array, *co_rank_array;
-    int  r, upsize;
-    int  nb_afa;
+    int  r, nb_afa;
 
     assert( NULL != ci->comm );
 
     nb_afa = ompi_group_size(ci->acked_group);
 
-    upsize = MAX_ACK_FAILED_SIZE * (nb_afa/MAX_ACK_FAILED_SIZE + 1);
-
-    co_rank_array = (int*)malloc(upsize * sizeof(int));
-    for(r = nb_afa; r < upsize; r++)
-        co_rank_array[r] = -1;
-
     if( nb_afa > 0 ) {
+        co_rank_array = (int*)malloc(nb_afa * sizeof(int));
         ack_rank_array = (int*)malloc(nb_afa * sizeof(int));
         for(r = 0 ; r < nb_afa; r++)
             ack_rank_array[r] = r;
         ompi_group_translate_ranks(ci->acked_group, nb_afa, ack_rank_array, ci->comm->c_local_group, co_rank_array);
         free(ack_rank_array);
+    } else {
+        co_rank_array = NULL;
     }
 
-    for(r = 0; r < upsize; r += MAX_ACK_FAILED_SIZE) {
-        send_msg(ci->comm, rank, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
-                 upsize / MAX_ACK_FAILED_SIZE, &co_rank_array[r]);
-    }
+    send_msg(ci->comm, rank, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
+             nb_afa, co_rank_array);
+
     free(co_rank_array);
 }
 
@@ -1271,16 +1278,20 @@ static void send_msg(ompi_communicator_t *comm,
                      era_identifier_t agreement_id,
                      era_msg_type_t type,
                      era_value_t *value,
-                     int          nb_up_msg,
+                     int          nb_ack_failed,
                      int         *ack_failed)
 {
     mca_btl_base_descriptor_t *des;
-    era_msg_t *src;
+    era_msg_t *msg, _msg;
+    era_frag_t *frag;
     ompi_proc_t *peer;
     mca_bml_base_endpoint_t *proc_bml;
     mca_bml_base_btl_t *bml_btl;
     struct mca_btl_base_endpoint_t *btl_endpoint;
     mca_btl_base_module_t *btl;
+    uint64_t my_seqnum;
+    unsigned int to_send, sent;
+    int payload_size;
 
 #if defined(PROGRESS_FAILURE_PROB)
 #pragma message("Hard coded probability of failure inside the agreement")
@@ -1304,7 +1315,7 @@ static void send_msg(ompi_communicator_t *comm,
 
     if( MSG_UP == type ) {
         OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d.. %d UP msg, ADR: %d...] to %d/%s\n",
+                             "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d.., ADR: %d processes (%d...)] to %d/%s\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                              agreement_id.ERAID_FIELDS.contextid,
                              agreement_id.ERAID_FIELDS.epoch,
@@ -1313,8 +1324,8 @@ static void send_msg(ompi_communicator_t *comm,
                              *(int*)value->bytes,
                              value->ret,
                              value->new_dead[0],
-                             nb_up_msg,
-                             ack_failed[0],
+                             nb_ack_failed,
+                             ack_failed != NULL ? ack_failed[0] : -1,
                              dst,
                              NULL != proc_name ? ORTE_NAME_PRINT(proc_name) : "(null)"));
     } else {
@@ -1352,31 +1363,54 @@ static void send_msg(ompi_communicator_t *comm,
     btl = bml_btl->btl;
     assert(NULL != btl);
 
-    if( MSG_UP == type ) {
-        des = btl->btl_alloc(btl, btl_endpoint, MCA_BTL_NO_ORDER, sizeof(era_msg_t),
-                             MCA_BTL_DES_FLAGS_PRIORITY | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
+    to_send = ERA_MSG_SIZE(nb_ack_failed);
+    if( to_send <= sizeof(_msg) ) {
+        msg = &_msg;
     } else {
-        des = btl->btl_alloc(btl, btl_endpoint, MCA_BTL_NO_ORDER, 
-                             sizeof(era_msg_t) - sizeof(int) * (MAX_ACK_FAILED_SIZE + 1),
-                             MCA_BTL_DES_FLAGS_PRIORITY | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
+        msg = (era_msg_t*)malloc(to_send);
     }
-    des->des_cbfunc = message_sent;
-    des->des_cbdata = NULL;
-    src = (era_msg_t*)des->des_src->seg_addr.pval;
-    src->msg_type = type;
-    src->agreement_id.ERAID_KEY = agreement_id.ERAID_KEY;
+
+    msg->msg_type = type;
+    msg->agreement_id.ERAID_KEY = agreement_id.ERAID_KEY;
     if( NULL != comm ) {
-        src->src_comm_rank = ompi_comm_rank(comm);
+        msg->src_comm_rank = ompi_comm_rank(comm);
     } else {
-        src->src_comm_rank = -1;
+        msg->src_comm_rank = -1;
     }
-    src->src_proc_name = *ORTE_PROC_MY_NAME;
-    memcpy(&src->agreement_value, value, sizeof(era_value_t));
+    msg->src_proc_name = *ORTE_PROC_MY_NAME;
+    memcpy(&msg->agreement_value, value, sizeof(era_value_t));
     if( MSG_UP == type ) {
-        src->nb_up_messages = nb_up_msg;
-        memcpy(&src->ack_failed, ack_failed, MAX_ACK_FAILED_SIZE * sizeof(int));
+        msg->nb_ack = nb_ack_failed;
+        if( nb_ack_failed > 0 )
+            memcpy(msg->ack_failed, ack_failed, nb_ack_failed * sizeof(int));
+    } else {
+        msg->nb_ack = -1;
     }
-    btl->btl_send(btl, btl_endpoint, des, MCA_BTL_TAG_FT_AGREE);
+
+    sent    = 0;
+    my_seqnum = msg_seqnum++;
+    while( sent < to_send ) {
+        /** Try to send everything in one go */
+        des = btl->btl_alloc(btl, btl_endpoint, MCA_BTL_NO_ORDER, sizeof(era_frag_t) - 1 + to_send - sent,
+                             MCA_BTL_DES_FLAGS_PRIORITY | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
+        payload_size = des->des_src->seg_len - sizeof(era_frag_t) + 1;
+        assert( payload_size > 0 ); /** We can send at least a byte */
+
+        des->des_cbfunc = fragment_sent;
+        des->des_cbdata = NULL;
+        frag = (era_frag_t*)des->des_src->seg_addr.pval;
+        frag->src = *ORTE_PROC_MY_NAME;
+        frag->msg_seqnum  = my_seqnum;
+        frag->frag_offset = sent;
+        frag->frag_len    = payload_size;
+        frag->msg_len     = to_send;
+        memcpy(frag->bytes, ( (char*)msg ) + sent, payload_size);
+        btl->btl_send(btl, btl_endpoint, des, MCA_BTL_TAG_FT_AGREE);
+        sent += payload_size;
+    }
+
+    if( msg != &_msg )
+        free(msg);
 }
 
 static void result_request(era_msg_t *msg)
@@ -1443,7 +1477,7 @@ static void msg_up(era_msg_t *msg)
     int r;
  
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) Received UP Message: Agreement ID = (%d.%d).%d, sender: %d/%s, msg value: %08x.%d.%d.. %d up msg, ADR: %d...\n",
+                         "%s ftbasic:agreement (ERA) Received UP Message: Agreement ID = (%d.%d).%d, sender: %d/%s, msg value: %08x.%d.%d.., ADR: %d processes: %d...\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                          msg->agreement_id.ERAID_FIELDS.contextid,
                          msg->agreement_id.ERAID_FIELDS.epoch,
@@ -1453,7 +1487,7 @@ static void msg_up(era_msg_t *msg)
                          *(int*)msg->agreement_value.bytes,
                          msg->agreement_value.ret,
                          msg->agreement_value.new_dead[0],
-                         msg->nb_up_messages,
+                         msg->nb_ack,
                          msg->ack_failed[0]));
 
     /** It could be an UP message about a decided agreement:
@@ -1525,16 +1559,8 @@ static void msg_up(era_msg_t *msg)
          rank_item != (era_rank_counter_item_t *)opal_list_get_end( &ci->gathered_info );
          rank_item = (era_rank_counter_item_t *)opal_list_get_next( &rank_item->super ) ) {
         if( rank_item->rank == msg->src_comm_rank ) {
-            break; /* Ah ah: we heard from you already */
-        }
-    }
-    if( rank_item != (era_rank_counter_item_t *)opal_list_get_end( &ci->gathered_info ) ) {
-        if( rank_item->counter == 0 ) {
             /* We are not waiting from more messages, thank you */
-            /* NOTE: there may be a race here... What if we received twice the packet 0, and no of the packets 1?...
-             * We can have the wrong list of ADR...
-             * Check this carefully.
-             */
+            /* Maybe you're telling me again you want me to send? Let's check if I can't */
             era_check_status(ci);
             return;
         }
@@ -1546,10 +1572,8 @@ static void msg_up(era_msg_t *msg)
     /* Handle the list of acknowledged dead processes: merge all the upcoming information,
      * and remember that this message was received
      */
-    for(r = 0; r < MAX_ACK_FAILED_SIZE; r++) {
-        if( msg->ack_failed[r] == -1 ) {
-            break;
-        }
+    for(r = 0; r < msg->nb_ack; r++) {
+        assert( msg->ack_failed[r] != -1 );
         for(rank_item = (era_rank_counter_item_t *)opal_list_get_first( &ci->union_of_dead_ack );
             rank_item != (era_rank_counter_item_t *)opal_list_get_end( &ci->union_of_dead_ack );
             rank_item = (era_rank_counter_item_t *)opal_list_get_next( &rank_item->super ) ) {
@@ -1566,31 +1590,15 @@ static void msg_up(era_msg_t *msg)
         }
     }
 
-    for( rank_item = (era_rank_counter_item_t *)opal_list_get_first( &ci->gathered_info );
-         rank_item != (era_rank_counter_item_t *)opal_list_get_end( &ci->gathered_info );
-         rank_item = (era_rank_counter_item_t *)opal_list_get_next( &rank_item->super ) ) {
-        if( rank_item->rank == msg->src_comm_rank ) {
-            assert(rank_item->counter > 0);
-            rank_item->counter--;
-            OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
-                                 "%s ftbasic:agreement (ERA) Received UP Message: found %d in list of people that contributed (wait for %d more)\n",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                 rank_item->rank,
-                                 rank_item->counter));
-            break;
-        }
-    }
-    if( rank_item == (era_rank_counter_item_t *)opal_list_get_end( &ci->gathered_info ) ) {
-        rank_item = OBJ_NEW(era_rank_counter_item_t);
-        rank_item->rank = msg->src_comm_rank;
-        rank_item->counter = msg->nb_up_messages - 1;
-        opal_list_append(&ci->gathered_info, &rank_item->super);
-        OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) Received UP Message: adding %d in list of people that contributed (wait for %d more)\n",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             rank_item->rank,
-                             rank_item->counter));
-    }
+    /* We already checked above that this process did not contribute yet */
+    rank_item = OBJ_NEW(era_rank_counter_item_t);
+    rank_item->rank = msg->src_comm_rank;
+    rank_item->counter = 0;
+    opal_list_append(&ci->gathered_info, &rank_item->super);
+    OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ERA) Received UP Message: adding %d in list of people that contributed\n",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         rank_item->rank));
 
     era_check_status(ci);
 }
@@ -1637,12 +1645,52 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
                       void* cbdata)
 {
     era_msg_t *msg;
+    era_frag_t *frag;
+    uint64_t src_hash;
+    void *value;
+    opal_hash_table_t *msg_table;
 
     assert(MCA_BTL_TAG_FT_AGREE == tag);
     assert(1 == descriptor->des_dst_cnt);
     (void)cbdata;
 
-    msg = (era_msg_t*)descriptor->des_dst->seg_addr.pval;
+    frag = (era_frag_t*)descriptor->des_dst->seg_addr.pval;
+
+    if( frag->msg_len == frag->frag_len ) {
+        assert(frag->frag_offset == 0);
+        msg = (era_msg_t *)frag->bytes;
+    } else {
+        src_hash = orte_util_hash_name(&frag->src);
+        if( opal_hash_table_get_value_uint64(&era_incomplete_messages, src_hash, &value) == OMPI_SUCCESS ) {
+            msg_table = (opal_hash_table_t*)value;
+        } else {
+            assert( frag->frag_offset == 0 ); /** We receive the messages in order */
+            msg_table = OBJ_NEW(opal_hash_table_t);
+            opal_hash_table_init(msg_table, 3 /* This should be very small: few messages should fly in parallel */);
+            opal_hash_table_set_value_uint64(&era_incomplete_messages, src_hash, (void*)msg_table);
+        }
+
+        if( opal_hash_table_get_value_uint64(msg_table, frag->msg_seqnum, &value) == OMPI_SUCCESS ) {
+            msg = (era_msg_t*)value;
+        } else {
+            assert( frag->frag_offset == 0 ); /** We receive the messages in order */
+            msg = (era_msg_t*)malloc(frag->msg_len);
+            opal_hash_table_set_value_uint64(msg_table, frag->msg_seqnum, (void*)msg);
+        }
+
+        memcpy( ((char*)msg) + frag->frag_offset,
+                frag->bytes,
+                frag->frag_len );
+
+        /** We receive the messages in order */
+        if( frag->frag_offset + frag->frag_len == frag->msg_len ) {
+            opal_hash_table_remove_value_uint64(msg_table, frag->msg_seqnum);
+            /** We leave msg_table into the global table, as we will receive more messages */
+        } else {
+            /** This message is incomplete */
+            return;
+        }
+    }
 
 #if defined(PROGRESS_FAILURE_PROB)
 #pragma message("Hard coded probability of failure inside the agreement")
@@ -1682,9 +1730,11 @@ static void era_on_comm_rank_failure(ompi_communicator_t *comm, int rank, bool r
     void *value, *next_value;
     era_agreement_info_t *ci;
     void *node;
-    uint64_t key64;
+    uint64_t key64, key64_2;
     int rc;
     era_identifier_t cid;
+    ompi_proc_t *ompi_proc;
+    opal_hash_table_t *msg_table;
 
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) %d in communicator (%d.%d) died\n",
@@ -1692,6 +1742,22 @@ static void era_on_comm_rank_failure(ompi_communicator_t *comm, int rank, bool r
                          rank,
                          comm->c_contextid,
                          comm->c_epoch));
+
+    /** Discard incomplete messages, and remove the entry to store these messages */
+    ompi_proc = ompi_group_peer_lookup(remote ? comm->c_remote_group : comm->c_local_group, rank);
+    assert(NULL != ompi_proc);
+    key64 = orte_util_hash_name( &ompi_proc->proc_name );
+    if( opal_hash_table_get_value_uint64(&era_incomplete_messages, key64, &value) == OPAL_SUCCESS ) {
+        msg_table = (opal_hash_table_t*)value;
+        if( opal_hash_table_get_first_key_uint64(msg_table, &key64_2, &value, &node) == OPAL_SUCCESS ) {
+            do {
+                free( value );
+            } while( opal_hash_table_get_next_key_uint64(msg_table,
+                                                         &key64_2, &value, 
+                                                         node, &node) == OPAL_SUCCESS );
+        }
+        opal_hash_table_remove_value_uint64(&era_incomplete_messages, key64);
+    }
 
     if( opal_hash_table_get_first_key_uint64(&era_ongoing_agreements,
                                              &key64,
@@ -1738,6 +1804,9 @@ int mca_coll_ftbasic_agreement_era_init(void)
     OBJ_CONSTRUCT( &era_ongoing_agreements, opal_hash_table_t);
     opal_hash_table_init(&era_ongoing_agreements, 16 /* We expect only a few */);
     
+    OBJ_CONSTRUCT( &era_incomplete_messages, opal_hash_table_t);
+    opal_hash_table_init(&era_incomplete_messages, 65536 /* Big Storage. Should be related to the universe size */);
+
     ompi_stacked_rank_failure_callback_fct = ompi_rank_failure_cbfunc;
     ompi_rank_failure_cbfunc = era_on_comm_rank_failure;
 
@@ -1757,6 +1826,8 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
     uint64_t key64;
     era_passed_agreement_t    *old_agreement;
     era_agreement_info_t      *un_agreement;
+    opal_hash_table_t         *msg_table;
+    era_msg_t                 *msg;
 
     if( !era_inited ) {
         return OMPI_SUCCESS;
@@ -1796,6 +1867,31 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
                                                      node, &node) == OPAL_SUCCESS );
     }
     OBJ_DESTRUCT( &era_ongoing_agreements );
+
+    if( opal_hash_table_get_first_key_uint64(&era_incomplete_messages,
+                                             &key64,
+                                             &value, &node) == OPAL_SUCCESS ) {
+        do {
+            uint64_t key64_2;
+            void *value_2, *node_2;
+            msg_table = (opal_hash_table_t*)value;
+
+            if( opal_hash_table_get_first_key_uint64(msg_table,
+                                                     &key64_2,
+                                                     &value_2, &node_2) == OPAL_SUCCESS ) {
+                do {
+                    msg = (era_msg_t *)value_2;
+                    free(msg);
+                } while( opal_hash_table_get_next_key_uint64(msg_table, &key64_2,
+                                                             &value_2, node_2, &node_2) == OPAL_SUCCESS );
+            }
+
+            OBJ_RELEASE(msg_table);
+        }  while( opal_hash_table_get_next_key_uint64(&era_incomplete_messages,
+                                                      &key64, &value, 
+                                                      node, &node) == OPAL_SUCCESS );
+    }
+    OBJ_DESTRUCT( &era_incomplete_messages );
 
     era_inited = 0;
 
