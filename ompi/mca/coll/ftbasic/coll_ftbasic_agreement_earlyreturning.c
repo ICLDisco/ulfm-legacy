@@ -84,7 +84,7 @@ typedef struct {
                                */
 
 #if defined(OPAL_ENABLE_DEBUG)
-#define PROGRESS_FAILURE_PROB .05
+#define PROGRESS_FAILURE_PROB 0.1
 #endif
 
 typedef struct {
@@ -170,11 +170,11 @@ typedef struct {
     int                  *alive_ta;          /**< Alive translation array: maps ranks in 0 - alive_size-1
                                               *   to ranks in c_local_group. Used to compute the trees on
                                               *   the alive group but return ranks in the communicator. */
-    ompi_group_t         *acked_group;       /**< Group of the last acknowledged process when entering
-                                              *   the agreement. Used to compare with the descendents
+    int                   nb_acked;          /**< size of acked */
+    int                  *acked;             /**< Last acknowledged processes when entering
+                                              *   the agreement. Used to compare with the descendents 
                                               *   acknowledged processes */
     opal_list_t           gathered_info;     /**< The list of direct descendents that provided information (even partially) */
-    opal_list_t           union_of_dead_ack; /**< The list of dead processes acknowledged by the descendents */
     opal_list_t           waiting_res_from;  /**< A list of ranks and status, from which we requested to "restart" the
                                               *   consensus (if the current process became root in the middle of one) */
     opal_list_t           early_requesters;  /**< Remember anybody who requests to receive the decision as
@@ -197,8 +197,9 @@ static void  era_agreement_info_constructor (era_agreement_info_t *agreement_inf
     agreement_info->alive_size = 0;
     agreement_info->alive_ta   = NULL;
     agreement_info->waiting_down_from = -1;
+    agreement_info->nb_acked = 0;
+    agreement_info->acked = NULL;
     OBJ_CONSTRUCT(&agreement_info->gathered_info, opal_list_t);
-    OBJ_CONSTRUCT(&agreement_info->union_of_dead_ack, opal_list_t);
     OBJ_CONSTRUCT(&agreement_info->waiting_res_from, opal_list_t);
     OBJ_CONSTRUCT(&agreement_info->early_requesters, opal_list_t);
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
@@ -218,10 +219,6 @@ static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info
         OBJ_RELEASE(li);
     }
     OBJ_DESTRUCT(&agreement_info->gathered_info);
-    while( NULL != (li = opal_list_remove_first(&agreement_info->union_of_dead_ack)) ) {
-        OBJ_RELEASE(li);
-    }
-    OBJ_DESTRUCT(&agreement_info->union_of_dead_ack);
     while( NULL != (li = opal_list_remove_first(&agreement_info->waiting_res_from)) ) {
         OBJ_RELEASE(li);
     }
@@ -232,6 +229,11 @@ static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info
         free(agreement_info->alive_ta);
         agreement_info->alive_ta = NULL;
         agreement_info->alive_size =  0;
+    }
+    if( NULL != agreement_info->acked ) {
+        free(agreement_info->acked);
+        agreement_info->acked = NULL;
+        agreement_info->nb_acked = 0;
     }
 }
 
@@ -352,12 +354,148 @@ static void era_debug_print_group(int lvl, ompi_group_t *group, ompi_communicato
 #define era_debug_print_group(g, c, i) do {} while(0)
 #endif
 
+static void era_update_return_value(era_agreement_info_t *ci, int nb_acked, int *acked) {
+    ompi_group_t *ack_after_agreement_group, *tmp_sub_group;
+    int r, abag_array[3];
+
+    /* Simplest case: some children has decided MPI_ERR_PROC_FAILED already 
+     * OR I had children during the run, and they died and were not acknowledged before I entered
+     * the agreement (see era_mark_process_failed). Then, the return value was set by
+     * era_combine_agreement_values or era_mark_process_failed
+     */
+    if( ci->current_value.ret == MPI_ERR_PROC_FAILED ) {
+        OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
+                             "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: already decided FAILED at line %s:%d\n",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ci->agreement_id.ERAID_FIELDS.contextid,
+                             ci->agreement_id.ERAID_FIELDS.epoch,
+                             ci->agreement_id.ERAID_FIELDS.agreementid,
+                             __FILE__, __LINE__));
+        return;
+    }
+
+    if( nb_acked >= 0 ) {
+
+#if OPAL_ENABLE_DEBUG
+        for(r = 1; r < nb_acked; r++)
+            assert(acked[r-1] < acked[r]);
+#endif /*OPAL_ENABLE_DEBUG*/
+
+        /* I'm checking w.r.t. children or myself */
+        if( ci->acked == NULL ) {
+            /** I have not set my contribution yet, let's consider this as the base */
+            if(nb_acked > 0) {
+                ci->acked = (int*)malloc(nb_acked * sizeof(int));
+                memcpy(ci->acked, acked, nb_acked * sizeof(int));
+            }
+            ci->nb_acked = nb_acked;
+        } else {
+            /** This contribution and mine must match exactly */
+            if( nb_acked != ci->nb_acked ) {
+                OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
+                                     "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED because the acked arrays are of different size\n",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     ci->agreement_id.ERAID_FIELDS.contextid,
+                                     ci->agreement_id.ERAID_FIELDS.epoch,
+                                     ci->agreement_id.ERAID_FIELDS.agreementid));
+                ci->current_value.ret = MPI_ERR_PROC_FAILED;
+                goto cleanup;
+            }
+            
+            if( nb_acked == 0 ) {
+                return;
+            }
+            for(r = 0; r < nb_acked; r++) {
+                /** Both arrays should be globally ordered */
+                if( acked[r] != ci->acked[r] ) {
+                    OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
+                                         "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED because the acked arrays do not hold the same elements\n",
+                                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                         ci->agreement_id.ERAID_FIELDS.contextid,
+                                         ci->agreement_id.ERAID_FIELDS.epoch,
+                                         ci->agreement_id.ERAID_FIELDS.agreementid));
+                    ci->current_value.ret = MPI_ERR_PROC_FAILED;
+                    goto cleanup;
+                }
+            }
+        }
+
+        return;
+    }
+        
+    /** This is the final check: if I reach this point, I acknowledged the same failures
+     *  as my children, and no failure prevented us to move forward. However, if I noticed
+     *  a failure in the communicator that has not been acknowledged, I must still report
+     *  an ERR_PROC_FAILED. */
+
+    if( ompi_group_size(ompi_group_all_failed_procs) > ci->nb_acked ) {
+        /* New failures have been reported since I started the agreement */
+        ack_after_agreement_group = OBJ_NEW(ompi_group_t);
+        tmp_sub_group = OBJ_NEW(ompi_group_t);
+        abag_array[0] = 0;
+        /** this is >=0 since ompi_group_size(ompi_group_all_failed_procs) > ci->nb_acked >= 0 */
+        abag_array[1] = ompi_group_size(ompi_group_all_failed_procs) - 1;
+        abag_array[2] = 1;
+        ompi_group_range_incl(ompi_group_all_failed_procs, 1, &abag_array, &tmp_sub_group);
+        ompi_group_intersection(tmp_sub_group,
+                                ci->comm->c_local_group,
+                                &ack_after_agreement_group);
+        OBJ_RELEASE(tmp_sub_group);
+
+        if( ompi_group_size(ack_after_agreement_group) != ci->nb_acked ) {
+            OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
+                                 "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED because new failures happened: |acked| = %d, |afp on c_local_group| = %d\n",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 ci->agreement_id.ERAID_FIELDS.contextid,
+                                 ci->agreement_id.ERAID_FIELDS.epoch,
+                                 ci->agreement_id.ERAID_FIELDS.agreementid,
+                                 ci->nb_acked,
+                                 ompi_group_size(ack_after_agreement_group)));
+            ci->current_value.ret = MPI_ERR_PROC_FAILED;
+            goto cleanup;
+        } else {
+            OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
+                                 "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide SUCCESS (1)\n",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 ci->agreement_id.ERAID_FIELDS.contextid,
+                                 ci->agreement_id.ERAID_FIELDS.epoch,
+                                 ci->agreement_id.ERAID_FIELDS.agreementid));
+        }
+        OBJ_RELEASE(ack_after_agreement_group);
+    } else {
+        OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
+                             "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide SUCCESS (2)\n",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ci->agreement_id.ERAID_FIELDS.contextid,
+                             ci->agreement_id.ERAID_FIELDS.epoch,
+                             ci->agreement_id.ERAID_FIELDS.agreementid));
+    }
+
+    assert(ci->current_value.ret == MPI_SUCCESS);
+    return; /** < We don't clean the list of acked processes if the result is SUCCESS as we need to communicate it */
+
+ cleanup:
+    if( ci->nb_acked > 0 ) {
+        assert(NULL != ci->acked);
+        free(ci->acked);
+        ci->acked = NULL;
+        ci->nb_acked = 0;
+    }
+}
+
+static int compare_ints(const void *a, const void *b)
+{
+    const int *ia = (const int *)a;
+    const int *ib = (const int *)b;
+    return (*ia > *ib) - (*ia < *ib);
+}
+
 static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communicator_t *comm, ompi_group_t *acked_group)
 {
     ompi_group_t *tmp_grp;
     int *src_ra;
     int *dst_ra;
-    int r, p, nd_size, min, t;
+    int r, p, grp_size, min, t;
 
     assert( comm->c_contextid == ci->agreement_id.ERAID_FIELDS.contextid );
     assert( comm->c_epoch     == ci->agreement_id.ERAID_FIELDS.epoch     );
@@ -367,21 +505,35 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
 
     assert( comm->agreed_failed_ranks != NULL );
 
-    ci->acked_group = acked_group; /**< We assume that it is not necessary to copy the group, just keep the pointer */
-    era_debug_print_group(30, acked_group, comm, "Acked group before Agreement");
+    grp_size = ompi_group_size(acked_group);
+    if( grp_size > 0 ) {
+        dst_ra = (int*)malloc(grp_size * sizeof(int));
+        src_ra = (int*)malloc(grp_size * sizeof(int));
+        for(r = 0; r < grp_size; r++)
+            src_ra[r] = r;
+        ompi_group_translate_ranks(acked_group, grp_size, src_ra, comm->c_local_group, dst_ra);
+        free(src_ra);
+        /** dst_ra must be sorted */
+        qsort(dst_ra, grp_size, sizeof(int), compare_ints);
+    } else {
+        dst_ra = NULL;
+    }
+    era_update_return_value(ci, grp_size, dst_ra);
+    if( grp_size > 0 )
+        free(dst_ra);
 
     tmp_grp = OBJ_NEW(ompi_group_t);
     ompi_group_difference(ompi_group_all_failed_procs, comm->agreed_failed_ranks, &tmp_grp);
-    nd_size = ompi_group_size(tmp_grp);
-    if( nd_size > 0 ) {
-        src_ra = (int*)malloc(nd_size * sizeof(int));
-        dst_ra = (int*)malloc(nd_size * sizeof(int));
-        for(r = 0 ; r < nd_size; r++)
+    grp_size = ompi_group_size(tmp_grp);
+    if( grp_size > 0 ) {
+        src_ra = (int*)malloc(grp_size * sizeof(int));
+        dst_ra = (int*)malloc(grp_size * sizeof(int));
+        for(r = 0 ; r < grp_size; r++)
             src_ra[r] = r;
-        ompi_group_translate_ranks(tmp_grp, nd_size, src_ra, comm->c_local_group, dst_ra);
+        ompi_group_translate_ranks(tmp_grp, grp_size, src_ra, comm->c_local_group, dst_ra);
         for(p = 0; p < MAX_NEW_DEAD_SIZE; p++) {
             min = MPI_UNDEFINED;
-            for(r = 0; r < nd_size; r++) {
+            for(r = 0; r < grp_size; r++) {
                 if( dst_ra[r] == MPI_UNDEFINED )
                     continue; /**< This new dead process does not belong to the associated communicator */
                 if( min == MPI_UNDEFINED || dst_ra[r] < min ) {
@@ -450,7 +602,6 @@ int mca_coll_ftbasic_agreement_era_comm_finalize(mca_coll_ftbasic_module_t *modu
     return OMPI_SUCCESS;
 }
 
-static  void send_up_msg(era_agreement_info_t *ci, int rank);
 static void send_msg(ompi_communicator_t *comm,
                      int dst,
                      orte_process_name_t *proc_name,
@@ -798,174 +949,6 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     OBJ_RELEASE(ci); /* This will take care of the content of ci too */
 }
 
-static void era_compute_local_return_value(era_agreement_info_t *ci) {
-    int r, found;
-    era_rank_counter_item_t *rl;
-    ompi_group_t 
-        *ack_descendent_union_group, 
-        *ack_after_agreement_group,
-        *tmp_sub_group;
-    int *adug_array, nb_adug, abag_array[3];
-
-    /* Simplest case: some children has decided MPI_ERR_PROC_FAILED already 
-     * OR I had children during the run, and they died and were not acknowledged before I entered
-     * the agreement (see era_mark_process_failed). Then, the return value was set by
-     * era_combine_agreement_values or era_mark_process_failed
-     */
-    if( ci->current_value.ret == MPI_ERR_PROC_FAILED ) {
-        OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED at line %s:%d\n",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             ci->agreement_id.ERAID_FIELDS.contextid,
-                             ci->agreement_id.ERAID_FIELDS.epoch,
-                             ci->agreement_id.ERAID_FIELDS.agreementid,
-                             __FILE__, __LINE__));
-        return;
-    }
-
-    if( era_next_child(ci, -1) != ompi_comm_size(ci->comm) ) {
-        /* I still have some children. Let's count them */
-        r = -1;
-        found = 0;
-        while( r != ompi_comm_size(ci->comm) ) {
-            r = era_next_child(ci, r);
-            if( r != ompi_comm_size(ci->comm) )
-                found++;
-        }
-
-        /* First case: are there two children that didn't acknowledge the same list of ranks?
-         * Use that time to count the size of the ADUG */
-        nb_adug = 0;
-        for( rl = (era_rank_counter_item_t *)opal_list_get_first( &ci->union_of_dead_ack );
-             rl != (era_rank_counter_item_t *)opal_list_get_end( &ci->union_of_dead_ack );
-             rl = (era_rank_counter_item_t *)opal_list_get_next( &rl->super ) ) {
-            if( found != rl->counter ) {
-                /* That's it: at least one of my children did not acknowledge this rank.
-                 * It could be because the child died before it could tell it acknowledged the rank.
-                 * But then, it died during the agreement, so I have marked the operation
-                 * FAILED already. So, we should return ERR_PROC_FAILED in any case. */
-                OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                                     "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED at line %s:%d: I should have %d children, and %d reported rank %d as dead.\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     ci->agreement_id.ERAID_FIELDS.contextid,
-                                     ci->agreement_id.ERAID_FIELDS.epoch,
-                                     ci->agreement_id.ERAID_FIELDS.agreementid,
-                                     __FILE__, __LINE__,
-                                     found, rl->counter, rl->rank));                  
-                ci->current_value.ret = MPI_ERR_PROC_FAILED;
-                return;
-            }
-            nb_adug++;
-        }
-
-        if( nb_adug > 0 /**< There is at least a failure acknowledged by the children. */ ) {
-            /* Okay.. We may need to compare the group I acknowledged (when entering the agreement)
-             * and the 'group' my children acknowledged... */
-
-            if( ompi_group_size(ci->acked_group) == 0 ) {
-                /* My children have some acknowledged, failures, but not me */
-                OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                                     "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED at line %s:%d\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     ci->agreement_id.ERAID_FIELDS.contextid,
-                                     ci->agreement_id.ERAID_FIELDS.epoch,
-                                     ci->agreement_id.ERAID_FIELDS.agreementid,
-                                     __FILE__, __LINE__));
-                ci->current_value.ret = MPI_ERR_PROC_FAILED;
-                return;
-            }
-            
-            /** Did my children acknowledge the same number of ranks as me? */
-            if( nb_adug != ompi_group_size(ci->acked_group) ) {
-                OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                                     "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED at line %s:%d\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     ci->agreement_id.ERAID_FIELDS.contextid,
-                                     ci->agreement_id.ERAID_FIELDS.epoch,
-                                     ci->agreement_id.ERAID_FIELDS.agreementid,
-                                     __FILE__, __LINE__));
-                ci->current_value.ret = MPI_ERR_PROC_FAILED;
-                return;
-            }
-
-            /* We need to do some hard work and actually compare the groups, as they can still be different */
-            ack_descendent_union_group = OBJ_NEW(ompi_group_t);
-            adug_array = (int*)malloc(nb_adug * sizeof(int));
-            nb_adug = 0;
-            for( rl = (era_rank_counter_item_t *)opal_list_get_first( &ci->union_of_dead_ack );
-                 rl != (era_rank_counter_item_t *)opal_list_get_end( &ci->union_of_dead_ack );
-                 rl = (era_rank_counter_item_t *)opal_list_get_next( &rl->super ) ) {
-                adug_array[nb_adug++] = rl->rank;
-            }
-            ompi_group_incl(ci->comm->c_local_group, nb_adug, adug_array, &ack_descendent_union_group);
-            
-            ompi_group_compare(ack_descendent_union_group, ci->acked_group, &r);
-            if( MPI_UNEQUAL == r ) {
-                OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                                     "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED at line %s:%d\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     ci->agreement_id.ERAID_FIELDS.contextid,
-                                     ci->agreement_id.ERAID_FIELDS.epoch,
-                                     ci->agreement_id.ERAID_FIELDS.agreementid,
-                                     __FILE__, __LINE__));
-                ci->current_value.ret = MPI_ERR_PROC_FAILED;
-            }
-
-            OBJ_RELEASE(ack_descendent_union_group);
-            free(adug_array);
-        }
-    }
-
-    /** At this point, I acknowledged the same failures as my children,
-     *  and no failure prevented us to move forward. However, if I noticed
-     *  a failure in the communicator that has not been acknowledged, I must
-     *  still report an ERR_PROC_FAILED.
-     */
-    if( ompi_group_size(ompi_group_all_failed_procs) > ompi_group_size(ci->acked_group) ) {
-        /* New failures have been reported since I started the agreement */
-        ack_after_agreement_group = OBJ_NEW(ompi_group_t);
-        tmp_sub_group = OBJ_NEW(ompi_group_t);
-        abag_array[0] = 0;
-        abag_array[1] = ompi_group_size(ompi_group_all_failed_procs) - 1; /**< >=0 since gpr_proc_count > ompi_group_size(ci->acked_group) >= 0 */
-        abag_array[2] = 1;
-        ompi_group_range_incl(ompi_group_all_failed_procs, 1, &abag_array, &tmp_sub_group);
-        ompi_group_intersection(tmp_sub_group,
-                                ci->comm->c_local_group,
-                                &ack_after_agreement_group);
-        OBJ_RELEASE(tmp_sub_group);
-
-        if( ompi_group_size(ack_after_agreement_group) != ompi_group_size(ci->acked_group) ) {
-            OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                                 "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide FAILED at line %s:%d\n",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                 ci->agreement_id.ERAID_FIELDS.contextid,
-                                 ci->agreement_id.ERAID_FIELDS.epoch,
-                                 ci->agreement_id.ERAID_FIELDS.agreementid,
-                                 __FILE__, __LINE__));
-            era_debug_print_group(3, ack_after_agreement_group, ci->comm, "ack_after_agreement");
-            era_debug_print_group(3, ci->acked_group, ci->comm, "acked");
-            ci->current_value.ret = MPI_ERR_PROC_FAILED;
-        } else {
-            OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                                 "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide SUCCESS at line %s:%d\n",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                 ci->agreement_id.ERAID_FIELDS.contextid,
-                                 ci->agreement_id.ERAID_FIELDS.epoch,
-                                 ci->agreement_id.ERAID_FIELDS.agreementid,
-                                 __FILE__, __LINE__));
-        }
-        OBJ_RELEASE(ack_after_agreement_group);
-    } else {
-        OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: decide SUCCESS at line %s:%d\n",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             ci->agreement_id.ERAID_FIELDS.contextid,
-                             ci->agreement_id.ERAID_FIELDS.epoch,
-                             ci->agreement_id.ERAID_FIELDS.agreementid,
-                             __FILE__, __LINE__));
-    }
-}
-
 static void era_check_status(era_agreement_info_t *ci)
 {
     int r;
@@ -1028,7 +1011,7 @@ static void era_check_status(era_agreement_info_t *ci)
         }
 
         /* Left that loop? We're good to decide locally */
-        era_compute_local_return_value(ci);
+        era_update_return_value(ci, -1, NULL);
 
         if( ci->comm->c_my_rank == (r = era_parent(ci)) ) {
             OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
@@ -1049,9 +1032,10 @@ static void era_check_status(era_agreement_info_t *ci)
                                  ci->agreement_id.ERAID_FIELDS.agreementid));
 
             /* Let's forward up and wait for the DOWN messages */
-            send_up_msg(ci, r);
-            ci->status = BROADCASTING;
             ci->waiting_down_from = r;
+            send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
+                     ci->nb_acked, ci->acked);
+            ci->status = BROADCASTING;
         }
         return;
     }
@@ -1157,7 +1141,8 @@ static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
                                      ci->agreement_id.ERAID_FIELDS.epoch,
                                      ci->agreement_id.ERAID_FIELDS.agreementid));
                 ci->waiting_down_from = r;
-                send_up_msg(ci, r);
+                send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
+                         ci->nb_acked, ci->acked);
             }
         }
     } else if( ci->status == GATHERING ) {
@@ -1244,32 +1229,6 @@ static void fragment_sent(struct mca_btl_base_module_t* module,
     (void)endpoint;
     (void)descriptor;
     (void)status;
-}
-
-static  void send_up_msg(era_agreement_info_t *ci, int rank)
-{
-    int *ack_rank_array, *co_rank_array;
-    int  r, nb_afa;
-
-    assert( NULL != ci->comm );
-
-    nb_afa = ompi_group_size(ci->acked_group);
-
-    if( nb_afa > 0 ) {
-        co_rank_array = (int*)malloc(nb_afa * sizeof(int));
-        ack_rank_array = (int*)malloc(nb_afa * sizeof(int));
-        for(r = 0 ; r < nb_afa; r++)
-            ack_rank_array[r] = r;
-        ompi_group_translate_ranks(ci->acked_group, nb_afa, ack_rank_array, ci->comm->c_local_group, co_rank_array);
-        free(ack_rank_array);
-    } else {
-        co_rank_array = NULL;
-    }
-
-    send_msg(ci->comm, rank, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
-             nb_afa, co_rank_array);
-
-    free(co_rank_array);
 }
 
 static void send_msg(ompi_communicator_t *comm,
@@ -1455,8 +1414,10 @@ static void result_request(era_msg_t *msg)
                 /** I will deal with that when I deal with the failure notification, and start again */
                 return;
             }
-            send_up_msg(ci, r);
+
             ci->waiting_down_from = r;
+            send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
+                     ci->nb_acked, ci->acked);
         } else {
             /** Or, I have not started this agreement, or I have started this agreement, but a child
              *  has not given me its contribution. So, I need to wait for it to send it to me, and
@@ -1474,7 +1435,6 @@ static void msg_up(era_msg_t *msg)
     era_rank_counter_item_t *rank_item;
     void *value;
     era_value_t *old_agreement_value;
-    int r;
  
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Received UP Message: Agreement ID = (%d.%d).%d, sender: %d/%s, msg value: %08x.%d.%d.., ADR: %d processes: %d...\n",
@@ -1568,27 +1528,7 @@ static void msg_up(era_msg_t *msg)
 
     /* ci holds the current agreement information structure */
     era_combine_agreement_values(ci, &msg->agreement_value);
-
-    /* Handle the list of acknowledged dead processes: merge all the upcoming information,
-     * and remember that this message was received
-     */
-    for(r = 0; r < msg->nb_ack; r++) {
-        assert( msg->ack_failed[r] != -1 );
-        for(rank_item = (era_rank_counter_item_t *)opal_list_get_first( &ci->union_of_dead_ack );
-            rank_item != (era_rank_counter_item_t *)opal_list_get_end( &ci->union_of_dead_ack );
-            rank_item = (era_rank_counter_item_t *)opal_list_get_next( &rank_item->super ) ) {
-            if( rank_item->rank == msg->ack_failed[r] ) {
-                rank_item->counter++;
-                break;
-            }
-        }
-        if( rank_item == (era_rank_counter_item_t *)opal_list_get_end( &ci->union_of_dead_ack ) ) {
-            rank_item = OBJ_NEW(era_rank_counter_item_t);
-            rank_item->rank = msg->ack_failed[r];
-            rank_item->counter = 1;
-            opal_list_append(&ci->union_of_dead_ack, &rank_item->super);
-        }
-    }
+    era_update_return_value(ci, msg->nb_ack, msg->ack_failed);
 
     /* We already checked above that this process did not contribute yet */
     rank_item = OBJ_NEW(era_rank_counter_item_t);
