@@ -261,7 +261,7 @@ int main(int argc, char *argv[])
                 }
             } else {
                 success = nb_success;
-                simultaneous = (rand_r((unsigned int*)&seed) % failures);
+                simultaneous = (rand_r((unsigned int*)&seed) % (failures+1));
                 if( verbose && rank == 0 ) {
                     printf("Decided to do %d failures at this round\n", simultaneous);
                 }
