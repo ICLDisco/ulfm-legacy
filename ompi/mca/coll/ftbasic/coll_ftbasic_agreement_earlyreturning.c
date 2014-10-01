@@ -17,6 +17,7 @@
 #include "mpi.h"
 #include "ompi/constants.h"
 #include "ompi/datatype/ompi_datatype.h"
+#include "ompi/datatype/ompi_datatype_internal.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/pml.h"
@@ -78,25 +79,50 @@ typedef struct {
 #define ERAID_KEY    u.uint64
 #define ERAID_FIELDS u.fields
 
-#define MAX_NEW_DEAD_SIZE   2
-#define MAX_FLAG_LENGTH    64 /**< Must be greater than sizeof(int) per the standard
-                               *   and 2*sizeof(int) per internal requirements
-                               */
-
 #if defined(OPAL_ENABLE_DEBUG)
 #define PROGRESS_FAILURE_PROB 0.1
 #endif
 
 typedef struct {
+    int32_t  ret;                            /**< Return code */
     int      operand;                        /**< operand applied on bytes. 
                                               *   One of OMPI_OP_BASE_FORTRAN_* values in mca/op/op.h */
     int      dt_count;                       /**< The number of datatypes in bytes */
     int      datatype;                       /**< Fortran index of predefined basic datatype in bytes */
-    uint8_t  bytes[MAX_FLAG_LENGTH];         /**< content of flags. */
-    int32_t  ret;                            /**< Return code */
-    int      new_dead[MAX_NEW_DEAD_SIZE];    /**< -1 terminated bounded list of newly
-                                              *      discovered dead ranks */
+    int      nb_new_dead;                    /**< Number of newly discovered dead */
+} era_value_header_t;    
+#define ERA_VALUE_BYTES_COUNT(_h) (ompi_datatype_basicDatatypes[(_h)->datatype]->super.size * (_h)->dt_count)
+
+/* This is the non-linearized version of the era_value_t */
+typedef struct {
+    opal_object_t        super;
+    era_value_header_t   header;
+    uint8_t             *bytes;              /**< array of size datatype_size(header.datatype) * header.dt_count
+                                              *   containing the value on which the agreement is done */
+    int                 *new_dead_array;     /**< array of header.nb_new_dead integers with the newly discovered
+                                              *   processes. */
 } era_value_t;
+
+static void  era_value_constructor (era_value_t *value)
+{
+    value->header.ret = 0;
+    value->header.operand = -1;
+    value->header.dt_count = -1;
+    value->header.datatype = -1;
+    value->header.nb_new_dead = -1;
+    value->bytes = NULL;
+    value->new_dead_array = NULL;
+}
+
+static void  era_value_destructor (era_value_t *value)
+{
+    if( NULL != value->bytes )
+        free(value->bytes);
+    if( NULL != value->new_dead_array )
+        free(value->new_dead_array);
+}
+
+OBJ_CLASS_INSTANCE(era_value_t, opal_object_t, era_value_constructor, era_value_destructor);
 
 typedef struct {
     era_msg_type_t      msg_type;
@@ -111,48 +137,35 @@ typedef struct {
      */
     int                 src_comm_rank;
     orte_process_name_t src_proc_name;
-
-    era_value_t         agreement_value;
-
-    /* The following fields are defined only for messages of type MSG_UP */
-    int      nb_ack;         /**< Informs how many of these messages types 
-                              *   will be sent upward (in case ack_failed must
-                              *   be split in multiple messages. */
-    int      ack_failed[1]; /**< list of nb_ack ranks that are
-                             *  known to be failed by the processes in
-                             *  that branch of the tree */
+    era_value_header_t  agreement_value_header;
+    int                 nb_ack;         /**< Informs how many of these messages types 
+                                         *   will be sent upward (in case ack_failed must
+                                         *   be split in multiple messages. */
+    uint8_t             bytes[4];       /**< A variable array of bytes to store (in order) the agreed
+                                         *   upon value (4 bytes if calling OMPI_Comm_agree wihtout failures),
+                                         *   the newly discovered dead processes (0 bytes if no failures), and
+                                         *   the acknowledged dead processes (0 bytes if no failures). */
 } era_msg_t;
-#define ERA_MSG_SIZE(_nb_ack) (sizeof(era_msg_t) + ((_nb_ack) - 1) * sizeof(int))
+#define ERA_MSG_SIZE(_h, _n) ( sizeof(era_msg_t) - 4 + ERA_VALUE_BYTES_COUNT(_h) + (_h)->nb_new_dead * sizeof(int) + (_n) * sizeof(int) )
 
 typedef struct {
     orte_process_name_t       src;  /**< src + msg_seqnum build a unique (up to rotation on msg_seqnum) */
     uint64_t           msg_seqnum;  /*   message identifier.*/
-    unsigned int          msg_len;
-    unsigned int      frag_offset;
-    unsigned int         frag_len;
-    uint8_t              bytes[1];
+    unsigned int          msg_len;  /**< Length of the message */
+    unsigned int      frag_offset;  /**< Offset (in bytes) of the fragment in the message */
+    unsigned int         frag_len;  /**< Length (in bytes) of that fragment */
+    uint8_t              bytes[1];  /**< Variable size member, of length frag_len */
 } era_frag_t;
 
-typedef struct {
-    opal_object_t   super;
-    era_value_t     agreement_value;
-} era_passed_agreement_t;
-
-OBJ_CLASS_INSTANCE(era_passed_agreement_t, opal_object_t, NULL, NULL);
-
 /**
- * Direct descendents provide information that is reduced as we go up.
- * This information may be transmitted in multiple fragments.
- * How many messages / if the message has been received by a given
- * descendent is kept in a list with elements of this type
+ * Rank lists are used at variable places to keep track of who sent information.
  */
 typedef struct {
     opal_list_item_t super;
     int32_t          rank;        /**< The rank of the descendent that provided information */
-    int32_t          counter;     /**< How many additional messages are expected from this descendent */
-} era_rank_counter_item_t;
+} era_rank_item_t;
 
-OBJ_CLASS_INSTANCE(era_rank_counter_item_t, opal_list_item_t, NULL, NULL /*print_destructor*/);
+OBJ_CLASS_INSTANCE(era_rank_item_t, opal_list_item_t, NULL, NULL /*print_destructor*/);
 
 /**
  * Main structure to remember the current status of an agreement that
@@ -161,7 +174,7 @@ OBJ_CLASS_INSTANCE(era_rank_counter_item_t, opal_list_item_t, NULL, NULL /*print
 typedef struct {
     opal_object_t         super;
     era_identifier_t      agreement_id;
-    era_value_t           current_value;
+    era_value_t          *current_value;
     era_proc_status_t     status;            /**< status of this process in that agreement. */
     ompi_communicator_t  *comm;              /**< Communicator related to that agreement. Might be NULL
                                               *   if this process has not entered the agreement yet.*/
@@ -186,18 +199,14 @@ typedef struct {
 
 static void  era_agreement_info_constructor (era_agreement_info_t *agreement_info)
 {
-    int r;
-
     agreement_info->agreement_id.ERAID_KEY = 0;
     agreement_info->status = NOT_CONTRIBUTED | OP_NOT_DEFINED;
-    for(r = 0; r < MAX_NEW_DEAD_SIZE; r++)
-        agreement_info->current_value.new_dead[r] = -1;
-    agreement_info->current_value.ret = 0;
     agreement_info->comm = NULL;
     agreement_info->alive_size = 0;
     agreement_info->alive_ta   = NULL;
     agreement_info->waiting_down_from = -1;
     agreement_info->nb_acked = 0;
+    agreement_info->current_value = NULL;
     agreement_info->acked = NULL;
     OBJ_CONSTRUCT(&agreement_info->gathered_info, opal_list_t);
     OBJ_CONSTRUCT(&agreement_info->waiting_res_from, opal_list_t);
@@ -235,20 +244,16 @@ static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info
         agreement_info->acked = NULL;
         agreement_info->nb_acked = 0;
     }
+    if( NULL != agreement_info->current_value ) {
+        OBJ_RELEASE( agreement_info->current_value );
+        agreement_info->current_value = NULL;
+    }
 }
 
 OBJ_CLASS_INSTANCE(era_agreement_info_t,
                    opal_object_t, 
                    era_agreement_info_constructor, 
                    era_agreement_info_destructor);
-
-typedef struct {
-    opal_object_t super;
-    uint32_t      max_seq_num;
-} era_seq_num_record_t;
-
-OBJ_CLASS_INSTANCE(era_seq_num_record_t, opal_object_t, NULL, NULL);
-
 
 #if OPAL_ENABLE_DEBUG
 static char *era_status_to_string(era_proc_status_t s) {
@@ -298,9 +303,10 @@ static era_agreement_info_t *era_lookup_agreeement_info(era_identifier_t agreeme
     }
 }
 
-static era_agreement_info_t *era_create_agreement_info(era_identifier_t agreement_id)
+static era_agreement_info_t *era_create_agreement_info(era_identifier_t agreement_id, era_value_header_t *header)
 {
     era_agreement_info_t *ci;
+    int r;
 #if OPAL_ENABLE_DEBUG
     void *value;
     assert( opal_hash_table_get_value_uint64(&era_ongoing_agreements, 
@@ -309,6 +315,16 @@ static era_agreement_info_t *era_create_agreement_info(era_identifier_t agreemen
 #endif
     ci = OBJ_NEW(era_agreement_info_t);
     ci->agreement_id.ERAID_KEY = agreement_id.ERAID_KEY;
+    ci->current_value = OBJ_NEW(era_value_t);
+    memcpy(&ci->current_value->header, header, sizeof(era_value_header_t));
+
+    assert( header->datatype >= 0 && header->datatype < OMPI_DATATYPE_MPI_MAX_PREDEFINED );
+    ci->current_value->bytes = (uint8_t*)malloc( ERA_VALUE_BYTES_COUNT(&ci->current_value->header) );
+    if( header->nb_new_dead > 0 ) {
+        ci->current_value->new_dead_array = (int*)malloc(header->nb_new_dead * sizeof(int));
+        for(r = 0; r < header->nb_new_dead; r++)
+            ci->current_value->new_dead_array[r] = -1;
+    }
     opal_hash_table_set_value_uint64(&era_ongoing_agreements,
                                      agreement_id.ERAID_KEY,
                                      ci);
@@ -354,6 +370,8 @@ static void era_debug_print_group(int lvl, ompi_group_t *group, ompi_communicato
 #define era_debug_print_group(g, c, i) do {} while(0)
 #endif
 
+static int era_comm_to_alive(era_agreement_info_t *ci, int r_in_comm);
+
 static void era_update_return_value(era_agreement_info_t *ci, int nb_acked, int *acked) {
     ompi_group_t *ack_after_agreement_group, *tmp_sub_group;
     int r, abag_array[3];
@@ -363,7 +381,7 @@ static void era_update_return_value(era_agreement_info_t *ci, int nb_acked, int 
      * the agreement (see era_mark_process_failed). Then, the return value was set by
      * era_combine_agreement_values or era_mark_process_failed
      */
-    if( ci->current_value.ret == MPI_ERR_PROC_FAILED ) {
+    if( ci->current_value->header.ret == MPI_ERR_PROC_FAILED ) {
         OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) compute local return value for Agreement ID = (%d.%d).%d: already decided FAILED at line %s:%d\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -398,7 +416,7 @@ static void era_update_return_value(era_agreement_info_t *ci, int nb_acked, int 
                                      ci->agreement_id.ERAID_FIELDS.contextid,
                                      ci->agreement_id.ERAID_FIELDS.epoch,
                                      ci->agreement_id.ERAID_FIELDS.agreementid));
-                ci->current_value.ret = MPI_ERR_PROC_FAILED;
+                ci->current_value->header.ret = MPI_ERR_PROC_FAILED;
                 goto cleanup;
             }
             
@@ -414,7 +432,7 @@ static void era_update_return_value(era_agreement_info_t *ci, int nb_acked, int 
                                          ci->agreement_id.ERAID_FIELDS.contextid,
                                          ci->agreement_id.ERAID_FIELDS.epoch,
                                          ci->agreement_id.ERAID_FIELDS.agreementid));
-                    ci->current_value.ret = MPI_ERR_PROC_FAILED;
+                    ci->current_value->header.ret = MPI_ERR_PROC_FAILED;
                     goto cleanup;
                 }
             }
@@ -451,7 +469,7 @@ static void era_update_return_value(era_agreement_info_t *ci, int nb_acked, int 
                                  ci->agreement_id.ERAID_FIELDS.agreementid,
                                  ci->nb_acked,
                                  ompi_group_size(ack_after_agreement_group)));
-            ci->current_value.ret = MPI_ERR_PROC_FAILED;
+            ci->current_value->header.ret = MPI_ERR_PROC_FAILED;
             goto cleanup;
         } else {
             OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
@@ -471,7 +489,7 @@ static void era_update_return_value(era_agreement_info_t *ci, int nb_acked, int 
                              ci->agreement_id.ERAID_FIELDS.agreementid));
     }
 
-    assert(ci->current_value.ret == MPI_SUCCESS);
+    assert(ci->current_value->header.ret == MPI_SUCCESS);
     return; /** < We don't clean the list of acked processes if the result is SUCCESS as we need to communicate it */
 
  cleanup:
@@ -490,12 +508,65 @@ static int compare_ints(const void *a, const void *b)
     return (*ia > *ib) - (*ia < *ib);
 }
 
+static void era_merge_new_dead_list(era_agreement_info_t *ci, int nb_src, int *src)
+{
+    int  s;
+    int *dst, d, nb_dst;
+    int *merge, nb_merge;
+
+    dst = ci->current_value->new_dead_array;
+    nb_dst = ci->current_value->header.nb_new_dead;
+
+#if defined(OPAL_ENABLE_DEBUG)
+        {
+            for(d = 1; d < nb_dst; d++) 
+                assert(dst[d-1] < dst[d]);
+            for(s = 1; s < nb_src; s++) 
+                assert(src[s-1] < src[s]);
+        }
+#endif /*OPAL_ENABLE_DEBUG*/
+        
+    if(nb_dst + nb_src == 0) return;
+    merge = (int*)malloc((nb_dst + nb_src) * sizeof(int));
+    nb_merge = 0;
+    d = 0;
+    s = 0;
+    while(d < nb_dst && s < nb_src) {
+        if( dst[d] == src[s] ) {
+            merge[nb_merge++] = dst[d];
+            d++;
+            s++;
+            continue;
+        } else if( dst[d] < src[s] ) {
+            merge[nb_merge++] = dst[d];
+            d++;
+            continue;
+        } else {
+            assert( dst[d] > src[s] );
+            merge[nb_merge++] = src[s];
+            s++;
+            continue;
+        }
+    }
+    while( d < nb_dst )
+        merge[nb_merge++] = dst[d++];
+    while( s < nb_src )
+        merge[nb_merge++] = src[s++];
+
+    if( nb_merge > nb_dst ) {
+        ci->current_value->new_dead_array = (int*)realloc(ci->current_value->new_dead_array, nb_merge*sizeof(int));
+        memcpy(ci->current_value->new_dead_array, merge, nb_merge * sizeof(int));
+        ci->current_value->header.nb_new_dead = nb_merge;
+    }
+    free(merge);
+}
+
 static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communicator_t *comm, ompi_group_t *acked_group)
 {
-    ompi_group_t *tmp_grp;
+    ompi_group_t *tmp_grp1, *tmp_grp2;
     int *src_ra;
     int *dst_ra;
-    int r, p, grp_size, min, t;
+    int r, grp_size;
 
     assert( comm->c_contextid == ci->agreement_id.ERAID_FIELDS.contextid );
     assert( comm->c_epoch     == ci->agreement_id.ERAID_FIELDS.epoch     );
@@ -522,54 +593,48 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
     if( grp_size > 0 )
         free(dst_ra);
 
-    tmp_grp = OBJ_NEW(ompi_group_t);
-    ompi_group_difference(ompi_group_all_failed_procs, comm->agreed_failed_ranks, &tmp_grp);
-    grp_size = ompi_group_size(tmp_grp);
-    if( grp_size > 0 ) {
-        src_ra = (int*)malloc(grp_size * sizeof(int));
-        dst_ra = (int*)malloc(grp_size * sizeof(int));
-        for(r = 0 ; r < grp_size; r++)
-            src_ra[r] = r;
-        ompi_group_translate_ranks(tmp_grp, grp_size, src_ra, comm->c_local_group, dst_ra);
-        for(p = 0; p < MAX_NEW_DEAD_SIZE; p++) {
-            min = MPI_UNDEFINED;
-            for(r = 0; r < grp_size; r++) {
-                if( dst_ra[r] == MPI_UNDEFINED )
-                    continue; /**< This new dead process does not belong to the associated communicator */
-                if( min == MPI_UNDEFINED || dst_ra[r] < min ) {
-                    t = dst_ra[r];
-                    dst_ra[r] = min;
-                    min = t;
-                }
-            }
-            if( min != MPI_UNDEFINED ) {
-                OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
-                                     "%s ftbasic:agreement (ERA) add rank %d as a new discovered dead process #%d on agreement (%d.%d).%d\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     min,
-                                     p,
-                                     ci->agreement_id.ERAID_FIELDS.contextid,
-                                     ci->agreement_id.ERAID_FIELDS.epoch,                         
-                                     ci->agreement_id.ERAID_FIELDS.agreementid));
-                ci->current_value.new_dead[p++] = min;
-            } else {
-                break;
-            }
-        }
-        free(src_ra);
-        free(dst_ra);
-    }
-    OBJ_RELEASE(tmp_grp);
+    tmp_grp2 = OBJ_NEW(ompi_group_t);
+    ompi_group_intersection(comm->c_local_group, ompi_group_all_failed_procs, &tmp_grp1);
+    if( ompi_group_size(tmp_grp1) > 0 ) {
+        tmp_grp2 = OBJ_NEW(ompi_group_t);
+        ompi_group_difference(tmp_grp1, comm->agreed_failed_ranks, &tmp_grp2);
+        grp_size = ompi_group_size(tmp_grp2);
 
-    tmp_grp = OBJ_NEW(ompi_group_t);
-    ompi_group_difference(comm->c_local_group, comm->agreed_failed_ranks, &tmp_grp);
-    ci->alive_size = ompi_group_size(tmp_grp);
+        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
+                             "%s ftbasic:agreement (ERA) agreement (%d.%d).%d -- adding %d procs to the list of newly dead processes",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ci->agreement_id.ERAID_FIELDS.contextid,
+                             ci->agreement_id.ERAID_FIELDS.epoch,
+                             ci->agreement_id.ERAID_FIELDS.agreementid,
+                             grp_size));
+
+        if( grp_size > 0 ) {
+            src_ra = (int*)malloc(grp_size * sizeof(int));
+            dst_ra = (int*)malloc(grp_size * sizeof(int));
+            for(r = 0 ; r < grp_size; r++)
+                src_ra[r] = r;
+            ompi_group_translate_ranks(tmp_grp2, grp_size, src_ra, comm->c_local_group, dst_ra);
+            free(src_ra);
+            qsort(dst_ra, grp_size, sizeof(int), compare_ints);
+            era_merge_new_dead_list(ci, grp_size, dst_ra);
+            free(dst_ra);
+        }
+        OBJ_RELEASE(tmp_grp2);
+    }
+    OBJ_RELEASE(tmp_grp1);
+
+    tmp_grp1 = OBJ_NEW(ompi_group_t);
+    ompi_group_difference(comm->c_local_group, comm->agreed_failed_ranks, &tmp_grp1);
+    ci->alive_size = ompi_group_size(tmp_grp1);
     assert(NULL == ci->alive_ta);
     ci->alive_ta = (int*)malloc(ci->alive_size * sizeof(int));
     src_ra = (int*)malloc(ci->alive_size * sizeof(int));
     for(r = 0 ; r < ci->alive_size; r++)
         src_ra[r] = r;
-    ompi_group_translate_ranks(tmp_grp, ci->alive_size, src_ra, comm->c_local_group, ci->alive_ta);
+    ompi_group_translate_ranks(tmp_grp1, ci->alive_size, src_ra, comm->c_local_group, ci->alive_ta);
+
+    assert( era_comm_to_alive(ci, ompi_comm_rank(ci->comm)) == ompi_group_rank(tmp_grp1) );
+
 #if defined(OPAL_ENABLE_DEBUG)
     /* Check: in order to keep the memory overhead small(er), we assume that
      *   ranks in ci->alive_ta are ordered from small to big.
@@ -579,7 +644,7 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
         assert(ci->alive_ta[r-1] < ci->alive_ta[r]);
 #endif
     free(src_ra);
-    OBJ_RELEASE(tmp_grp);
+    OBJ_RELEASE(tmp_grp1);
 }
 
 int mca_coll_ftbasic_agreement_era_comm_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module)
@@ -615,81 +680,34 @@ static void send_msg(ompi_communicator_t *comm,
 
 static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *value)
 {
-    int r, ir, to_insert, tmp;
     ompi_op_t *op;
     ompi_datatype_t *dt;
-#if defined(OPAL_ENABLE_DEBUG)
-    int pr = 0;
-#endif
 
     if( ni->status & OP_NOT_DEFINED ) {
-        ni->current_value.operand = value->operand;
-        ni->current_value.dt_count = value->dt_count;
-        ni->current_value.datatype = value->datatype;
-        memcpy(ni->current_value.bytes, value->bytes, MAX_FLAG_LENGTH);
-        ni->current_value.ret = value->ret;
+        ni->current_value->header.operand = value->header.operand;
+        ni->current_value->header.dt_count = value->header.dt_count;
+        ni->current_value->header.datatype = value->header.datatype;
+        memcpy(ni->current_value->bytes, value->bytes, ERA_VALUE_BYTES_COUNT(&value->header));
+        ni->current_value->header.ret = value->header.ret;
         ni->status &= ~OP_NOT_DEFINED;
     } else {
-        assert( ni->current_value.operand == value->operand );
-        assert( ni->current_value.dt_count == value->dt_count );
-        assert( ni->current_value.datatype == value->datatype );
+        assert( ni->current_value->header.operand == value->header.operand );
+        assert( ni->current_value->header.dt_count == value->header.dt_count );
+        assert( ni->current_value->header.datatype == value->header.datatype );
         op = opal_pointer_array_get_item(ompi_op_f_to_c_table,
-                                         ni->current_value.operand);
+                                         ni->current_value->header.operand);
         assert(NULL != op);
         dt = opal_pointer_array_get_item(&ompi_datatype_f_to_c_table,
-                                         ni->current_value.datatype);
+                                         ni->current_value->header.datatype);
         assert(NULL != dt);
-        ompi_op_reduce( op, value->bytes, ni->current_value.bytes,
-                        ni->current_value.dt_count, dt);
+        ompi_op_reduce( op, value->bytes, ni->current_value->bytes,
+                        ni->current_value->header.dt_count, dt);
     }
 
-    if( value->ret > ni->current_value.ret )
-        ni->current_value.ret = value->ret;
+    if( value->header.ret > ni->current_value->header.ret )
+        ni->current_value->header.ret = value->header.ret;
 
-#if defined(OPAL_ENABLE_DEBUG)
-    if( (ni->current_value.new_dead[0] != -1) ||
-        (ni->current_value.new_dead[1] != -1) ||
-        (value->new_dead[0] != -1) ||
-        (value->new_dead[1] != -1) ) {
-        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) COMBINE %d,%d with %d,%d",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             ni->current_value.new_dead[0], ni->current_value.new_dead[1],
-                             value->new_dead[0], value->new_dead[1]));
-        pr = 1;
-    } 
-#endif
-
-    /* Merge the new_dead lists: keep the lowest ranks that belong to both,
-     * knowing that -1 means end of list
-     */
-    for(r = 0, ir = 0; r < MAX_NEW_DEAD_SIZE && ir < MAX_NEW_DEAD_SIZE; r++) {
-        if( (to_insert = value->new_dead[r]) == -1 ) {
-            break;
-        }
-        for(; ir < MAX_NEW_DEAD_SIZE; ir++) {
-            if( ni->current_value.new_dead[ir] == -1 ) {
-                ni->current_value.new_dead[ir] = to_insert;
-                ir++;
-                break;
-            } else if( ni->current_value.new_dead[ir] > to_insert ) {
-                tmp = ni->current_value.new_dead[ir];
-                ni->current_value.new_dead[ir] = to_insert;
-                to_insert = tmp;
-            } else if( ni->current_value.new_dead[ir] == to_insert ) {
-                /* No dupplicate! */
-                break;
-            }
-        }
-    }
-
-#if defined(OPAL_ENABLE_DEBUG)
-    if( pr )
-        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) COMBINE GIVES %d,%d",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             ni->current_value.new_dead[0], ni->current_value.new_dead[1]));
-#endif
+    era_merge_new_dead_list(ni, value->header.nb_new_dead, value->new_dead_array);
 }
 
 /**
@@ -704,16 +722,13 @@ static int era_comm_to_alive(era_agreement_info_t *ci, int r_in_comm)
     assert(NULL != ci->alive_ta);
     assert(0 < ci->alive_size);
     r = r_in_comm >= ci->alive_size ? ci->alive_size - 1 : r_in_comm;
-    while( r > 0 && ci->alive_ta[r] > r_in_comm ) {
+    while( r >= 0 && ci->alive_ta[r] > r_in_comm ) {
         r--;
     }
-    if( r < 0 || ci->alive_ta[r] < r_in_comm )
-        return MPI_UNDEFINED;
-    else {
-        assert(r >= 0 && r < ci->alive_size );
-        assert(ci->alive_ta[r] == r_in_comm);
-        return r;
-    }
+    assert( r >= 0 && ci->alive_ta[r] >= r_in_comm );
+    assert( r >= 0 && r < ci->alive_size );
+    assert(ci->alive_ta[r] == r_in_comm);
+    return r;
 }
 
 #define ERA_TOPOLOGY_BINARY_TREE
@@ -724,7 +739,6 @@ static int era_parent_of(era_agreement_info_t *ci, int r_in_comm)
     ompi_communicator_t *comm = ci->comm;
     int p_in_alive;
     int r_in_alive = era_comm_to_alive(ci, r_in_comm);
-    assert(MPI_UNDEFINED != r_in_alive);
 
     if(r_in_comm == 0) {
         /** We never ask the parent of a dead process */
@@ -844,56 +858,54 @@ static int era_next_child(era_agreement_info_t *ci, int prev_child)
 
 static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 {
-    era_passed_agreement_t *da;
     ompi_communicator_t *comm;
     ompi_group_t *new_deads_group, *new_agreed;
-    era_rank_counter_item_t *rl;
+    era_rank_item_t *rl;
     int r;
+    void *value;
 
-    da = OBJ_NEW(era_passed_agreement_t);
-    memcpy(&da->agreement_value, decided_value, sizeof(era_value_t));
+    OBJ_RETAIN(decided_value);
 
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d\n",                         
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          *(int*)decided_value->bytes,
-                         decided_value->ret,
-                         decided_value->new_dead[0],
+                         decided_value->header.ret,
+                         decided_value->header.nb_new_dead,
                          ci->agreement_id.ERAID_FIELDS.contextid,
                          ci->agreement_id.ERAID_FIELDS.epoch,                         
                          ci->agreement_id.ERAID_FIELDS.agreementid));
 
     opal_hash_table_remove_value_uint64(&era_ongoing_agreements, ci->agreement_id.ERAID_KEY);
+    assert( opal_hash_table_get_value_uint64(&era_passed_agreements, 
+                                             ci->agreement_id.ERAID_KEY, &value) != OMPI_SUCCESS );
     opal_hash_table_set_value_uint64(&era_passed_agreements,
                                      ci->agreement_id.ERAID_KEY,
-                                     da);
+                                     decided_value);
 
     comm = ci->comm;
     assert( NULL != comm );
 
-    if( decided_value->new_dead[0] != -1 ) {
-        for(r = 0; r < MAX_NEW_DEAD_SIZE && decided_value->new_dead[r] != -1; r++)
-            /*nothing*/;
-
+    if( decided_value->header.nb_new_dead != 0 ) {
         OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: adding %d processes to the list of agreed deaths\n",
+                             "%s ftbasic:agreement (ERA) decide %08x.%d.%d on agreement (%d.%d).%d: adding up to %d processes to the list of agreed deaths\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              *(int*)decided_value->bytes,
-                             decided_value->ret,
-                             decided_value->new_dead[0],
+                             decided_value->header.ret,
+                             decided_value->header.nb_new_dead,
                              ci->agreement_id.ERAID_FIELDS.contextid,
                              ci->agreement_id.ERAID_FIELDS.epoch,                         
                              ci->agreement_id.ERAID_FIELDS.agreementid,
-                             r));
-
+                             decided_value->header.nb_new_dead));
+        
 #if defined(OPAL_ENABLE_DEBUG)
         {
             int _i, _j;
-            for(_i = 0; _i < r; _i++) {
-                assert(decided_value->new_dead[_i] >= 0 &&
-                       decided_value->new_dead[_i] < ompi_comm_size(comm));
-                for(_j = _i+1; _j < r; _j++) {
-                    assert(decided_value->new_dead[_i] < decided_value->new_dead[_j]);
+            for(_i = 0; _i < decided_value->header.nb_new_dead; _i++) {
+                assert(decided_value->new_dead_array[_i] >= 0 &&
+                       decided_value->new_dead_array[_i] < ompi_comm_size(comm));
+                for(_j = _i+1; _j < decided_value->header.nb_new_dead; _j++) {
+                    assert(decided_value->new_dead_array[_i] < decided_value->new_dead_array[_j]);
                 }
             }
         }
@@ -901,7 +913,8 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 
         new_deads_group = OBJ_NEW(ompi_group_t);
         new_agreed      = OBJ_NEW(ompi_group_t);
-        ompi_group_incl(comm->c_local_group, r, decided_value->new_dead, &new_deads_group);
+        ompi_group_incl(comm->c_local_group, decided_value->header.nb_new_dead, 
+                        decided_value->new_dead_array, &new_deads_group);
         ompi_group_union(comm->agreed_failed_ranks, new_deads_group, &new_agreed);
         OBJ_RELEASE(comm->agreed_failed_ranks);
         comm->agreed_failed_ranks = new_agreed;
@@ -912,8 +925,8 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                          "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: group of agreed deaths is of size %d\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          *(int*)decided_value->bytes,
-                         decided_value->ret,
-                         decided_value->new_dead[0],
+                         decided_value->header.ret,
+                         decided_value->header.nb_new_dead,
                          ci->agreement_id.ERAID_FIELDS.contextid,
                          ci->agreement_id.ERAID_FIELDS.epoch,                         
                          ci->agreement_id.ERAID_FIELDS.agreementid,
@@ -924,9 +937,9 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 
         /** Cleanup the early_requesters list, to avoid sending unecessary dupplicate messages */
         if( opal_list_get_size(&ci->early_requesters) > 0 ) {
-            for(rl = (era_rank_counter_item_t*)opal_list_get_first(&ci->early_requesters);
-                rl != (era_rank_counter_item_t*)opal_list_get_end(&ci->early_requesters);
-                rl = (era_rank_counter_item_t*)opal_list_get_next(&rl->super)) {
+            for(rl = (era_rank_item_t*)opal_list_get_first(&ci->early_requesters);
+                rl != (era_rank_item_t*)opal_list_get_end(&ci->early_requesters);
+                rl = (era_rank_item_t*)opal_list_get_next(&rl->super)) {
                 if( rl->rank == r ) {
                     opal_list_remove_item(&ci->early_requesters, &rl->super);
                     break;
@@ -934,15 +947,15 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
             }
         }
 
-        send_msg(comm, r, NULL, ci->agreement_id, MSG_DOWN, &da->agreement_value, 0, NULL);
+        send_msg(comm, r, NULL, ci->agreement_id, MSG_DOWN, decided_value, 0, NULL);
     }
 
     /* In case we have some child we haven't detected yet */
     if( opal_list_get_size(&ci->early_requesters) > 0 ) {
-        for(rl = (era_rank_counter_item_t*)opal_list_get_first(&ci->early_requesters);
-            rl != (era_rank_counter_item_t*)opal_list_get_end(&ci->early_requesters);
-            rl = (era_rank_counter_item_t*)opal_list_get_next(&rl->super)) {
-            send_msg(comm, rl->rank, NULL, ci->agreement_id, MSG_DOWN, &da->agreement_value, 0, NULL);
+        for(rl = (era_rank_item_t*)opal_list_get_first(&ci->early_requesters);
+            rl != (era_rank_item_t*)opal_list_get_end(&ci->early_requesters);
+            rl = (era_rank_item_t*)opal_list_get_next(&rl->super)) {
+            send_msg(comm, rl->rank, NULL, ci->agreement_id, MSG_DOWN, decided_value, 0, NULL);
         }
     }
 
@@ -952,8 +965,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 static void era_check_status(era_agreement_info_t *ci)
 {
     int r;
-    int found;
-    era_rank_counter_item_t *rl;
+    era_rank_item_t *rl;
 
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) check_status for Agreement ID = (%d.%d).%d, current status = %s\n",
@@ -980,25 +992,21 @@ static void era_check_status(era_agreement_info_t *ci)
                                  ci->agreement_id.ERAID_FIELDS.epoch,
                                  ci->agreement_id.ERAID_FIELDS.agreementid,
                                  r));
-            found = 0;
-            for( rl =  (era_rank_counter_item_t*)opal_list_get_first(&ci->gathered_info);
-                 rl != (era_rank_counter_item_t*)opal_list_get_end(&ci->gathered_info);
-                 rl =  (era_rank_counter_item_t*)opal_list_get_next(&rl->super) ) {
+            for( rl =  (era_rank_item_t*)opal_list_get_first(&ci->gathered_info);
+                 rl != (era_rank_item_t*)opal_list_get_end(&ci->gathered_info);
+                 rl =  (era_rank_item_t*)opal_list_get_next(&rl->super) ) {
                 if( rl->rank == r ) {
                     OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
-                                         "%s ftbasic:agreement (ERA) check_status for Agreement ID = (%d.%d).%d, child %d has still %d messages to send\n",
+                                         "%s ftbasic:agreement (ERA) check_status for Agreement ID = (%d.%d).%d, child %d has sent its message\n",
                                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                                          ci->agreement_id.ERAID_FIELDS.contextid,
                                          ci->agreement_id.ERAID_FIELDS.epoch,
                                          ci->agreement_id.ERAID_FIELDS.agreementid,
-                                         r,
-                                         rl->counter));
-                    /* Found it, but maybe it needs to send me more messages? */
-                    found = (rl->counter == 0);
+                                         r));
                     break;
                 }
             }
-            if( !found ) {
+            if( rl == (era_rank_item_t*)opal_list_get_end(&ci->gathered_info) ) {
                 OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
                                      "%s ftbasic:agreement (ERA) check_status for Agreement ID = (%d.%d).%d, some children have not contributed\n",
                                      ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
@@ -1022,7 +1030,7 @@ static void era_check_status(era_agreement_info_t *ci)
                                  ci->agreement_id.ERAID_FIELDS.agreementid));
 
             /* I'm root. I have to decide now. */
-            era_decide(&ci->current_value, ci);
+            era_decide(ci->current_value, ci);
         } else {
             OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
                                  "%s ftbasic:agreement (ERA) check_status for Agreement ID = (%d.%d).%d, all children of non-root have contributed\n",
@@ -1033,7 +1041,7 @@ static void era_check_status(era_agreement_info_t *ci)
 
             /* Let's forward up and wait for the DOWN messages */
             ci->waiting_down_from = r;
-            send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
+            send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, ci->current_value, 
                      ci->nb_acked, ci->acked);
             ci->status = BROADCASTING;
         }
@@ -1051,7 +1059,7 @@ static void era_check_status(era_agreement_info_t *ci)
 static void restart_agreement_from_me(era_agreement_info_t *ci)
 {
     int r;
-    era_rank_counter_item_t *rc;
+    era_rank_item_t *rc;
     assert( NULL != ci->comm );
     assert( 0 == opal_list_get_size(&ci->waiting_res_from) );
 
@@ -1068,11 +1076,10 @@ static void restart_agreement_from_me(era_agreement_info_t *ci)
      */
     r = -1;
     while( (r = era_next_child(ci, r)) != ompi_comm_size(ci->comm) ) {
-        rc = OBJ_NEW(era_rank_counter_item_t);
+        rc = OBJ_NEW(era_rank_item_t);
         rc->rank = r;
-        rc->counter = 0;
         opal_list_append(&ci->waiting_res_from, &rc->super);
-        send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_RESULT_REQUEST, &ci->current_value, 
+        send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_RESULT_REQUEST, ci->current_value, 
                  0, NULL);
     }
 
@@ -1086,7 +1093,7 @@ static void restart_agreement_from_me(era_agreement_info_t *ci)
 static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
 {
     int r;
-    era_rank_counter_item_t *rl;
+    era_rank_item_t *rl;
     era_identifier_t era_id;
 
     if( ci->status > NOT_CONTRIBUTED ) {
@@ -1103,7 +1110,7 @@ static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
                              ci->agreement_id.ERAID_FIELDS.contextid,
                              ci->agreement_id.ERAID_FIELDS.epoch,
                              ci->agreement_id.ERAID_FIELDS.agreementid));
-        ci->current_value.ret = MPI_ERR_PROC_FAILED;
+        ci->current_value->header.ret = MPI_ERR_PROC_FAILED;
     }
     if( ci->status == BROADCASTING ) {
         OPAL_OUTPUT_VERBOSE((20,  ompi_ftmpi_output_handle,
@@ -1141,7 +1148,7 @@ static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
                                      ci->agreement_id.ERAID_FIELDS.epoch,
                                      ci->agreement_id.ERAID_FIELDS.agreementid));
                 ci->waiting_down_from = r;
-                send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
+                send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, ci->current_value, 
                          ci->nb_acked, ci->acked);
             }
         }
@@ -1161,9 +1168,9 @@ static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
                              ci->agreement_id.ERAID_FIELDS.agreementid));
         OBJ_RETAIN(ci);
         /* It could be one of the guys that we contacted about a restarting agreement. */
-        for(rl = (era_rank_counter_item_t*)opal_list_get_first(&ci->waiting_res_from);
-            rl != (era_rank_counter_item_t*)opal_list_get_end(&ci->waiting_res_from);
-            rl = (era_rank_counter_item_t*)opal_list_get_next(&rl->super)) {
+        for(rl = (era_rank_item_t*)opal_list_get_first(&ci->waiting_res_from);
+            rl != (era_rank_item_t*)opal_list_get_end(&ci->waiting_res_from);
+            rl = (era_rank_item_t*)opal_list_get_next(&rl->super)) {
             if(rl->rank == rank) {
                 OPAL_OUTPUT_VERBOSE((20,  ompi_ftmpi_output_handle,
                                      "%s ftbasic:agreement (ERA) Handling failure of process %d: I was waiting for the contribution of that process for Agreement (%d.%d).%d.\n",
@@ -1184,15 +1191,15 @@ static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
                  */
                 r = -1;
                 while( (r = era_next_child(ci, r)) != ompi_comm_size(ci->comm) ) {
-                    for(rl = (era_rank_counter_item_t*)opal_list_get_first(&ci->waiting_res_from);
-                        rl != (era_rank_counter_item_t*)opal_list_get_end(&ci->waiting_res_from);
-                        rl = (era_rank_counter_item_t*)opal_list_get_next(&rl->super)) {
+                    for(rl = (era_rank_item_t*)opal_list_get_first(&ci->waiting_res_from);
+                        rl != (era_rank_item_t*)opal_list_get_end(&ci->waiting_res_from);
+                        rl = (era_rank_item_t*)opal_list_get_next(&rl->super)) {
                         if( rl->rank == r ) {
                             break;
                         }
                     }
 
-                    if( rl == (era_rank_counter_item_t*)opal_list_get_end(&ci->waiting_res_from) ) {
+                    if( rl == (era_rank_item_t*)opal_list_get_end(&ci->waiting_res_from) ) {
                         OPAL_OUTPUT_VERBOSE((20,  ompi_ftmpi_output_handle,
                                              "%s ftbasic:agreement (ERA) Handling failure of process %d: Requesting contribution of process %d for Agreement (%d.%d).%d.\n",
                                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -1200,11 +1207,10 @@ static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
                                              ci->agreement_id.ERAID_FIELDS.contextid,
                                              ci->agreement_id.ERAID_FIELDS.epoch,
                                              ci->agreement_id.ERAID_FIELDS.agreementid));
-                        rl = OBJ_NEW(era_rank_counter_item_t);
+                        rl = OBJ_NEW(era_rank_item_t);
                         rl->rank = r;
-                        rl->counter = 0;
                         opal_list_append(&ci->waiting_res_from, &rl->super);
-                        send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_RESULT_REQUEST, &ci->current_value, 
+                        send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_RESULT_REQUEST, ci->current_value, 
                                  0, NULL);
                     }
                 }
@@ -1264,8 +1270,8 @@ static void send_msg(ompi_communicator_t *comm,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
                              *(int*)value->bytes,
-                             value->ret,
-                             value->new_dead[0],
+                             value->header.ret,
+                             value->header.nb_new_dead,
                              dst,
                              NULL != proc_name ? ORTE_NAME_PRINT(proc_name) : "(null)"));
         raise(SIGKILL);
@@ -1274,17 +1280,16 @@ static void send_msg(ompi_communicator_t *comm,
 
     if( MSG_UP == type ) {
         OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d.., ADR: %d processes (%d...)] to %d/%s\n",
+                             "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d/%d] to %d/%s\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                              agreement_id.ERAID_FIELDS.contextid,
                              agreement_id.ERAID_FIELDS.epoch,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
                              *(int*)value->bytes,
-                             value->ret,
-                             value->new_dead[0],
+                             value->header.ret,
+                             value->header.nb_new_dead,
                              nb_ack_failed,
-                             ack_failed != NULL ? ack_failed[0] : -1,
                              dst,
                              NULL != proc_name ? ORTE_NAME_PRINT(proc_name) : "(null)"));
     } else {
@@ -1296,11 +1301,20 @@ static void send_msg(ompi_communicator_t *comm,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
                              *(int*)value->bytes,
-                             value->ret,
-                             value->new_dead[0],
+                             value->header.ret,
+                             value->header.nb_new_dead,
                              dst,
                              NULL != proc_name ? ORTE_NAME_PRINT(proc_name) : "(null)"));
+        assert(nb_ack_failed == 0);
+   }
+
+#if OPAL_ENABLE_DEBUG
+    if( type == MSG_DOWN ) {
+        int _i;
+        for(_i = 1; _i < value->header.nb_new_dead; _i++)
+            assert(value->new_dead_array[_i-1] < value->new_dead_array[_i]);
     }
+#endif
 
     assert( NULL == comm || agreement_id.ERAID_FIELDS.contextid == ompi_comm_get_cid(comm) );
     assert( NULL == comm || agreement_id.ERAID_FIELDS.epoch == comm->c_epoch );
@@ -1322,7 +1336,7 @@ static void send_msg(ompi_communicator_t *comm,
     btl = bml_btl->btl;
     assert(NULL != btl);
 
-    to_send = ERA_MSG_SIZE(nb_ack_failed);
+    to_send = ERA_MSG_SIZE(&value->header, nb_ack_failed);
     if( to_send <= sizeof(_msg) ) {
         msg = &_msg;
     } else {
@@ -1337,14 +1351,65 @@ static void send_msg(ompi_communicator_t *comm,
         msg->src_comm_rank = -1;
     }
     msg->src_proc_name = *ORTE_PROC_MY_NAME;
-    memcpy(&msg->agreement_value, value, sizeof(era_value_t));
+    memcpy(&msg->agreement_value_header, &value->header, sizeof(era_value_header_t));
+
+    memcpy(msg->bytes, value->bytes, ERA_VALUE_BYTES_COUNT(&value->header));
+
+    if( value->header.nb_new_dead > 0 ) {
+        memcpy(msg->bytes + ERA_VALUE_BYTES_COUNT(&value->header), value->new_dead_array,
+               value->header.nb_new_dead * sizeof(int));
+    }
     if( MSG_UP == type ) {
         msg->nb_ack = nb_ack_failed;
-        if( nb_ack_failed > 0 )
-            memcpy(msg->ack_failed, ack_failed, nb_ack_failed * sizeof(int));
+        if( nb_ack_failed > 0 ) {
+            memcpy(msg->bytes + ERA_VALUE_BYTES_COUNT(&value->header) + sizeof(int)*value->header.nb_new_dead, 
+                   ack_failed, nb_ack_failed * sizeof(int));
+        }
     } else {
-        msg->nb_ack = -1;
+        msg->nb_ack = 0;
     }
+
+#if OPAL_ENABLE_DEBUG
+            {
+                char strbytes[64];
+                long unsigned int b;
+                char *sep = "";
+                strbytes[0] = '\0';
+                for(b = 0; 
+                    b < ERA_VALUE_BYTES_COUNT(&value->header) + value->header.nb_new_dead * sizeof(int) + nb_ack_failed * sizeof(int)
+                        && strlen(strbytes) < 63; b++) {
+                    if( b == ERA_VALUE_BYTES_COUNT(&value->header) ) {
+                        snprintf(strbytes + strlen(strbytes), 64-strlen(strbytes), "|");
+                        sep="";
+                    }
+                    if( b == ERA_VALUE_BYTES_COUNT(&value->header) + value->header.nb_new_dead * sizeof(int) ) {
+                        snprintf(strbytes + strlen(strbytes), 64-strlen(strbytes), "|");
+                        sep="";
+                    }
+                    snprintf(strbytes + strlen(strbytes), 64-strlen(strbytes), "%s0x%02x", sep, msg->bytes[b]);
+                    sep=" ";
+                }
+                if( strlen(strbytes) >= 60 ) {
+                    sprintf(strbytes + 60, "...");
+                }
+
+                OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
+                                     "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d/%d..] to %d/%s: %d bytes = %s\n",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
+                                     agreement_id.ERAID_FIELDS.contextid,
+                                     agreement_id.ERAID_FIELDS.epoch,
+                                     agreement_id.ERAID_FIELDS.agreementid,
+                                     era_msg_type_to_string(type),
+                                     *(int*)value->bytes,
+                                     value->header.ret,
+                                     value->header.nb_new_dead,
+                                     msg->nb_ack,
+                                     dst,
+                                     NULL != proc_name ? ORTE_NAME_PRINT(proc_name) : "(null)",
+                                     to_send,
+                                     strbytes));
+            }
+#endif
 
     sent    = 0;
     my_seqnum = msg_seqnum++;
@@ -1391,7 +1456,7 @@ static void result_request(era_msg_t *msg)
     if( opal_hash_table_get_value_uint64(&era_passed_agreements,
                                          msg->agreement_id.ERAID_KEY,
                                          &value) == OPAL_SUCCESS ) {
-        old_agreement_value = &((era_passed_agreement_t*)value)->agreement_value;
+        old_agreement_value = (era_value_t*)value;
         send_msg(NULL, msg->src_comm_rank, &msg->src_proc_name, msg->agreement_id, MSG_DOWN, old_agreement_value, 0, NULL);
     } else {
         /** I should be a descendent of msg->src (since RESULT_REQUEST messages are sent to
@@ -1416,7 +1481,7 @@ static void result_request(era_msg_t *msg)
             }
 
             ci->waiting_down_from = r;
-            send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, &ci->current_value, 
+            send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, ci->current_value, 
                      ci->nb_acked, ci->acked);
         } else {
             /** Or, I have not started this agreement, or I have started this agreement, but a child
@@ -1432,23 +1497,22 @@ static void result_request(era_msg_t *msg)
 static void msg_up(era_msg_t *msg)
 {
     era_agreement_info_t *ci;
-    era_rank_counter_item_t *rank_item;
+    era_rank_item_t *rank_item;
     void *value;
-    era_value_t *old_agreement_value;
+    era_value_t *av;
  
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) Received UP Message: Agreement ID = (%d.%d).%d, sender: %d/%s, msg value: %08x.%d.%d.., ADR: %d processes: %d...\n",
+                         "%s ftbasic:agreement (ERA) Received UP Message: Agreement ID = (%d.%d).%d, sender: %d/%s, msg value: %08x.%d.%d/%d\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                          msg->agreement_id.ERAID_FIELDS.contextid,
                          msg->agreement_id.ERAID_FIELDS.epoch,
                          msg->agreement_id.ERAID_FIELDS.agreementid,
                          msg->src_comm_rank,
                          ORTE_NAME_PRINT(&msg->src_proc_name),
-                         *(int*)msg->agreement_value.bytes,
-                         msg->agreement_value.ret,
-                         msg->agreement_value.new_dead[0],
-                         msg->nb_ack,
-                         msg->ack_failed[0]));
+                         *(int*)msg->bytes,
+                         msg->agreement_value_header.ret,
+                         msg->agreement_value_header.nb_new_dead,
+                         msg->nb_ack));
 
     /** It could be an UP message about a decided agreement:
      *  a child gives me its contribution, I broadcast and receive
@@ -1459,8 +1523,8 @@ static void msg_up(era_msg_t *msg)
     if( opal_hash_table_get_value_uint64(&era_passed_agreements,
                                          msg->agreement_id.ERAID_KEY,
                                          &value) == OPAL_SUCCESS ) {
-        old_agreement_value = &((era_passed_agreement_t*)value)->agreement_value;
-        send_msg(NULL, msg->src_comm_rank, &msg->src_proc_name, msg->agreement_id, MSG_DOWN, old_agreement_value, 
+        av = (era_value_t*)value;
+        send_msg(NULL, msg->src_comm_rank, &msg->src_proc_name, msg->agreement_id, MSG_DOWN, av, 
                  0, NULL);
         return;
     }
@@ -1473,7 +1537,12 @@ static void msg_up(era_msg_t *msg)
                          ci == NULL ? "unknown" : "known"));
 
     if( NULL == ci ) {
-        ci = era_create_agreement_info( msg->agreement_id );
+        ci = era_create_agreement_info( msg->agreement_id, &msg->agreement_value_header );
+        if( msg->agreement_value_header.nb_new_dead > 0 ) {
+            /* ci->new_dead_array was allocated by create_agreement_info, let's copy it */
+            memcpy(ci->current_value->new_dead_array, msg->bytes + ERA_VALUE_BYTES_COUNT(&msg->agreement_value_header),
+                   msg->agreement_value_header.nb_new_dead * sizeof(int));
+        }
         /* We will attach the communicator when we contribute to it */
     }
 
@@ -1494,17 +1563,16 @@ static void msg_up(era_msg_t *msg)
                              msg->src_comm_rank));
 
         /** We could receive multiple messages from msg->src_comm_rank, because the messages are split */
-        for(rank_item = (era_rank_counter_item_t*)opal_list_get_first(&ci->early_requesters);
-            rank_item != (era_rank_counter_item_t*)opal_list_get_end(&ci->early_requesters);
-            rank_item = (era_rank_counter_item_t*)opal_list_get_next(&rank_item->super)) {
+        for(rank_item = (era_rank_item_t*)opal_list_get_first(&ci->early_requesters);
+            rank_item != (era_rank_item_t*)opal_list_get_end(&ci->early_requesters);
+            rank_item = (era_rank_item_t*)opal_list_get_next(&rank_item->super)) {
             if( rank_item->rank == msg->src_comm_rank )
                 return;
         }
 
         /** If not, add it */
-        rank_item = OBJ_NEW(era_rank_counter_item_t);
+        rank_item = OBJ_NEW(era_rank_item_t);
         rank_item->rank = msg->src_comm_rank;
-        rank_item->counter = 0;
         opal_list_append(&ci->early_requesters, &rank_item->super);
         return;
     }
@@ -1515,9 +1583,9 @@ static void msg_up(era_msg_t *msg)
      *  of another failure), but it discovered the first failure at the 
      *  same time, and started sending without me requesting.
      */
-    for( rank_item = (era_rank_counter_item_t *)opal_list_get_first( &ci->gathered_info );
-         rank_item != (era_rank_counter_item_t *)opal_list_get_end( &ci->gathered_info );
-         rank_item = (era_rank_counter_item_t *)opal_list_get_next( &rank_item->super ) ) {
+    for( rank_item = (era_rank_item_t *)opal_list_get_first( &ci->gathered_info );
+         rank_item != (era_rank_item_t *)opal_list_get_end( &ci->gathered_info );
+         rank_item = (era_rank_item_t *)opal_list_get_next( &rank_item->super ) ) {
         if( rank_item->rank == msg->src_comm_rank ) {
             /* We are not waiting from more messages, thank you */
             /* Maybe you're telling me again you want me to send? Let's check if I can't */
@@ -1526,14 +1594,29 @@ static void msg_up(era_msg_t *msg)
         }
     }
 
+    av = OBJ_NEW(era_value_t);
+    memcpy(&av->header, &msg->agreement_value_header, sizeof(era_value_header_t));
+    /* We don't allocate the arrays of bytes and new_dead ranks: we point in the message.
+     * These pointers will need to be set to NULL *before* calling RELEASE.
+     * We can do this, because combine_agreement_values does not keep a reference on va */
+    av->bytes = msg->bytes;
+    if( av->header.nb_new_dead > 0 )
+        av->new_dead_array = (int*) (msg->bytes + ERA_VALUE_BYTES_COUNT(&av->header));
+    else
+        av->new_dead_array = NULL;
+
     /* ci holds the current agreement information structure */
-    era_combine_agreement_values(ci, &msg->agreement_value);
-    era_update_return_value(ci, msg->nb_ack, msg->ack_failed);
+    era_combine_agreement_values(ci, av);
+    era_update_return_value(ci, msg->nb_ack, 
+                            (int*) (msg->bytes + ERA_VALUE_BYTES_COUNT(&av->header) + av->header.nb_new_dead * sizeof(int)));
+
+    av->new_dead_array = NULL;
+    av->bytes = NULL;
+    OBJ_RELEASE(av);
 
     /* We already checked above that this process did not contribute yet */
-    rank_item = OBJ_NEW(era_rank_counter_item_t);
+    rank_item = OBJ_NEW(era_rank_item_t);
     rank_item->rank = msg->src_comm_rank;
-    rank_item->counter = 0;
     opal_list_append(&ci->gathered_info, &rank_item->super);
     OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Received UP Message: adding %d in list of people that contributed\n",
@@ -1546,7 +1629,8 @@ static void msg_up(era_msg_t *msg)
 static void msg_down(era_msg_t *msg)
 {
     era_agreement_info_t *ci;
- 
+    era_value_t *av;
+
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Received DOWN Message: Agreement ID = (%d.%d).%d, sender: %d/%s, msg value: %08x.%d.%d..\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
@@ -1555,9 +1639,9 @@ static void msg_down(era_msg_t *msg)
                          msg->agreement_id.ERAID_FIELDS.agreementid,
                          msg->src_comm_rank,
                          ORTE_NAME_PRINT(&msg->src_proc_name),
-                         *(int*)msg->agreement_value.bytes,
-                         msg->agreement_value.ret,
-                         msg->agreement_value.new_dead[0]));
+                         *(int*)msg->bytes,
+                         msg->agreement_value_header.ret,
+                         msg->agreement_value_header.nb_new_dead));
 
     ci = era_lookup_agreeement_info( msg->agreement_id );
     if( NULL == ci ) {
@@ -1576,7 +1660,20 @@ static void msg_down(era_msg_t *msg)
     /** if I receive a down message on an agreement I know about, I already participated. */
     assert( NULL != ci->comm );
 
-    era_decide(&msg->agreement_value, ci);
+    av = OBJ_NEW(era_value_t);
+    memcpy(&av->header, &msg->agreement_value_header, sizeof(era_value_header_t));
+    /* We must allocate the arrays of bytes and new_dead ranks, because era_decide is going
+     * to keep that era_value_t */
+    av->bytes = (uint8_t *)malloc(ERA_VALUE_BYTES_COUNT(&av->header));
+    memcpy(av->bytes, msg->bytes, ERA_VALUE_BYTES_COUNT(&av->header));
+    if( av->header.nb_new_dead > 0 ) {
+        av->new_dead_array = (int*)malloc(av->header.nb_new_dead * sizeof(int));
+        memcpy(av->new_dead_array, msg->bytes + ERA_VALUE_BYTES_COUNT(&av->header),
+               av->header.nb_new_dead * sizeof(int));
+    }
+    era_decide(av, ci);
+
+    OBJ_RELEASE(av);
 }
 
 static void era_cb_fn(struct mca_btl_base_module_t* btl,
@@ -1643,9 +1740,9 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
                              msg->agreement_id.ERAID_FIELDS.epoch,
                              msg->agreement_id.ERAID_FIELDS.agreementid,
                              msg->msg_type,
-                             *(int*)msg->agreement_value.bytes,
-                             msg->agreement_value.ret,
-                             msg->agreement_value.new_dead[0],
+                             *(int*)msg->bytes,
+                             msg->agreement_value_header.ret,
+                             msg->agreement_value_header.nb_new_dead,
                              msg->src_comm_rank,
                              ORTE_NAME_PRINT(&msg->src_proc_name)));
         raise(SIGKILL);
@@ -1761,13 +1858,13 @@ int mca_coll_ftbasic_agreement_era_init(void)
 
 int mca_coll_ftbasic_agreement_era_finalize(void)
 {
-    void *node;
-    void *value;
-    uint64_t key64;
-    era_passed_agreement_t    *old_agreement;
-    era_agreement_info_t      *un_agreement;
-    opal_hash_table_t         *msg_table;
-    era_msg_t                 *msg;
+    void                 *node;
+    void                 *value;
+    uint64_t              key64;
+    era_value_t          *av;
+    era_agreement_info_t *un_agreement;
+    opal_hash_table_t    *msg_table;
+    era_msg_t            *msg;
 
     if( !era_inited ) {
         return OMPI_SUCCESS;
@@ -1783,8 +1880,8 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
                                              &key64,
                                              &value, &node) == OPAL_SUCCESS ) {
         do {
-            old_agreement = (era_passed_agreement_t *)value;
-            OBJ_RELEASE(old_agreement);
+            av = (era_value_t *)value;
+            OBJ_RELEASE(av);
         } while( opal_hash_table_get_next_key_uint64(&era_passed_agreements,
                                                      &key64, &value, 
                                                      node, &node) == OPAL_SUCCESS );
@@ -1854,10 +1951,10 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_agreement_info_t *ci;
     era_identifier_t agreement_id;
     void *value;
-    era_value_t agreement_value;
-    era_passed_agreement_t *pa;
+    era_value_t agreement_value, *av;
+    era_value_t *pa;
     mca_coll_ftbasic_agreement_t *ag_info;
-    int r;
+    int ret;
 
     ag_info = ( (mca_coll_ftbasic_module_t *)module )->agreement_info;
     assert( NULL != ag_info );
@@ -1896,16 +1993,24 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     }
 #endif
 
+    OBJ_CONSTRUCT(&agreement_value, era_value_t);
+
+    agreement_value.header.ret         = 0;
+    agreement_value.header.operand     = ompi_mpi_op_band.op.o_f_to_c_index;
+    agreement_value.header.dt_count    = 1;
+    agreement_value.header.datatype    = ompi_mpi_int.dt.id;
+    agreement_value.header.nb_new_dead = 0;
+
     /* Let's create or find the current value */
     ci = era_lookup_agreeement_info(agreement_id);
     if( NULL == ci ) {
-        ci = era_create_agreement_info(agreement_id);
+        ci = era_create_agreement_info(agreement_id, &agreement_value.header);
     }
 
     assert( NULL == ci->comm );
     assert( NULL != group && NULL != *group );
     era_agreement_info_set_comm(ci, comm, *group);
-    
+
     if( opal_hash_table_get_value_uint64(&era_passed_agreements, agreement_id.ERAID_KEY, &value) == OMPI_SUCCESS ) {
         OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) removing old agreement (%d.%d).%d from history, due to cycling of identifiers\n",
@@ -1913,21 +2018,19 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
                              agreement_id.ERAID_FIELDS.contextid,
                              agreement_id.ERAID_FIELDS.epoch,                         
                              agreement_id.ERAID_FIELDS.agreementid));
-        pa = (era_passed_agreement_t*)value;
+        pa = (era_value_t*)value;
         opal_hash_table_remove_value_uint64(&era_passed_agreements, agreement_id.ERAID_KEY);
         OBJ_RELEASE(pa);
     }
 
     /* I participate */
-    *(int*)agreement_value.bytes = *flag;
-    agreement_value.operand = ompi_mpi_op_band.op.o_f_to_c_index;
-    agreement_value.dt_count = 1;
-    agreement_value.datatype = ompi_mpi_int.dt.id;
-    for(r = 0; r < MAX_NEW_DEAD_SIZE; r++)
-        agreement_value.new_dead[r] = -1;
-    agreement_value.ret = 0;
+    assert( ERA_VALUE_BYTES_COUNT(&agreement_value.header) == sizeof(int) );
+    agreement_value.bytes = (uint8_t*)flag;
 
     era_combine_agreement_values(ci, &agreement_value);
+    
+    agreement_value.bytes = NULL; /* We don't free &flag... */
+    OBJ_DESTRUCT(&agreement_value);
 
     /* I start the state machine */
     ci->status = GATHERING;
@@ -1941,13 +2044,17 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
         if( opal_hash_table_get_value_uint64(&era_passed_agreements,
                                              agreement_id.ERAID_KEY,
                                              &value) == OPAL_SUCCESS ) {
-            agreement_value = ((era_passed_agreement_t*)value)->agreement_value;
+            av = (era_value_t *)value;
             break;
         }
     } 
     
-    *flag = *(int*)agreement_value.bytes;
-    
+    *flag = *(int*)av->bytes;
+    ret = av->header.ret;
+
+    /* We leave av in the era_passe_agreeements table, to answer future requests
+     * from slow processes */
+
     /* Update the group of failed processes */
     if(NULL != group) {
         OBJ_RELEASE(*group);
@@ -1963,7 +2070,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
                          agreement_id.ERAID_FIELDS.epoch,
                          agreement_id.ERAID_FIELDS.agreementid,
                          *flag,
-                         agreement_value.ret));
+                         ret));
 
-    return agreement_value.ret;
+    return ret;
 }
