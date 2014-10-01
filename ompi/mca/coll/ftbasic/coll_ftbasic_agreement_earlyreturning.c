@@ -149,6 +149,11 @@ typedef struct {
 #define ERA_MSG_SIZE(_h, _n) ( sizeof(era_msg_t) - 4 + ERA_VALUE_BYTES_COUNT(_h) + (_h)->nb_new_dead * sizeof(int) + (_n) * sizeof(int) )
 
 typedef struct {
+    unsigned int bytes_received;
+    era_msg_t    msg;
+} era_incomplete_msg_t;
+
+typedef struct {
     orte_process_name_t       src;  /**< src + msg_seqnum build a unique (up to rotation on msg_seqnum) */
     uint64_t           msg_seqnum;  /*   message identifier.*/
     unsigned int          msg_len;  /**< Length of the message */
@@ -1681,6 +1686,7 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
                       mca_btl_base_descriptor_t* descriptor,
                       void* cbdata)
 {
+    era_incomplete_msg_t *incomplete_msg = NULL;
     era_msg_t *msg;
     era_frag_t *frag;
     uint64_t src_hash;
@@ -1701,26 +1707,27 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
         if( opal_hash_table_get_value_uint64(&era_incomplete_messages, src_hash, &value) == OMPI_SUCCESS ) {
             msg_table = (opal_hash_table_t*)value;
         } else {
-            assert( frag->frag_offset == 0 ); /** We receive the messages in order */
             msg_table = OBJ_NEW(opal_hash_table_t);
             opal_hash_table_init(msg_table, 3 /* This should be very small: few messages should fly in parallel */);
             opal_hash_table_set_value_uint64(&era_incomplete_messages, src_hash, (void*)msg_table);
         }
 
         if( opal_hash_table_get_value_uint64(msg_table, frag->msg_seqnum, &value) == OMPI_SUCCESS ) {
-            msg = (era_msg_t*)value;
+            incomplete_msg = (era_incomplete_msg_t*)value;
         } else {
-            assert( frag->frag_offset == 0 ); /** We receive the messages in order */
-            msg = (era_msg_t*)malloc(frag->msg_len);
-            opal_hash_table_set_value_uint64(msg_table, frag->msg_seqnum, (void*)msg);
+            incomplete_msg = (era_incomplete_msg_t*)malloc(frag->msg_len + sizeof(unsigned int));
+            incomplete_msg->bytes_received = 0;
+            opal_hash_table_set_value_uint64(msg_table, frag->msg_seqnum, (void*)incomplete_msg);
         }
+        msg = &incomplete_msg->msg;
 
         memcpy( ((char*)msg) + frag->frag_offset,
                 frag->bytes,
                 frag->frag_len );
+        incomplete_msg->bytes_received += frag->bytes;
 
         /** We receive the messages in order */
-        if( frag->frag_offset + frag->frag_len == frag->msg_len ) {
+        if( incomplete_msg->bytes_received == frag->msg_len ) {
             opal_hash_table_remove_value_uint64(msg_table, frag->msg_seqnum);
             /** We leave msg_table into the global table, as we will receive more messages */
         } else {
@@ -1759,6 +1766,10 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
     case MSG_DOWN:
         msg_down(msg);
         return;
+    }
+
+    if( NULL != incomplete_msg ) {
+        free(incomplete_msg);
     }
 }
 
