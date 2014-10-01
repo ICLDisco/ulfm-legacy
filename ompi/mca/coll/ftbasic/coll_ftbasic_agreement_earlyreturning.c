@@ -1252,7 +1252,9 @@ static void send_msg(ompi_communicator_t *comm,
                      int         *ack_failed)
 {
     mca_btl_base_descriptor_t *des;
-    era_msg_t *msg, _msg;
+    struct iovec iov[4]; /**< message header, flag bytes, newly_dead, acknowledged */
+    long unsigned int niov = 0, b, i, copied, tocopy;
+    era_msg_t msg;
     era_frag_t *frag;
     ompi_proc_t *peer;
     mca_bml_base_endpoint_t *proc_bml;
@@ -1261,7 +1263,7 @@ static void send_msg(ompi_communicator_t *comm,
     mca_btl_base_module_t *btl;
     uint64_t my_seqnum;
     unsigned int to_send, sent;
-    int payload_size;
+    long unsigned int payload_size;
 
 #if defined(PROGRESS_FAILURE_PROB)
 #pragma message("Hard coded probability of failure inside the agreement")
@@ -1342,64 +1344,90 @@ static void send_msg(ompi_communicator_t *comm,
     assert(NULL != btl);
 
     to_send = ERA_MSG_SIZE(&value->header, nb_ack_failed);
-    if( to_send <= sizeof(_msg) ) {
-        msg = &_msg;
-    } else {
-        msg = (era_msg_t*)malloc(to_send);
-    }
 
-    msg->msg_type = type;
-    msg->agreement_id.ERAID_KEY = agreement_id.ERAID_KEY;
+    /* We prepare the header, that we store in msg */
+    msg.msg_type = type;
+    msg.agreement_id.ERAID_KEY = agreement_id.ERAID_KEY;
+    memcpy(&msg.agreement_value_header, &value->header, sizeof(era_value_header_t));
     if( NULL != comm ) {
-        msg->src_comm_rank = ompi_comm_rank(comm);
+        msg.src_comm_rank = ompi_comm_rank(comm);
     } else {
-        msg->src_comm_rank = -1;
+        msg.src_comm_rank = -1;
     }
-    msg->src_proc_name = *ORTE_PROC_MY_NAME;
-    memcpy(&msg->agreement_value_header, &value->header, sizeof(era_value_header_t));
-
-    memcpy(msg->bytes, value->bytes, ERA_VALUE_BYTES_COUNT(&value->header));
-
-    if( value->header.nb_new_dead > 0 ) {
-        memcpy(msg->bytes + ERA_VALUE_BYTES_COUNT(&value->header), value->new_dead_array,
-               value->header.nb_new_dead * sizeof(int));
-    }
+    msg.src_proc_name = *ORTE_PROC_MY_NAME;
     if( MSG_UP == type ) {
-        msg->nb_ack = nb_ack_failed;
-        if( nb_ack_failed > 0 ) {
-            memcpy(msg->bytes + ERA_VALUE_BYTES_COUNT(&value->header) + sizeof(int)*value->header.nb_new_dead, 
-                   ack_failed, nb_ack_failed * sizeof(int));
-        }
+        msg.nb_ack = nb_ack_failed;
     } else {
-        msg->nb_ack = 0;
+        msg.nb_ack = 0;
+    }
+
+    iov[0].iov_base = (char*)&msg;
+    iov[0].iov_len = sizeof(era_msg_t) - sizeof(msg.bytes);
+    niov = 1;
+    
+    if( to_send <= sizeof(msg) ) {
+        /* We fit in the stack, let's copy everything in msg */
+        int p;
+        assert(sizeof(msg.bytes) >= ERA_VALUE_BYTES_COUNT(&value->header) + 
+               (nb_ack_failed *sizeof(int)) + 
+               (value->header.nb_new_dead * sizeof(int)) );
+        p = 0;
+        if( ERA_VALUE_BYTES_COUNT(&value->header) > 0 ) {
+            memcpy(msg.bytes + p, value->bytes, ERA_VALUE_BYTES_COUNT(&value->header));
+            p += ERA_VALUE_BYTES_COUNT(&value->header);
+        }
+        if( value->header.nb_new_dead > 0 ) {
+            memcpy(msg.bytes + p, value->new_dead_array, value->header.nb_new_dead * sizeof(int));
+            p += value->header.nb_new_dead * sizeof(int);
+        }
+        if( MSG_UP == type && nb_ack_failed > 0 ) {
+            memcpy(msg.bytes + p, ack_failed, nb_ack_failed * sizeof(int));
+            p += nb_ack_failed * sizeof(int);
+        }
+        iov[0].iov_len += p;
+    } else {
+        if( ERA_VALUE_BYTES_COUNT(&value->header) > 0 ) {
+            iov[niov].iov_base = value->bytes;
+            iov[niov].iov_len = ERA_VALUE_BYTES_COUNT(&value->header);
+            niov++;
+        }
+        if( value->header.nb_new_dead > 0 ) {
+            iov[niov].iov_base = value->new_dead_array;
+            iov[niov].iov_len  = value->header.nb_new_dead * sizeof(int);
+            niov++;
+        }
+        if( MSG_UP == type && nb_ack_failed > 0 ) {
+            iov[niov].iov_base = ack_failed;
+            iov[niov].iov_len  = nb_ack_failed * sizeof(int);
+            niov++;
+        }
     }
 
 #if OPAL_ENABLE_DEBUG
             {
                 char strbytes[64];
-                long unsigned int b;
-                char *sep = "";
+                long unsigned int w;
                 strbytes[0] = '\0';
-                for(b = 0; 
-                    b < ERA_VALUE_BYTES_COUNT(&value->header) + value->header.nb_new_dead * sizeof(int) + nb_ack_failed * sizeof(int)
-                        && strlen(strbytes) < 63; b++) {
-                    if( b == ERA_VALUE_BYTES_COUNT(&value->header) ) {
-                        snprintf(strbytes + strlen(strbytes), 64-strlen(strbytes), "|");
-                        sep="";
+
+                i = 0;
+                w = 0;
+                b = sizeof(era_msg_t) - sizeof(msg.bytes);
+                do {
+                    if(b == iov[i].iov_len) {
+                        i++;
+                        if( i == niov )
+                            break;
+                        b = 0;
                     }
-                    if( b == ERA_VALUE_BYTES_COUNT(&value->header) + value->header.nb_new_dead * sizeof(int) ) {
-                        snprintf(strbytes + strlen(strbytes), 64-strlen(strbytes), "|");
-                        sep="";
-                    }
-                    snprintf(strbytes + strlen(strbytes), 64-strlen(strbytes), "%s0x%02x", sep, msg->bytes[b]);
-                    sep=" ";
-                }
+                    w += snprintf(strbytes + strlen(strbytes), 64 - strlen(strbytes), "%02x ", ((uint8_t*)iov[i].iov_base)[b]);
+                    b++;
+                } while(w < 64);
                 if( strlen(strbytes) >= 60 ) {
                     sprintf(strbytes + 60, "...");
                 }
 
                 OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
-                                     "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d/%d..] to %d/%s: %d bytes = %s\n",
+                                     "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d/%d..] to %d/%s: %d bytes including header = %s\n",
                                      ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                                      agreement_id.ERAID_FIELDS.contextid,
                                      agreement_id.ERAID_FIELDS.epoch,
@@ -1408,7 +1436,7 @@ static void send_msg(ompi_communicator_t *comm,
                                      *(int*)value->bytes,
                                      value->header.ret,
                                      value->header.nb_new_dead,
-                                     msg->nb_ack,
+                                     msg.nb_ack,
                                      dst,
                                      NULL != proc_name ? ORTE_NAME_PRINT(proc_name) : "(null)",
                                      to_send,
@@ -1418,6 +1446,8 @@ static void send_msg(ompi_communicator_t *comm,
 
     sent    = 0;
     my_seqnum = msg_seqnum++;
+    i = 0;
+    b = 0;
     while( sent < to_send ) {
         /** Try to send everything in one go */
         des = btl->btl_alloc(btl, btl_endpoint, MCA_BTL_NO_ORDER, sizeof(era_frag_t) - 1 + to_send - sent,
@@ -1433,13 +1463,24 @@ static void send_msg(ompi_communicator_t *comm,
         frag->frag_offset = sent;
         frag->frag_len    = payload_size;
         frag->msg_len     = to_send;
-        memcpy(frag->bytes, ( (char*)msg ) + sent, payload_size);
+        copied = 0;
+        while( copied < payload_size ) {
+            if( payload_size - copied <= iov[i].iov_len - b )
+                tocopy = payload_size - copied;
+            else
+                tocopy = iov[i].iov_len - b;
+            memcpy(frag->bytes + copied, ((uint8_t*)iov[i].iov_base) + b, tocopy);
+            b += tocopy;
+            if( b == iov[i].iov_len ) {
+                assert(i+1 < niov || copied + tocopy == payload_size);
+                i++;
+                b = 0;
+            }
+            copied += tocopy;
+        }
         btl->btl_send(btl, btl_endpoint, des, MCA_BTL_TAG_FT_AGREE);
         sent += payload_size;
     }
-
-    if( msg != &_msg )
-        free(msg);
 }
 
 static void result_request(era_msg_t *msg)
@@ -1724,7 +1765,7 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
         memcpy( ((char*)msg) + frag->frag_offset,
                 frag->bytes,
                 frag->frag_len );
-        incomplete_msg->bytes_received += frag->bytes;
+        incomplete_msg->bytes_received += frag->frag_len;
 
         /** We receive the messages in order */
         if( incomplete_msg->bytes_received == frag->msg_len ) {
