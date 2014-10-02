@@ -34,6 +34,12 @@
 
 #include MCA_timer_IMPLEMENTATION_HEADER
 
+/** Symbol can be found, based on name, using dlopen / dlsym
+ *  Set to 1 to allow for the agreement to fail with probability in some critical 
+ *  spots
+ */
+int coll_ftbasic_debug_rank_may_fail = 0;
+
 /*************************************
  * Local Functions
  *************************************/

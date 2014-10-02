@@ -34,7 +34,7 @@ int main(int argc, char *argv[])
     int common, flag, ret;
     unsigned int seed = 1789;
     int ag_nb = 0;
-    int *coll_ftbasic_era_debug_rank_may_fail;
+    int *coll_ftbasic_debug_rank_may_fail;
 
     int verbose = 1;
     int de_sync = 0;
@@ -96,10 +96,10 @@ int main(int argc, char *argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     handle = dlopen(NULL, RTLD_LAZY|RTLD_LOCAL);
-    coll_ftbasic_era_debug_rank_may_fail = dlsym(handle, "coll_ftbasic_era_debug_rank_may_fail");
+    coll_ftbasic_debug_rank_may_fail = dlsym(handle, "coll_ftbasic_debug_rank_may_fail");
     dlclose(handle);
-    if( NULL == coll_ftbasic_era_debug_rank_may_fail ) {
-        fprintf(stderr, "Could not find Open MPI internal symbol coll_ftbasic_era_debug_rank_may_fail. Resort to simple raise(SIGKILL) type of failure\n");
+    if( NULL == coll_ftbasic_debug_rank_may_fail ) {
+        fprintf(stderr, "Could not find Open MPI internal symbol coll_ftbasic_debug_rank_may_fail. Resort to simple raise(SIGKILL) type of failure\n");
     }
 
     if( NULL != help_msg ) {
@@ -131,11 +131,11 @@ int main(int argc, char *argv[])
     ag_nb = 0;
     do {
         if( rand() % 10 < 5 ) {
-            if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
+            if( NULL != coll_ftbasic_debug_rank_may_fail ) {
                 if( verbose ) {
                     fprintf(stderr, "Rank %d/%d may fail during Agreements starting with %d (and until they return 0)\n", rank, size, ag_nb);
                 }
-                *coll_ftbasic_era_debug_rank_may_fail = 1;
+                *coll_ftbasic_debug_rank_may_fail = 1;
             } else {
                 if( verbose ) {
                     fprintf(stderr, "Rank %d/%d fails before round %d\n", rank, size, ag_nb);
@@ -143,8 +143,8 @@ int main(int argc, char *argv[])
                 raise(SIGKILL);
             }
         } else {
-            if( NULL != coll_ftbasic_era_debug_rank_may_fail ) {
-                *coll_ftbasic_era_debug_rank_may_fail = 0;
+            if( NULL != coll_ftbasic_debug_rank_may_fail ) {
+                *coll_ftbasic_debug_rank_may_fail = 0;
             }
         }
 
