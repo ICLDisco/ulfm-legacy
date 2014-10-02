@@ -37,7 +37,7 @@ static opal_hash_table_t era_incomplete_messages;
 static ompi_comm_rank_failure_callback_t *ompi_stacked_rank_failure_callback_fct = NULL;
 static uint64_t msg_seqnum = 1;
 
-int coll_ftbasic_era_debug_rank_may_fail;
+extern int coll_ftbasic_debug_rank_may_fail;
 
 typedef enum {
     MSG_UP = 1,
@@ -1267,7 +1267,7 @@ static void send_msg(ompi_communicator_t *comm,
 
 #if defined(PROGRESS_FAILURE_PROB)
 #pragma message("Hard coded probability of failure inside the agreement")
-    if( coll_ftbasic_era_debug_rank_may_fail &&
+    if( coll_ftbasic_debug_rank_may_fail &&
         (double)rand() / (double)RAND_MAX < PROGRESS_FAILURE_PROB ) {
         OPAL_OUTPUT_VERBOSE((0, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) Killing myself just before sending message [(%d.%d).%d, %s, %08x.%d.%d..] to %d/%s\n",
@@ -1779,7 +1779,7 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
 
 #if defined(PROGRESS_FAILURE_PROB)
 #pragma message("Hard coded probability of failure inside the agreement")
-    if( coll_ftbasic_era_debug_rank_may_fail &&
+    if( coll_ftbasic_debug_rank_may_fail &&
         (double)rand() / (double)RAND_MAX < PROGRESS_FAILURE_PROB ) {
         OPAL_OUTPUT_VERBOSE((0, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) Killing myself just before receiving message [(%d.%d).%d, %d, %08x.%d.%d...] from %d/%s\n",
@@ -2036,7 +2036,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
 
 #if defined(PROGRESS_FAILURE_PROB)
 #pragma message("Hard coded probability of failure inside the agreement")
-    if( coll_ftbasic_era_debug_rank_may_fail &&
+    if( coll_ftbasic_debug_rank_may_fail &&
         (double)rand() / (double)RAND_MAX < PROGRESS_FAILURE_PROB ) {
         OPAL_OUTPUT_VERBOSE((0, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) Killing myself just before entering the agreement (%d.%d).%d\n",

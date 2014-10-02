@@ -25,6 +25,10 @@
 #include MCA_timer_IMPLEMENTATION_HEADER
 #include "coll_ftbasic.h"
 
+#if OPAL_ENABLE_DEBUG
+#define PROGRESS_FAILURE_PROB 0.05
+extern int coll_ftbasic_debug_rank_may_fail;
+#endif
 
 /**
  * This Agreement implements the protocol proposed in
@@ -129,6 +133,19 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
          */
         nr = 0;
         for(i = 0; i < np; i++) {
+
+#if defined(PROGRESS_FAILURE_PROB)
+#pragma message("Hard coded probability of failure inside the agreement")
+            if( coll_ftbasic_debug_rank_may_fail &&
+                (double)rand() / (double)RAND_MAX < PROGRESS_FAILURE_PROB ) {
+                OPAL_OUTPUT_VERBOSE((0, ompi_ftmpi_output_handle,
+                                     "%s ftbasic:agreement (ETA) Killing myself just before posting message reception to/from %d\n",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
+                                     i));
+                raise(SIGKILL);
+            }
+#endif
+
             if( NEED_TO_RECV(i) ) {
                 /* Need to know more about this guy */
                 MCA_PML_CALL(irecv(((char*)in) + (i*msg_size), msg_size, MPI_BYTE, 
@@ -164,7 +181,29 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                  "%s ftbasic:agreement (ETA) Entering waitall(%d)\n",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), nr));
 
+#if defined(PROGRESS_FAILURE_PROB)
+#pragma message("Hard coded probability of failure inside the agreement")
+            if( coll_ftbasic_debug_rank_may_fail &&
+                (double)rand() / (double)RAND_MAX < PROGRESS_FAILURE_PROB ) {
+                OPAL_OUTPUT_VERBOSE((0, ompi_ftmpi_output_handle,
+                                     "%s ftbasic:agreement (ETA) Killing myself just before waitall\n",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+                raise(SIGKILL);
+            }
+#endif
+
             rc = ompi_request_wait_all(nr, reqs, statuses);
+
+#if defined(PROGRESS_FAILURE_PROB)
+#pragma message("Hard coded probability of failure inside the agreement")
+            if( coll_ftbasic_debug_rank_may_fail &&
+                (double)rand() / (double)RAND_MAX < PROGRESS_FAILURE_PROB ) {
+                OPAL_OUTPUT_VERBOSE((0, ompi_ftmpi_output_handle,
+                                     "%s ftbasic:agreement (ETA) Killing myself just after waitall\n",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
+                raise(SIGKILL);
+            }
+#endif
 
             /**< If we need to re-wait on some requests, we're going to pack them at index nr */
             nr = 0;
