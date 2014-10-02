@@ -1997,7 +1997,10 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
 
 int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
                                          ompi_group_t **group,
-                                         int *flag,
+                                         ompi_op_t *op,
+                                         ompi_datatype_t *dt,
+                                         int dt_count,
+                                         void *contrib,
                                          mca_coll_base_module_t *module)
 {
     era_agreement_info_t *ci;
@@ -2048,9 +2051,9 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     OBJ_CONSTRUCT(&agreement_value, era_value_t);
 
     agreement_value.header.ret         = 0;
-    agreement_value.header.operand     = ompi_mpi_op_band.op.o_f_to_c_index;
-    agreement_value.header.dt_count    = 1;
-    agreement_value.header.datatype    = ompi_mpi_int.dt.id;
+    agreement_value.header.operand     = op->o_f_to_c_index;
+    agreement_value.header.dt_count    = dt_count;
+    agreement_value.header.datatype    = dt->id;
     agreement_value.header.nb_new_dead = 0;
 
     /* Let's create or find the current value */
@@ -2077,7 +2080,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
 
     /* I participate */
     assert( ERA_VALUE_BYTES_COUNT(&agreement_value.header) == sizeof(int) );
-    agreement_value.bytes = (uint8_t*)flag;
+    agreement_value.bytes = (uint8_t*)contrib;
 
     era_combine_agreement_values(ci, &agreement_value);
     
@@ -2101,7 +2104,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
         }
     } 
     
-    *flag = *(int*)av->bytes;
+    memcpy(contrib, av->bytes, ERA_VALUE_BYTES_COUNT(&av->header));
     ret = av->header.ret;
 
     /* We leave av in the era_passe_agreeements table, to answer future requests
@@ -2116,13 +2119,13 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_debug_print_group(1, *group, comm, "After Agreement");
 
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) Leaving Agreement ID = (%d.%d).%d with %d.%d\n",
+                         "%s ftbasic:agreement (ERA) Leaving Agreement ID = (%d.%d).%d with ret = %d, 4 first bytes of flag = 0x%08x\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                          agreement_id.ERAID_FIELDS.contextid,
                          agreement_id.ERAID_FIELDS.epoch,
                          agreement_id.ERAID_FIELDS.agreementid,
-                         *flag,
-                         ret));
+                         ret,
+                         *(int*)contrib));
 
     return ret;
 }

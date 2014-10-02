@@ -17,6 +17,7 @@
 #include "mpi.h"
 #include "ompi/constants.h"
 #include "ompi/datatype/ompi_datatype.h"
+#include "ompi/datatype/ompi_datatype_internal.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/pml.h"
@@ -44,9 +45,9 @@
 #define STATUS_RECV_COMPLETE     (1<<5)
 
 typedef struct {
-    int est;
     int knows;
     int pf;
+    char est_value[4];
 } ftbasic_eta_agreement_msg_t;
 
 #define FTBASIC_ETA_TAG_AGREEMENT MCA_COLL_BASE_TAG_AGREEMENT
@@ -62,10 +63,14 @@ typedef struct {
 int
 mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                      ompi_group_t **group,
-                                     int *flag,
+                                     ompi_op_t *op,
+                                     ompi_datatype_t *dt,
+                                     int dt_count,
+                                     void *contrib,
                                      mca_coll_base_module_t *module)
 {
-    ftbasic_eta_agreement_msg_t out, *in;
+    ftbasic_eta_agreement_msg_t *out, *in;
+    size_t msg_size;
     int *proc_status; /**< char would be enough, but we use the same area to build the group of dead processes at the end */
     ompi_request_t **reqs;
     MPI_Status *statuses;
@@ -74,15 +79,23 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     np = ompi_comm_size(comm);
     me = ompi_comm_rank(comm);
     proc_status = (int *)calloc( np, sizeof(int) );
+
+    msg_size = sizeof(ftbasic_eta_agreement_msg_t) - 4 + dt_count * ompi_datatype_basicDatatypes[dt->id]->super.size;
+
     /* This should go in the module query, and a module member should be used here */
     reqs = (ompi_request_t **)calloc( 2 * np, sizeof(ompi_request_t *) ); /** < Need to calloc or set to MPI_REQUEST_NULL to ensure cleanup in all cases. */
     statuses = (MPI_Status*)malloc( 2 * np * sizeof(MPI_Status) );
-    in = (ftbasic_eta_agreement_msg_t*)calloc( np, sizeof(ftbasic_eta_agreement_msg_t) );
+    in = (ftbasic_eta_agreement_msg_t*)calloc( np, msg_size );
+    out = (ftbasic_eta_agreement_msg_t*)malloc( msg_size );
 
-    out.est = *flag;
-    out.knows = 0;
-    out.pf = 0;
+    memcpy(out->est_value, contrib, dt_count * ompi_datatype_basicDatatypes[dt->id]->super.size);
+    out->knows = 0;
+    out->pf = 0;
     round = 1;
+
+    OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ETA) Starting Agreement with message size of %lu bytes (%lu bytes for the agreement value)\n",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), msg_size, dt_count * ompi_datatype_basicDatatypes[dt->id]->super.size));
 
     { /* ignore acked failures (add them later to the result) */
         ompi_group_t* ackedgrp = NULL; int npa; int *aranks, *cranks;
@@ -111,8 +124,6 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                              "%s ftbasic:agreement (ETA) Starting Round %d\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), round));
 
-        *flag = out.est;
-
         /**
          * Post all the requests, first the receives and then the sends.
          */
@@ -120,7 +131,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
         for(i = 0; i < np; i++) {
             if( NEED_TO_RECV(i) ) {
                 /* Need to know more about this guy */
-                MCA_PML_CALL(irecv(&in[i], 3, MPI_INT, 
+                MCA_PML_CALL(irecv(((char*)in) + (i*msg_size), msg_size, MPI_BYTE, 
                                    i, FTBASIC_ETA_TAG_AGREEMENT, comm, 
                                    &reqs[nr++]));
                 proc_status[i] &= ~STATUS_RECV_COMPLETE;
@@ -132,7 +143,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
             }
             if( NEED_TO_SEND(i) ) {
                 /* Need to communicate with this guy */
-                MCA_PML_CALL(isend(&out, 3, MPI_INT, 
+                MCA_PML_CALL(isend(out, msg_size, MPI_BYTE, 
                                    i, FTBASIC_ETA_TAG_AGREEMENT, 
                                    MCA_PML_BASE_SEND_STANDARD, comm, 
                                    &reqs[nr++]));
@@ -173,9 +184,10 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                         assert(MPI_REQUEST_NULL == reqs[ri]);
 
                         /* Implements the binary and of answers */
-                        out.est &= in[i].est;
+                        ompi_op_reduce(op, in[i].est_value, out->est_value, dt_count, dt);
+
                         /* Implements the logical or of ERR_PROC_FAILED returns */
-                        out.pf |= in[i].pf;
+                        out->pf |= in[i].pf;
                         proc_status[i] |= ( (in[i].knows * STATUS_TOLD_ME_HE_KNOWS) | STATUS_RECV_COMPLETE);
                         nbrecv++;
 
@@ -189,7 +201,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                             OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                                                  "%s ftbasic:agreement (ETA) recv with rank %d failed on request at index %d(%p). Mark it as dead!",
                                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, (void*)reqs[ri]));
-                            out.pf = 1;
+                            out->pf = 1;
 /* per spec this should already be completed; TODO remove of proven correct */
                             /* Release the request, it can't be subsequently completed */
                             if(MPI_REQUEST_NULL != reqs[ri])
@@ -217,7 +229,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                 if( !(proc_status[i] & STATUS_SEND_COMPLETE) ) {
                     if( (rc == MPI_SUCCESS) || (MPI_SUCCESS == statuses[ri].MPI_ERROR) ) {
                         assert(MPI_REQUEST_NULL == reqs[ri]);
-                        proc_status[i] |= ((out.knows * STATUS_KNOWS_I_KNOW) | STATUS_SEND_COMPLETE);
+                        proc_status[i] |= ((out->knows * STATUS_KNOWS_I_KNOW) | STATUS_SEND_COMPLETE);
 
                         OPAL_OUTPUT_VERBOSE((100, ompi_ftmpi_output_handle,
                                              "%s ftbasic:agreement (ETA) Request %d(%p) for send of rank %d is completed.\n",
@@ -230,7 +242,7 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                             OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                                                  "%s ftbasic:agreement (ETA) send with rank %d failed on Request %d(%p). Mark it as dead!",
                                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), i, ri, (void*)reqs[ri]));
-                            out.pf = 1;
+                            out->pf = 1;
 /* per spec this should already be completed; TODO understand why not */
                             /* Release the request, it can't be subsequently completed */
                             if(MPI_REQUEST_NULL != reqs[ri])
@@ -274,13 +286,13 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
         OPAL_OUTPUT_VERBOSE((50, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ETA) end of Round %d: nbcrashed = %d, nbknow = %d, nbrecv = %d. out.knows = %d\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             round, nbcrashed, nbknow, nbrecv, out.knows));
+                             round, nbcrashed, nbknow, nbrecv, out->knows));
         
-        if( (nbknow + nbcrashed >= np - 1) && (out.knows == 1) ) {
+        if( (nbknow + nbcrashed >= np - 1) && (out->knows == 1) ) {
             break;
         }
 
-        out.knows = (nbknow > 0) || (nbrecv >= np - round + 1);
+        out->knows = (nbknow > 0) || (nbrecv >= np - round + 1);
         round++;
     }
 
@@ -309,11 +321,15 @@ mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
     }
     free(proc_status);
 
-    if( (MPI_SUCCESS == ret) && out.pf )
+    if( (MPI_SUCCESS == ret) && out->pf )
         ret = MPI_ERR_PROC_FAILED;
+
+    memcpy(contrib, out->est_value, dt_count * ompi_datatype_basicDatatypes[dt->id]->super.size);
+    free(out);
+
     OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ETA) return %d with flag %d and dead group with %d processes",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret, *flag,
+                         "%s ftbasic:agreement (ETA) return %d with 4 first bytes of result 0x%08x and dead group with %d processes",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ret, *(int*)contrib,
                          (NULL == group) ? 0 : (*group)->grp_proc_count));
     return ret;
 }

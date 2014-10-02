@@ -282,6 +282,7 @@ int mca_coll_ftbasic_agreement_init(ompi_communicator_t *comm, mca_coll_ftbasic_
     }
 
     switch( mca_coll_ftbasic_cur_agreement_method ) {
+#if 0
     case COLL_FTBASIC_ALLREDUCE:
         mca_coll_ftbasic_agreement_allreduce_init(module);
         break;
@@ -291,6 +292,7 @@ int mca_coll_ftbasic_agreement_init(ompi_communicator_t *comm, mca_coll_ftbasic_
     case COLL_FTBASIC_LOG_TWO_PHASE:
         mca_coll_ftbasic_agreement_log_two_phase_init(module);
         break;
+#endif
     case COLL_FTBASIC_EARLY_RETURNING:
         mca_coll_ftbasic_agreement_era_comm_init(comm, module);
         break;
@@ -337,6 +339,7 @@ int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module)
 #endif /* AGREEMENT_ENABLE_TIMING */
 
     switch( mca_coll_ftbasic_cur_agreement_method ) {
+#if 0
     case COLL_FTBASIC_ALLREDUCE:
         mca_coll_ftbasic_agreement_allreduce_finalize(module);
         break;
@@ -346,6 +349,7 @@ int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module)
     case COLL_FTBASIC_LOG_TWO_PHASE:
         mca_coll_ftbasic_agreement_log_two_phase_finalize(module);
         break;
+#endif
     case COLL_FTBASIC_EARLY_RETURNING:
         mca_coll_ftbasic_agreement_era_comm_finalize(module);
         break;
@@ -422,8 +426,8 @@ static int coll_ftbasic_agreement_base_setup_common(ompi_communicator_t* comm,
         ftbasic_module->agreement_info->fail_bitmap = OBJ_NEW(opal_bitmap_t);
         opal_bitmap_init(ftbasic_module->agreement_info->fail_bitmap,
                          ompi_comm_size(comm) + FTBASIC_AGREEMENT_EXTRA_BITS );
-
         switch( mca_coll_ftbasic_cur_agreement_method ) {
+#if 0
         case COLL_FTBASIC_ALLREDUCE:
         case COLL_FTBASIC_TWO_PHASE:
             opal_bitmap_copy(ftbasic_module->agreement_info->fail_bitmap, local_bitmap);
@@ -431,6 +435,7 @@ static int coll_ftbasic_agreement_base_setup_common(ompi_communicator_t* comm,
         case COLL_FTBASIC_LOG_TWO_PHASE:
             mca_coll_ftbasic_agreement_log_two_phase_refresh_tree(local_bitmap, comm, ftbasic_module);
             break;
+#endif
         default:
             break;
         }
@@ -802,6 +807,7 @@ static int coll_ftbasic_agreement_base_finish_common(ompi_communicator_t* comm,
          * structures.
          ************************************************/
         switch( mca_coll_ftbasic_cur_agreement_method ) {
+#if 0
         case COLL_FTBASIC_ALLREDUCE:
         case COLL_FTBASIC_TWO_PHASE:
             opal_bitmap_copy(ftbasic_module->agreement_info->fail_bitmap, local_bitmap);
@@ -809,6 +815,7 @@ static int coll_ftbasic_agreement_base_finish_common(ompi_communicator_t* comm,
         case COLL_FTBASIC_LOG_TWO_PHASE:
             mca_coll_ftbasic_agreement_log_two_phase_refresh_tree(local_bitmap, comm, ftbasic_module);
             break;
+#endif
         default:
             break;
         }
@@ -1209,6 +1216,7 @@ void agreement_display_all_timers(void) {
                 "Summary");
 
     for( i = 0; i < COLL_FTBASIC_AGREEMENT_TIMER_MAX; ++i) {
+#if 0
         /* If not two phase, then skip these timers */
         if( COLL_FTBASIC_TWO_PHASE != mca_coll_ftbasic_cur_agreement_method &&
             COLL_FTBASIC_LOG_TWO_PHASE != mca_coll_ftbasic_cur_agreement_method ) {
@@ -1229,7 +1237,9 @@ void agreement_display_all_timers(void) {
                 continue;
             }
         }
-
+#else
+        continue;
+#endif
         diff = (timer_end[i] - timer_start[i])*1000000.0;
         opal_output(0,
                     "coll:ftbasic: timing(%20s): %20s = %10.2f us\n",

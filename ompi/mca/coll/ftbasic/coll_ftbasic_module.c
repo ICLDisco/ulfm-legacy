@@ -129,6 +129,7 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
 
         /* Choose the correct operations */
         switch( mca_coll_ftbasic_cur_agreement_method ) {
+            /** TODO
         case COLL_FTBASIC_ALLREDUCE:
             ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_allreduce;
             ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_allreduce;
@@ -141,12 +142,13 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
             ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_log_two_phase;
             ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_log_two_phase;
             break;
-        case COLL_FTBASIC_EARLY_RETURNING:
-            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_intra;
+            */
+        case COLL_FTBASIC_EARLY_TERMINATION:
+            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_eta_intra;
             ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
             break;
-        default:
-            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_eta_intra;
+        default: /* Manages the COLL_FTBASIC_EARLY_RETURNING as default case too */
+            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_intra;
             ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
             break;
         }

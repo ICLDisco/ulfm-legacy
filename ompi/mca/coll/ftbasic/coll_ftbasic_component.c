@@ -47,7 +47,7 @@ const char *mca_coll_ftbasic_component_version_string =
  */
 int mca_coll_ftbasic_priority  = 0;
 int mca_coll_ftbasic_crossover = 4;
-mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_TERMINATION;
+mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_RETURNING;
 bool mca_coll_ftbasic_use_agreement_timer = false;
 bool mca_coll_ftbasic_agreement_use_progress = true;
 int mca_coll_ftbasic_agreement_log_max_len = 2;
@@ -97,7 +97,7 @@ const mca_coll_base_component_2_0_0_t mca_coll_ftbasic_component = {
 static int
 ftbasic_close(void)
 {
-    if( mca_coll_ftbasic_cur_agreement_method ==  COLL_FTBASIC_EARLY_TERMINATION ) {
+    if( mca_coll_ftbasic_cur_agreement_method ==  COLL_FTBASIC_EARLY_RETURNING ) {
         return mca_coll_ftbasic_agreement_era_finalize();
     }
     return OMPI_SUCCESS;
@@ -139,6 +139,7 @@ ftbasic_register(void)
                            mca_coll_ftbasic_cur_agreement_method,
                            &value);
     switch(value) {
+#if 0
     case 0:
         mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_ALLREDUCE;
         opal_output_verbose(6, ompi_ftmpi_output_handle,
@@ -157,16 +158,17 @@ ftbasic_register(void)
                             "%s ftbasic:register) Agreement Algorithm - Log Two-Phase Commit",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
         break;
-    case 4:
-        mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_RETURNING;
-        opal_output_verbose(6, ompi_ftmpi_output_handle,
-                            "%s ftbasic:register) Agreement Algorithm - Early Returning Consensus Algorithm",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
-        break;
-    default:  /* Includes the valid case 3 */
+#endif
+    case 3:
         mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_TERMINATION;
         opal_output_verbose(6, ompi_ftmpi_output_handle,
                             "%s ftbasic:register) Agreement Algorithm - Early Terminating Consensus Algorithm",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
+        break;
+    default:  /* Includes the valid case 4 */
+        mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_RETURNING;
+        opal_output_verbose(6, ompi_ftmpi_output_handle,
+                            "%s ftbasic:register) Agreement Algorithm - Early Returning Consensus Algorithm",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
         break;
     }
