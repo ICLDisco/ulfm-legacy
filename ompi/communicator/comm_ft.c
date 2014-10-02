@@ -152,6 +152,9 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
          */
         ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
                                            &failed_group,
+                                           &ompi_mpi_op_band.op,
+                                           &ompi_mpi_int.dt,
+                                           1,
                                            &flag,
                                            comm->c_coll.coll_agreement_module);
     } while( MPI_ERR_PROC_FAILED == ret );
@@ -293,6 +296,9 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
      */
     ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
                                        &failed_group,
+                                       &ompi_mpi_op_band.op,
+                                       &ompi_mpi_int.dt,
+                                       1,
                                        &flag,
                                        comm->c_coll.coll_agreement_module);
     if( OMPI_SUCCESS != ret && MPI_ERR_PROC_FAILED != ret ) {
