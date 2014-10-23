@@ -138,7 +138,9 @@ search_for_apstat:
         or something like this (for the new versions):
         Apid ResId    User PEs Nodes   Age State     Command
         39751570  2446 kbferre 128     8 0h08m   run CNS.allprof
-         */
+         TODO: discriminate the new/old version better, some lines 
+         w/o A also have ResiD first in some versions
+        */
                 char *t = read_buf;
                 for(; ' ' == *t; t++);  /* trim the \s */
                 if( 'A' == *t ) {
@@ -146,8 +148,8 @@ search_for_apstat:
                         jid = strtoul(t, NULL, 10);
                     }
                 } else {
-                    for(; isdigit(*t); ++t);  /* skip the first number */
-                    for(; ' ' == *t; t++);  /* skip the \s */
+             //       for(; isdigit(*t); ++t);  /* skip the first number */
+             //       for(; ' ' == *t; t++);  /* skip the \s */
                     jid = strtoul(t, NULL, 10);
                 }
                 /* if we are here, then jid should be, given the example above,
