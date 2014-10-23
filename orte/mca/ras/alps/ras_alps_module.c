@@ -71,6 +71,7 @@ static int parser_separated_columns(char **val_if_found, FILE *fp,
 static const orte_ras_alps_sysconfig_t sysconfigs[] = {
     {"/etc/sysconfig/alps", "ALPS_SHARED_DIR_PATH", parser_ini},
     {"/etc/alps.conf"     , "sharedDir"           , parser_separated_columns},
+    {"/etc/opt/cray/alps/alps.conf", "sharedDir"  , parser_separated_columns},
     /* must be last element */
     {NULL                 , NULL                  , NULL}
 };

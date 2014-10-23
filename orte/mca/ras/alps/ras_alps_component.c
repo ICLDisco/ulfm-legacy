@@ -121,7 +121,7 @@ search_for_apstat:
             free(prepped_jid);
             return 0;
         }
-        apstat_cmd = opal_asprintf(&apstat_cmd, "%s -r", mca_ras_alps_apstat_cmd[apstat_idx]);
+        opal_asprintf(&apstat_cmd, "%s -r", mca_ras_alps_apstat_cmd[apstat_idx]);
         if (NULL == (apstat_fp = popen(apstat_cmd, "r"))) {
             /* popen failure */
             opal_output_verbose(1, orte_ras_base.ras_output,
