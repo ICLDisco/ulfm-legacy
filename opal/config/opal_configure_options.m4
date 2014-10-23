@@ -662,4 +662,19 @@ AM_CONDITIONAL([OPAL_cuda_support_41], [test "x$CUDA_SUPPORT_41" = "x1"])
 AC_DEFINE_UNQUOTED([OPAL_CUDA_SUPPORT_41],$CUDA_SUPPORT_41,
                    [Whether we have CUDA 4.1 support available])
 
+# some systems don't want/like getpwuid
+AC_MSG_CHECKING([if want getpwuid support])
+AC_ARG_ENABLE([getpwuid],
+    [AC_HELP_STRING([--disable-getpwuid],
+        [Disable getpwuid support (default: enabled)])])
+if test "$enable_getpwuid" = "no"; then
+    AC_MSG_RESULT([no])
+    opal_want_getpwuid=0
+else
+    AC_MSG_RESULT([yes])
+    opal_want_getpwuid=1
+fi
+AC_DEFINE_UNQUOTED([OPAL_ENABLE_GETPWUID], [$opal_want_getpwuid],
+                   [Disable getpwuid support (default: enabled)])
+    
 ])dnl

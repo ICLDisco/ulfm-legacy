@@ -133,7 +133,6 @@ orte_session_dir_get_name(char **fulldirpath,
     size_t len;
 #ifndef __WINDOWS__
     int uid;
-	struct passwd *pwdent;
 #else
 #define INFO_BUF_SIZE 256
     TCHAR info_buf[INFO_BUF_SIZE];
@@ -143,17 +142,23 @@ orte_session_dir_get_name(char **fulldirpath,
     /* Ensure that system info is set */
     orte_proc_info();
 
-     /* get the name of the user */
 #ifndef __WINDOWS__
     uid = getuid();
+#if OPAL_ENABLE_GETPWUID
+    {
+        struct passwd *pwdent;
+        /* get the name of the user */
 #ifdef HAVE_GETPWUID
-    pwdent = getpwuid(uid);
+        pwdent = getpwuid(uid);
 #else
-    pwdent = NULL;
+        pwdent = NULL;
 #endif
-    if (NULL != pwdent) {
-        user = strdup(pwdent->pw_name);
-    } else {
+        if (NULL != pwdent) {
+            user = strdup(pwdent->pw_name);
+        } 
+    }
+#endif        
+    if (NULL == user) {    
         if (0 > asprintf(&user, "%d", uid)) {
             return ORTE_ERR_OUT_OF_RESOURCE;
         }
@@ -269,7 +274,7 @@ orte_session_dir_get_name(char **fulldirpath,
         }
         
     }    /* If we were not given a proc at all, then we just set it to frontend
-     */
+          */
     else {
         sessions = strdup(frontend); /* must dup this to avoid double-free later */
     }
