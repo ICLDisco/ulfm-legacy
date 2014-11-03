@@ -42,4 +42,7 @@ EXTRA_DIST += \
         examples/ring_f90.f90 \
         examples/connectivity_c.c \
 	examples/Hello.java \
-	examples/Ring.java
+	examples/Ring.java  \
+    examples/simpleagree.c \
+    examples/agree.c \
+    examples/agree4ever.c
