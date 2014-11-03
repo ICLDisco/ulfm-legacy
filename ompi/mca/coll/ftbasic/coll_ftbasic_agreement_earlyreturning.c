@@ -599,31 +599,12 @@ static void era_agreement_value_set_gcrange(era_identifier_t eid, era_value_t *e
             era_identifier_t pid;
             pid.ERAID_KEY = key64;
 
-            OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
-                                 "%s ftbasic:agreement (ERA) GC: agreement (%d.%d).%d: Considering Key of(%d.%d).%d\n",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                 eid.ERAID_FIELDS.contextid,
-                                 eid.ERAID_FIELDS.epoch,                         
-                                 eid.ERAID_FIELDS.agreementid,
-                                 pid.ERAID_FIELDS.contextid,
-                                 pid.ERAID_FIELDS.epoch,
-                                 pid.ERAID_FIELDS.agreementid));
-
             if( pid.ERAID_FIELDS.contextid == eid.ERAID_FIELDS.contextid &&
                 pid.ERAID_FIELDS.epoch     == eid.ERAID_FIELDS.epoch ) {
                 if( aid_list_pos == aid_list_size ) {
                     aid_list_size = aid_list_size > 0 ? 2*aid_list_size : 1;
                     aid_list = (uint16_t*)realloc(aid_list, aid_list_size * sizeof(uint16_t));
                 }
-                OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
-                                     "%s ftbasic:agreement (ERA) GC: agreement (%d.%d).%d: Adding %u at pos %d\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     eid.ERAID_FIELDS.contextid,
-                                     eid.ERAID_FIELDS.epoch,                         
-                                     eid.ERAID_FIELDS.agreementid,
-                                     pid.ERAID_FIELDS.agreementid,
-                                     aid_list_pos));
-
                 aid_list[aid_list_pos++] = pid.ERAID_FIELDS.agreementid;
             }
         } while( opal_hash_table_get_next_key_uint64(&era_passed_agreements,
@@ -640,7 +621,7 @@ static void era_agreement_value_set_gcrange(era_identifier_t eid, era_value_t *e
             free(aid_list);
         }
     }
-    OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
+    OPAL_OUTPUT_VERBOSE((17, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) GC: agreement (%d.%d).%d: agreements %u to %u have been locally acknowledged\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          eid.ERAID_FIELDS.contextid,
@@ -801,17 +782,6 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
         if( value->header.ret > ni->current_value->header.ret )
             ni->current_value->header.ret = value->header.ret;
 
-        OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) GC: agreement (%d.%d).%d: before combining with %u - %u, agreements %u to %u have been locally acknowledged\n",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             ni->agreement_id.ERAID_FIELDS.contextid,
-                             ni->agreement_id.ERAID_FIELDS.epoch,                         
-                             ni->agreement_id.ERAID_FIELDS.agreementid,
-                             value->header.min_aid,
-                             value->header.max_aid,
-                             ni->current_value->header.min_aid,
-                             ni->current_value->header.max_aid));
-
         if( value->header.min_aid > ni->current_value->header.min_aid )
             ni->current_value->header.min_aid = value->header.min_aid;
         if( value->header.max_aid < ni->current_value->header.max_aid )
@@ -967,6 +937,47 @@ static int era_next_child(era_agreement_info_t *ci, int prev_child)
 }
 #endif
 
+static void era_collect_passed_agreements(era_identifier_t agreement_id, uint16_t min_aid, uint16_t max_aid)
+{
+    void *value;
+    uint64_t key;
+    int r;
+
+    /* Garbage collect agreements that have been decided by all */
+    OPAL_OUTPUT_VERBOSE((17, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ERA) Agreement (%d.%d).%d: GC: Agreements %u to %u have been acknowledged by all and can be collected\n",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         agreement_id.ERAID_FIELDS.contextid,
+                         agreement_id.ERAID_FIELDS.epoch,                         
+                         agreement_id.ERAID_FIELDS.agreementid,
+                         min_aid,
+                         max_aid));
+    if( min_aid <= max_aid ) {
+        era_identifier_t pid;
+        pid.ERAID_FIELDS.contextid = agreement_id.ERAID_FIELDS.contextid;
+        pid.ERAID_FIELDS.epoch     = agreement_id.ERAID_FIELDS.epoch;
+        for(r = min_aid; r <= max_aid; r++) {
+            pid.ERAID_FIELDS.agreementid = r;
+            if( opal_hash_table_get_value_uint64(&era_passed_agreements, pid.ERAID_KEY, &value) == OMPI_SUCCESS ) {
+                era_value_t *av = (era_value_t*)value;
+                opal_hash_table_remove_value_uint64(&era_passed_agreements, pid.ERAID_KEY);
+                OBJ_RELEASE(av);
+                OPAL_OUTPUT_VERBOSE((17, ompi_ftmpi_output_handle,
+                                     "%s ftbasic:agreement (ERA) Agreement (%d.%d).%d: GC: collect agreement (%d.%d).%d\n",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     agreement_id.ERAID_FIELDS.contextid,
+                                     agreement_id.ERAID_FIELDS.epoch,
+                                     agreement_id.ERAID_FIELDS.agreementid,
+                                     pid.ERAID_FIELDS.contextid,
+                                     pid.ERAID_FIELDS.epoch,
+                                     pid.ERAID_FIELDS.agreementid));
+            } else {
+                assert(0);
+            }
+        }
+    }
+}
+
 static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 {
     ompi_communicator_t *comm;
@@ -1072,48 +1083,8 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
             send_msg(comm, rl->rank, NULL, ci->agreement_id, MSG_DOWN, decided_value, 0, NULL);
         }
     }
-
-    /* Garbage collect agreements that have been decided by all */
-    OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: GC: Agreements %u to %u have been acknowledged by all\n",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         *(int*)decided_value->bytes,
-                         decided_value->header.ret,
-                         decided_value->header.nb_new_dead,
-                         ci->agreement_id.ERAID_FIELDS.contextid,
-                         ci->agreement_id.ERAID_FIELDS.epoch,                         
-                         ci->agreement_id.ERAID_FIELDS.agreementid,
-                         decided_value->header.min_aid,
-                         decided_value->header.max_aid));
-    if( decided_value->header.min_aid <= decided_value->header.max_aid ) {
-        era_identifier_t pid;
-        pid.ERAID_FIELDS.contextid = ci->agreement_id.ERAID_FIELDS.contextid;
-        pid.ERAID_FIELDS.epoch     = ci->agreement_id.ERAID_FIELDS.epoch;
-        for(r = decided_value->header.min_aid;
-            r <= decided_value->header.max_aid;
-            r++) {
-            pid.ERAID_FIELDS.agreementid = r;
-            if( opal_hash_table_get_value_uint64(&era_passed_agreements, pid.ERAID_KEY, &value) == OMPI_SUCCESS ) {
-                era_value_t *av = (era_value_t*)value;
-                opal_hash_table_remove_value_uint64(&era_passed_agreements, pid.ERAID_KEY);
-                OBJ_RELEASE(av);
-                OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
-                                     "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: GC: collect agreement (%d.%d).%d\n",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     *(int*)decided_value->bytes,
-                                     decided_value->header.ret,
-                                     decided_value->header.nb_new_dead,
-                                     ci->agreement_id.ERAID_FIELDS.contextid,
-                                     ci->agreement_id.ERAID_FIELDS.epoch,
-                                     ci->agreement_id.ERAID_FIELDS.agreementid,
-                                     pid.ERAID_FIELDS.contextid,
-                                     pid.ERAID_FIELDS.epoch,
-                                     pid.ERAID_FIELDS.agreementid));
-            } else {
-                assert(0);
-            }
-        }
-    }
+    
+    era_collect_passed_agreements(ci->agreement_id, decided_value->header.min_aid, decided_value->header.max_aid);
 
     OBJ_RELEASE(ci); /* This will take care of the content of ci too */
 }
@@ -1532,7 +1503,7 @@ static void send_msg(ompi_communicator_t *comm,
         niov++;
     }
 
-    OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
+    OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d/%d..] to %d/%s: send %d bytes through iov (nb = %d, lens = %d,%d,%d,%d)\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                          agreement_id.ERAID_FIELDS.contextid,
@@ -1576,7 +1547,7 @@ static void send_msg(ompi_communicator_t *comm,
                     sprintf(strbytes + 252, "...");
                 }
 
-                OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
+                OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
                                      "%s ftbasic:agreement (ERA) send message [(%d.%d).%d, %s, %08x.%d.%d/%d..] to %d/%s: %d bytes including header = %s\n",
                                      ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                                      agreement_id.ERAID_FIELDS.contextid,
@@ -1680,12 +1651,46 @@ static void result_request(era_msg_header_t *msg_header)
             send_msg(ci->comm, r, NULL, ci->agreement_id, MSG_UP, ci->current_value, 
                      ci->nb_acked, ci->acked);
         } else {
-            /** Or, I have not started this agreement, or I have started this agreement, but a child
-             *  has not given me its contribution. So, I need to wait for it to send it to me, and
-             *  then I will send my UP message to the parent, so it can wait the normal step in 
-             *  the protocol
+            era_value_t success_value;
+            OBJ_CONSTRUCT(&success_value, era_value_t);
+            success_value.header.ret = MPI_SUCCESS;
+            success_value.header.dt_count = 0;
+            success_value.header.operand  = ompi_mpi_op_band.op.o_f_to_c_index;
+            success_value.header.datatype = ompi_mpi_int.dt.id;
+            success_value.header.nb_new_dead = 0;
+            success_value.bytes = NULL;
+            success_value.new_dead_array = NULL;
+
+            /** Could be an old agreement that I collected already.
+             *  If that is the case, the epoch requested should be <= the current epoch for
+             *  that contextid (modulo rotation on the epoch numbering), and then the
+             *  number of requested data must be 0, by convention on the last "flushing"
+             *  agreement that was posted during the free.
              */
-            return;
+            if( msg_header->agreement_value_header.dt_count == 0 ) {
+                uint16_t requested_cid = msg_header->agreement_id.ERAID_FIELDS.contextid;
+                void *location = opal_pointer_array_get_item(&ompi_mpi_comm_epoch, requested_cid);
+                uint32_t known_epoch = (uint32_t)((uintptr_t)location);
+#if OPAL_ENABLE_DEBUG
+                int64_t distance_betwheen_epochs = (int64_t)known_epoch - (int64_t)msg_header->agreement_id.ERAID_FIELDS.epoch;
+                if( distance_betwheen_epochs > 0 )
+                    assert(  distance_betwheen_epochs < (1LL<<31) );
+                else
+                    assert( -distance_betwheen_epochs < (1LL<<31) );
+#endif
+                /** Then, the answer is "success" */
+                send_msg(NULL, msg_header->src_comm_rank, &msg_header->src_proc_name, msg_header->agreement_id, 
+                         MSG_DOWN, &success_value, 0, NULL);
+
+                OBJ_DESTRUCT(&success_value);
+            } else {
+                /** Or, I have not started this agreement, or I have started this agreement, but a child
+                 *  has not given me its contribution. So, I need to wait for it to send it to me, and
+                 *  then I will send my UP message to the parent, so it can wait the normal step in 
+                 *  the protocol
+                 */
+                return;
+            }
         }
     }
 }
@@ -2102,12 +2107,25 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Finalizing\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
-
+    OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ERA) GC: %d passed agreements remain in the passed agreements hash table\n",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         opal_hash_table_get_size(&era_passed_agreements)));
     if( opal_hash_table_get_first_key_uint64(&era_passed_agreements,
                                              &key64,
                                              &value, &node) == OPAL_SUCCESS ) {
         do {
             av = (era_value_t *)value;
+#if OPAL_ENABLE_DEBUG
+            era_identifier_t pid;
+            pid.ERAID_KEY = key64;
+            OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
+                                 "%s ftbasic:agreement (ERA) GC: agreement (%d.%d).%d belongs to the passed agreements hash table\n",
+                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                 pid.ERAID_FIELDS.contextid,
+                                 pid.ERAID_FIELDS.epoch,
+                                 pid.ERAID_FIELDS.agreementid));
+#endif
             OBJ_RELEASE(av);
         } while( opal_hash_table_get_next_key_uint64(&era_passed_agreements,
                                                      &key64, &value, 
@@ -2306,4 +2324,40 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
                          *(int*)contrib));
 
     return ret;
+}
+
+int mca_coll_ftbasic_agreement_era_free_comm(ompi_communicator_t* comm,
+                                             mca_coll_base_module_t *module)
+{
+    ompi_group_t* acked; 
+    era_identifier_t aid;
+    int rc;
+
+    OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ERA) Freeing Communicator (%d.%d).\n",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         comm->c_contextid,
+                         comm->c_epoch));
+
+    ompi_comm_failure_get_acked_internal( comm, &acked );
+
+    do {
+        rc = mca_coll_ftbasic_agreement_era_intra(comm, 
+                                                  &acked,
+                                                  &ompi_mpi_op_band.op,
+                                                  &ompi_mpi_int.dt,
+                                                  0,
+                                                  NULL,
+                                                  comm->c_coll.coll_agreement_module);
+    } while(rc != MPI_SUCCESS);
+
+    OBJ_RELEASE(acked);
+
+    aid.ERAID_FIELDS.contextid = comm->c_contextid;
+    aid.ERAID_FIELDS.epoch     = comm->c_epoch;
+
+    /** We don't need to set aid.ERAID_FIELDS.agreementid to collect all of them */
+    era_collect_passed_agreements(aid, 0, (uint16_t)-1);
+
+    return OMPI_SUCCESS;
 }
