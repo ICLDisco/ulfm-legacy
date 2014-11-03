@@ -2069,7 +2069,16 @@ int mca_coll_ftbasic_agreement_era_init(void)
     mca_bml.bml_register(MCA_BTL_TAG_FT_AGREE, era_cb_fn, NULL);
 
     OBJ_CONSTRUCT( &era_passed_agreements, opal_hash_table_t);
-    opal_hash_table_init(&era_passed_agreements, 65537 /* Big Storage */);
+    /* The garbage collection system relies on iterating over all
+     * passed agreements at the beginning of each new. It should be fast,
+     * because there should be only a small number of passed agreements, since we
+     * have garbage collection.
+     * However, iterating over all the elements in the hash table is linear with the
+     * number of buckets (see the implementation of opal_hash_table_get_next_key_uint64).
+     * Thus, we need to keep a small number of buckets for era_passed_agreements to keep
+     * good performance.
+     */
+    opal_hash_table_init(&era_passed_agreements, 32 /* We have GC, so small storage should be fine */);
     OBJ_CONSTRUCT( &era_ongoing_agreements, opal_hash_table_t);
     opal_hash_table_init(&era_ongoing_agreements, 16 /* We expect only a few */);
     
