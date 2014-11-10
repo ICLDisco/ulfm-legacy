@@ -81,7 +81,7 @@ mca_coll_basic_allreduce_inter(void *sbuf, void *rbuf, int count,
     int err, i, rank, root = 0, rsize;
     ptrdiff_t lb, extent;
     char *tmpbuf = NULL, *pml_buffer = NULL;
-    ompi_request_t *req[2];
+    ompi_request_t *req[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
     mca_coll_basic_module_t *basic_module = (mca_coll_basic_module_t*) module;
     ompi_request_t **reqs = basic_module->mccb_reqs;
 
