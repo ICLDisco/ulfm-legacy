@@ -383,6 +383,7 @@ static inline void mca_pml_ob1_recv_request_schedule(
         opal_list_append(&mca_pml_ob1.pckt_pending,                     \
                          (opal_list_item_t*)_pckt);                     \
         OPAL_THREAD_UNLOCK(&mca_pml_ob1.lock);                          \
+        (void)_rc;                                                      \
     } while(0)
 
 int mca_pml_ob1_recv_request_ack_send_btl(ompi_proc_t* proc,

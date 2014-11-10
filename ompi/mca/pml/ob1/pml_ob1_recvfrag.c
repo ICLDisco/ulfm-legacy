@@ -73,6 +73,7 @@ append_frag_to_list(opal_list_t *queue, mca_btl_base_module_t *btl,
         MCA_PML_OB1_RECV_FRAG_INIT(frag, hdr, segments, num_segments, btl);
     }
     opal_list_append(queue, (opal_list_item_t*)frag);
+    (void)rc;
 }
 
 /**
@@ -515,6 +516,7 @@ match_one(mca_btl_base_module_t *btl,
                                hdr->hdr_src, hdr->hdr_tag, PERUSE_RECV);
         return NULL;
     } while(true);
+    (void)rc;
 }
 
 static mca_pml_ob1_recv_frag_t* check_cantmatch_for_match(mca_pml_ob1_comm_proc_t *proc)
