@@ -247,6 +247,7 @@ do {                                                            \
         opal_list_append(&mca_pml_ob1.pckt_pending,                 \
                 (opal_list_item_t*)_pckt);                          \
         OPAL_THREAD_UNLOCK(&mca_pml_ob1.lock);                      \
+        (void)_rc;                                                  \
     } while(0)
 
 

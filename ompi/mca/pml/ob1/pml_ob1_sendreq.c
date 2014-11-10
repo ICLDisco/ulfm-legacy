@@ -995,6 +995,7 @@ void mca_pml_ob1_send_request_copy_in_out( mca_pml_ob1_send_request_t *sendreq,
     OPAL_THREAD_LOCK(&sendreq->req_send_range_lock);
     opal_list_append(&sendreq->req_send_ranges, (opal_list_item_t*)sr);
     OPAL_THREAD_UNLOCK(&sendreq->req_send_range_lock);
+    (void)rc;
 }
 
 static inline mca_pml_ob1_send_range_t *
@@ -1377,5 +1378,6 @@ void mca_pml_ob1_send_request_put( mca_pml_ob1_send_request_t* sendreq,
             &frag->convertor, 0, &size);
 
     mca_pml_ob1_send_request_put_frag(frag);
+    (void)rc;
 }
 
