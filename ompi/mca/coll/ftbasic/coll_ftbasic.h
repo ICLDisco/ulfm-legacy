@@ -60,11 +60,18 @@ mca_coll_ftbasic_component;
 extern int mca_coll_ftbasic_priority;
 extern int mca_coll_ftbasic_crossover;
 
+#if defined(OPAL_ENABLE_DEBUG)
+OMPI_DECLSPEC extern int coll_ftbasic_era_debug_rank_may_fail;
+#endif
+
 enum mca_coll_ftbasic_agreement_method_t {
+    /*
     COLL_FTBASIC_ALLREDUCE         = 0,
     COLL_FTBASIC_TWO_PHASE         = 1,
     COLL_FTBASIC_LOG_TWO_PHASE     = 2,
-    COLL_FTBASIC_EARLY_TERMINATION = 3
+    */
+    COLL_FTBASIC_EARLY_TERMINATION = 3,
+    COLL_FTBASIC_EARLY_RETURNING   = 4
 };
 typedef enum mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_agreement_method_t;
 
@@ -149,44 +156,76 @@ int mca_coll_ftbasic_ft_event(int status);
 /*
  * Agreement protocols
  */
+#if 0
 /* 2-Phase Commit */
 int mca_coll_ftbasic_agreement_two_phase(ompi_communicator_t* comm,
                                          ompi_group_t **group,
-                                         int *flag,
+                                         ompi_op_t *op,
+                                         ompi_datatype_t *dt,
+                                         int dt_count,
+                                         void *contrib,
                                          mca_coll_base_module_t *module);
 int mca_coll_ftbasic_iagreement_two_phase(ompi_communicator_t* comm,
                                           ompi_group_t **group,
-                                          int *flag,
+                                          ompi_op_t *op,
+                                          ompi_datatype_t *dt,
+                                          int dt_count,
+                                          void *contrib,
                                           mca_coll_base_module_t *module,
                                           ompi_request_t **request);
 
 /* Log scaling 2-Phase Commit */
 int mca_coll_ftbasic_agreement_log_two_phase(ompi_communicator_t* comm,
                                              ompi_group_t **group,
-                                             int *flag,
+                                             ompi_op_t *op,
+                                             ompi_datatype_t *dt,
+                                             int dt_count,
+                                             void *contrib,
                                              mca_coll_base_module_t *module);
 int mca_coll_ftbasic_iagreement_log_two_phase(ompi_communicator_t* comm,
                                               ompi_group_t **group,
-                                              int *flag,
+                                              ompi_op_t *op,
+                                              ompi_datatype_t *dt,
+                                              int dt_count,
+                                              void *contrib,
                                               mca_coll_base_module_t *module,
                                               ompi_request_t **request);
 
 /* Allreduce (baseline) */
 int mca_coll_ftbasic_agreement_allreduce(ompi_communicator_t* comm,
                                          ompi_group_t **group,
-                                         int *flag,
+                                         ompi_op_t *op,
+                                         ompi_datatype_t *dt,
+                                         int dt_count,
+                                         void *contrib,
                                          mca_coll_base_module_t *module);
 int mca_coll_ftbasic_iagreement_allreduce(ompi_communicator_t* comm,
                                           ompi_group_t **group,
-                                          int *flag,
+                                          ompi_op_t *op,
+                                          ompi_datatype_t *dt,
+                                          int dt_count,
+                                          void *contrib,
                                           mca_coll_base_module_t *module,
                                           ompi_request_t **request);
+#endif
 
 /* Early termination algorithm */
 int
 mca_coll_ftbasic_agreement_eta_intra(ompi_communicator_t* comm,
                                      ompi_group_t **group,
-                                     int *flag,
+                                     ompi_op_t *op,
+                                     ompi_datatype_t *dt,
+                                     int dt_count,
+                                     void *contrib,
+                                     mca_coll_base_module_t *module);
+/* Early returning algorithm */
+int
+mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
+                                     ompi_group_t **group,
+                                     ompi_op_t *op,
+                                     ompi_datatype_t *dt,
+                                     int dt_count,
+                                     void *contrib,
                                      mca_coll_base_module_t *module);
 
 /*

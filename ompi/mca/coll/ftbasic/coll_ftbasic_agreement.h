@@ -32,7 +32,7 @@ BEGIN_C_DECLS
     extern int mca_coll_ftbasic_agreement_help_num_asking;
     extern int mca_coll_ftbasic_agreement_help_wait_cycles;
 
-    int mca_coll_ftbasic_agreement_init(mca_coll_ftbasic_module_t *module);
+    int mca_coll_ftbasic_agreement_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module);
     int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module);
 
     int mca_coll_ftbasic_agreement_base_setup_blocking(ompi_communicator_t* comm,
@@ -94,6 +94,14 @@ BEGIN_C_DECLS
     int mca_coll_ftbasic_agreement_log_two_phase_refresh_tree(opal_bitmap_t *local_bitmap,
                                                                    ompi_communicator_t* comm,
                                                                    mca_coll_ftbasic_module_t *ftbasic_module);
+
+    /*
+     * Early Returning Specific
+     */
+    int mca_coll_ftbasic_agreement_era_comm_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module);
+    int mca_coll_ftbasic_agreement_era_comm_finalize(mca_coll_ftbasic_module_t *module);
+    int mca_coll_ftbasic_agreement_era_init(void);
+    int mca_coll_ftbasic_agreement_era_finalize(void);
 
     /*
      * Log entry structure

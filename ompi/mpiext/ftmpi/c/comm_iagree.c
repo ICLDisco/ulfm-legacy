@@ -31,6 +31,7 @@ static const char FUNC_NAME[] = "OMPI_Comm_iagree";
 int OMPI_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *request)
 {
     int rc = MPI_SUCCESS;
+    ompi_group_t* acked; 
 
     /* Argument checking */
     if (MPI_PARAM_CHECK) {
@@ -43,14 +44,14 @@ int OMPI_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *request)
         OMPI_ERRHANDLER_CHECK(rc, comm, rc, FUNC_NAME);
     }
 
+    ompi_comm_failure_get_acked_internal( comm, &acked );
     rc = comm->c_coll.coll_iagreement( (ompi_communicator_t*)comm,
-                                       NULL, /* Group is ignored */
+                                       &acked,
+                                       &ompi_mpi_op_band.op,
+                                       &ompi_mpi_int.dt,
+                                       1,
                                        flag,
                                        comm->c_coll.coll_iagreement_module,
                                        request);
-    if( OMPI_SUCCESS != rc ) {
-        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-    }
-
-    return MPI_SUCCESS;
+    OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }

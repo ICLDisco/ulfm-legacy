@@ -69,6 +69,8 @@
 #if OPAL_ENABLE_FT_MPI
 #include "ompi/proc/proc.h"
 #include "ompi/request/request.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "ompi/op/op.h"
 #endif
 
 BEGIN_C_DECLS
@@ -244,12 +246,18 @@ typedef int (*mca_coll_base_module_scatterv_fn_t)
 typedef int (*mca_coll_base_module_agreement_fn_t)
     (struct ompi_communicator_t* comm,
      struct ompi_group_t **group,
-     int *flag,
+     ompi_op_t *op,
+     ompi_datatype_t *dt,
+     int dt_count,
+     void *contrib,
      struct mca_coll_base_module_2_0_0_t *module);
 typedef int (*mca_coll_base_module_iagreement_fn_t)
     (struct ompi_communicator_t* comm,
      struct ompi_group_t **group,
-     int *flag,
+     ompi_op_t *op,
+     ompi_datatype_t *dt,
+     int dt_count,
+     void *contrib,
      struct mca_coll_base_module_2_0_0_t *module,
      ompi_request_t **request);
 #endif /* OPAL_ENABLE_FT_MPI */
