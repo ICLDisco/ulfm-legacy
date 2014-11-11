@@ -436,6 +436,7 @@ int mca_pml_ob1_del_procs(ompi_proc_t** procs, size_t nprocs)
 /*
  * diagnostics
  */
+#include "opal/include/opal_stdint.h"
 
 static void mca_pml_ob1_dump_hdr(mca_pml_ob1_hdr_t* hdr)
 {
