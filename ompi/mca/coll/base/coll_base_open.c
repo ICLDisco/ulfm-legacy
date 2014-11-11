@@ -86,7 +86,10 @@ int mca_coll_base_open(void)
 #if OPAL_ENABLE_FT_MPI
 int mca_coll_base_agreement(struct ompi_communicator_t* comm,
                             struct ompi_group_t **group,
-                            int *flag,
+                            ompi_op_t *op,
+                            ompi_datatype_t *dt,
+                            int dt_count,
+                            void *contrib,
                             struct mca_coll_base_module_2_0_0_t *module)
 {
     return OMPI_ERR_NOT_SUPPORTED;
@@ -94,7 +97,10 @@ int mca_coll_base_agreement(struct ompi_communicator_t* comm,
 
 int mca_coll_base_iagreement(struct ompi_communicator_t* comm,
                              struct ompi_group_t **group,
-                             int *flag,
+                             ompi_op_t *op,
+                             ompi_datatype_t *dt,
+                             int dt_count,
+                             void *contrib,
                              struct mca_coll_base_module_2_0_0_t *module,
                              ompi_request_t **request)
 {

@@ -175,8 +175,15 @@ int ompi_comm_nextcid ( ompi_communicator_t* newcomm,
     int response, glresponse=0;
     int start;
     unsigned int i;
-
+    int local_values[2];
+    int global_values[2];
     ompi_comm_cid_allredfct* allredfnct;
+#if OPAL_ENABLE_FT_MPI
+    void* location;
+    int   nb_values = 2;
+#else
+    int   nb_values = 1;
+#endif  /* OPAL_ENABLE_FT_MPI */
 
     /**
      * Determine which implementation of allreduce we have to use
@@ -247,8 +254,16 @@ int ompi_comm_nextcid ( ompi_communicator_t* newcomm,
             }
         }
 
-        ret = (allredfnct)(&nextlocal_cid, &nextcid, 1, MPI_MAX, comm, bridgecomm,
+#if OPAL_ENABLE_FT_MPI
+        location = opal_pointer_array_get_item(&ompi_mpi_comm_epoch, nextlocal_cid);
+        local_values[1] = (int)((uintptr_t)location); /** NULL = 0 is the first unused epoch */
+#endif  /* OPAL_ENABLE_FT_MPI */
+
+        local_values[0] = nextlocal_cid;
+        ret = (allredfnct)(local_values, global_values, nb_values, MPI_MAX, comm, bridgecomm,
                            local_leader, remote_leader, send_first );
+        nextcid = global_values[0];
+
         if( OMPI_SUCCESS != ret ) {
             opal_pointer_array_set_item(&ompi_mpi_communicators, nextlocal_cid, NULL);
             goto release_and_return;
@@ -295,15 +310,9 @@ int ompi_comm_nextcid ( ompi_communicator_t* newcomm,
     newcomm->c_f_to_c_index = newcomm->c_contextid;
     opal_pointer_array_set_item (&ompi_mpi_communicators, nextcid, newcomm);
 #if OPAL_ENABLE_FT_MPI
-    /* If aother communitor used this cid then we should inherit his epoch
-     * to avoid potential race conditions with revocation messages still
-     * flowing in the communication layer.
-     */
-    {
-        void* location = opal_pointer_array_get_item(&ompi_mpi_comm_epoch, nextcid);
-        newcomm->epoch = (NULL == location ? 0 : 1 + (int)((uintptr_t)location));
-        opal_pointer_array_set_item(&ompi_mpi_comm_epoch, nextcid, (void*)(uintptr_t)newcomm->epoch);
-    }
+    location = opal_pointer_array_get_item(&ompi_mpi_comm_epoch, nextcid);
+    newcomm->c_epoch = global_values[1] + 1;
+    opal_pointer_array_set_item(&ompi_mpi_comm_epoch, nextcid, (void*)(uintptr_t)newcomm->c_epoch);
 #endif  /* OPAL_ENABLE_FT_MPI */
 
  release_and_return:

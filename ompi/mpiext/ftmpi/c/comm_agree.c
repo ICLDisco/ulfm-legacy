@@ -42,14 +42,14 @@ int OMPI_Comm_agree(MPI_Comm comm, int *flag)
     }
 
     ompi_comm_failure_get_acked_internal( comm, &acked );
+    
     rc = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
                                       &acked, /* Acked failures are ignored */
+                                      &ompi_mpi_op_band.op,
+                                      &ompi_mpi_int.dt,
+                                      1,
                                       flag,
                                       comm->c_coll.coll_agreement_module);
-    ompi_group_free( &acked );
-    if( OMPI_SUCCESS != rc ) {
-        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-    }
-
-    return MPI_SUCCESS;
+    OBJ_RELEASE( acked );
+    OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }
