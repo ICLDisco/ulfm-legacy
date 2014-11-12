@@ -608,11 +608,6 @@ static int ompi_comm_allreduce_inter ( int *inbuf, int *outbuf,
     int *rcounts=NULL, scount=0;
     int *rdisps=NULL;
 
-    if ( &ompi_mpi_op_sum.op != op && &ompi_mpi_op_prod.op != op &&
-         &ompi_mpi_op_max.op != op && &ompi_mpi_op_min.op  != op ) {
-        return MPI_ERR_OP;
-    }
-
     if ( !OMPI_COMM_IS_INTER (intercomm)) {
         return MPI_ERR_COMM;
     }
@@ -664,30 +659,7 @@ static int ompi_comm_allreduce_inter ( int *inbuf, int *outbuf,
             goto exit;
         }
 
-        if ( &ompi_mpi_op_max.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                if (tmpbuf[i] > outbuf[i]) {
-                    outbuf[i] = tmpbuf[i];
-                }
-            }
-        }
-        else if ( &ompi_mpi_op_min.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                if (tmpbuf[i] < outbuf[i]) {
-                    outbuf[i] = tmpbuf[i];
-                }
-            }
-        }
-        else if ( &ompi_mpi_op_sum.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                outbuf[i] += tmpbuf[i];
-            }
-        }
-        else if ( &ompi_mpi_op_prod.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                outbuf[i] *= tmpbuf[i];
-            }
-        }
+        ompi_op_reduce( op, tmpbuf, outbuf, count, &ompi_mpi_int.dt);
     }
 
     /* distribute the overall result to all processes in the other group.
@@ -735,11 +707,6 @@ static int ompi_comm_allreduce_intra_bridge (int *inbuf, int *outbuf,
 
     local_leader  = (*((int*)lleader));
     remote_leader = (*((int*)rleader));
-
-    if ( &ompi_mpi_op_sum.op != op && &ompi_mpi_op_prod.op != op &&
-         &ompi_mpi_op_max.op != op && &ompi_mpi_op_min.op  != op ) {
-        return MPI_ERR_OP;
-    }
 
     local_rank = ompi_comm_rank ( comm );
     tmpbuf     = (int *) malloc ( count * sizeof(int));
@@ -794,30 +761,8 @@ static int ompi_comm_allreduce_intra_bridge (int *inbuf, int *outbuf,
                 goto exit;
             }
         }
-        if ( &ompi_mpi_op_max.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                if (tmpbuf[i] > outbuf[i]) {
-                    outbuf[i] = tmpbuf[i];
-                }
-            }
-        }
-        else if ( &ompi_mpi_op_min.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                if (tmpbuf[i] < outbuf[i]) {
-                    outbuf[i] = tmpbuf[i];
-                }
-            }
-        }
-        else if ( &ompi_mpi_op_sum.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                outbuf[i] += tmpbuf[i];
-            }
-        }
-        else if ( &ompi_mpi_op_prod.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                outbuf[i] *= tmpbuf[i];
-            }
-        }
+
+        ompi_op_reduce(op, tmpbuf, outbuf, count, &ompi_mpi_int.dt);
     }
 
     rc = comm->c_coll.coll_bcast ( outbuf, count, MPI_INT, local_leader, 
@@ -855,12 +800,6 @@ static int ompi_comm_allreduce_intra_oob (int *inbuf, int *outbuf,
     local_leader  = (*((int*)lleader));
     remote_leader = (orte_process_name_t*)rleader;
     size_count = count;
-
-    if ( &ompi_mpi_op_sum.op != op && &ompi_mpi_op_prod.op != op &&
-         &ompi_mpi_op_max.op != op && &ompi_mpi_op_min.op  != op ) {
-        return MPI_ERR_OP;
-    }
-
 
     local_rank = ompi_comm_rank ( comm );
     tmpbuf     = (int *) malloc ( count * sizeof(int));
@@ -911,30 +850,7 @@ static int ompi_comm_allreduce_intra_oob (int *inbuf, int *outbuf,
         OBJ_RELEASE(rbuf);
         count = (int)size_count;
 
-        if ( &ompi_mpi_op_max.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                if (tmpbuf[i] > outbuf[i]) {
-                    outbuf[i] = tmpbuf[i];
-                }
-            }
-        }
-        else if ( &ompi_mpi_op_min.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                if (tmpbuf[i] < outbuf[i]) {
-                    outbuf[i] = tmpbuf[i];
-                }
-            }
-        }
-        else if ( &ompi_mpi_op_sum.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                outbuf[i] += tmpbuf[i];
-            }
-        }
-        else if ( &ompi_mpi_op_prod.op == op ) {
-            for ( i = 0 ; i < count; i++ ) {
-                outbuf[i] *= tmpbuf[i];
-            }
-        }
+        ompi_op_reduce( op, tmpbuf, outbuf, count, &ompi_mpi_int.dt);
     }
 
     rc = comm->c_coll.coll_bcast (outbuf, count, MPI_INT, 

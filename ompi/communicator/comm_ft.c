@@ -113,9 +113,6 @@ int ompi_comm_failure_get_acked_internal(ompi_communicator_t* comm, ompi_group_t
     return exit_status;
 }
 
-
-
-
 int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** newcomm)
 {
     int ret, exit_status = OMPI_SUCCESS;
