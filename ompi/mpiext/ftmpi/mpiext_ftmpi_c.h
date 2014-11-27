@@ -37,18 +37,3 @@ OMPI_DECLSPEC int OMPI_Win_get_failed(MPI_Win win, MPI_Group *failedgrp);
 OMPI_DECLSPEC int OMPI_File_revoke(MPI_File fh);
 #endif
 
-#if 0
-/********************************
- * Error Hanlders
- ********************************/
-OMPI_DECLSPEC int OMPI_Errhandler_compare(MPI_Errhandler errhandler1,
-                                          MPI_Errhandler errhandler2,
-                                          int *result);
-#endif
-
-#if 0
-/********************************
- * Kill
- ********************************/
-OMPI_DECLSPEC int OMPI_Kill(MPI_Comm comm, int rank, MPI_Info info);
-#endif
