@@ -15,7 +15,7 @@
 #include "ompi/proc/proc.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak OMPI_Comm_shrink = POMPI_Comm_shrink
+#pragma weak MPI_Comm_shrink = PMPIX_Comm_shrink
 #endif
 
 #if OMPI_PROFILING_DEFINES
@@ -24,10 +24,10 @@
 
 #include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
-static const char FUNC_NAME[] = "OMPI_Comm_shrink";
+static const char FUNC_NAME[] = "MPIX_Comm_shrink";
 
 
-int OMPI_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm)
+int MPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm)
 {
     int rc = MPI_SUCCESS;
 
@@ -51,3 +51,9 @@ int OMPI_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm)
 
     return MPI_SUCCESS;
 }
+
+int OMPI_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm)
+{
+    return MPIX_Comm_shrink(comm, newcomm);
+}
+

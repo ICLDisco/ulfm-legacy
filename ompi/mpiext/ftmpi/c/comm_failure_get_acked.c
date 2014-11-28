@@ -15,7 +15,7 @@
 #include "ompi/proc/proc.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak OMPI_Comm_failure_get_acked = POMPI_Comm_failure_get_acked
+#pragma weak MPI_Comm_failure_get_acked = PMPIX_Comm_failure_get_acked
 #endif
 
 #if OMPI_PROFILING_DEFINES
@@ -24,9 +24,9 @@
 
 #include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
-static const char FUNC_NAME[] = "OMPI_Comm_failure_get_acked";
+static const char FUNC_NAME[] = "MPIX_Comm_failure_get_acked";
 
-int OMPI_Comm_failure_get_acked(MPI_Comm comm, MPI_Group *failedgrp)
+int MPIX_Comm_failure_get_acked(MPI_Comm comm, MPI_Group *failedgrp)
 {
     int rc = MPI_SUCCESS;
 
@@ -46,3 +46,9 @@ int OMPI_Comm_failure_get_acked(MPI_Comm comm, MPI_Group *failedgrp)
 
     return MPI_SUCCESS;
 }
+
+int OMPI_Comm_failure_get_acked(MPI_Comm comm, MPI_Group *failedgrp)
+{
+    return MPIX_Comm_failure_get_acked(comm, failedgrp );
+}
+
