@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
- * $COPYRIGHT$
+ * Copyright (c) 2010-2014 The Trustees of the University of Tennessee.
+ *                         All rights reserved.
+  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
  * 
@@ -16,7 +18,12 @@
 
 #include "ompi/mpiext/ftmpi/f77/ftmpi_f77_support.h"
 
-F77_STAMP_FN(OMPI_Comm_agree_f,
+F77_STAMP_FN(MPIX_Comm_agree_f,
+             mpix_comm_agree,
+             MPIX_COMM_AGREE,
+             (MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr),
+             (comm, flag, ierr))
+F77_STAMP_FN(MPIX_Comm_agree_f,
              ompi_comm_agree,
              OMPI_COMM_AGREE,
              (MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr),
@@ -28,11 +35,11 @@ F77_STAMP_FN(OMPI_Comm_agree_f,
 
 #include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
-static void OMPI_Comm_agree_f(MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr)
+static void MPIX_Comm_agree_f(MPI_Fint *comm, ompi_fortran_logical_t *flag, MPI_Fint *ierr)
 {
     MPI_Comm c_comm = MPI_Comm_f2c(*comm);
     OMPI_LOGICAL_NAME_DECL(flag)
 
-    *ierr = OMPI_INT_2_FINT(OMPI_Comm_agree(c_comm,
+    *ierr = OMPI_INT_2_FINT(MPIX_Comm_agree(c_comm,
                                             OMPI_LOGICAL_SINGLE_NAME_CONVERT(flag)));
 }
