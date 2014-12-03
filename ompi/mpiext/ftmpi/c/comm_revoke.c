@@ -15,7 +15,7 @@
 #include "ompi/proc/proc.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak MPI_Comm_revoke = PMPIX_Comm_revoke
+#pragma weak MPIX_Comm_revoke = PMPIX_Comm_revoke
 #endif
 
 #if OMPI_PROFILING_DEFINES

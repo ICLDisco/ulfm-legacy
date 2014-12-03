@@ -15,7 +15,7 @@
 #include "ompi/proc/proc.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak MPI_Comm_failure_get_acked = PMPIX_Comm_failure_get_acked
+#pragma weak MPIX_Comm_failure_get_acked = PMPIX_Comm_failure_get_acked
 #endif
 
 #if OMPI_PROFILING_DEFINES

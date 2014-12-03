@@ -16,7 +16,7 @@
 #include "ompi/proc/proc.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak MPI_Comm_iagree = PMPIX_Comm_iagree
+#pragma weak MPIX_Comm_iagree = PMPIX_Comm_iagree
 #endif
 
 #if OMPI_PROFILING_DEFINES
