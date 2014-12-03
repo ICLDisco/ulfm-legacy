@@ -16,7 +16,7 @@
 #include "ompi/errhandler/errhandler.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak MPI_Comm_failure_ack = PMPIX_Comm_failure_ack
+#pragma weak MPIX_Comm_failure_ack = PMPIX_Comm_failure_ack
 #endif
 
 #if OMPI_PROFILING_DEFINES

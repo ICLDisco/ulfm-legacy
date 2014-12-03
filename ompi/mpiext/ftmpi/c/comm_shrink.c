@@ -15,7 +15,7 @@
 #include "ompi/proc/proc.h"
 
 #if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
-#pragma weak MPI_Comm_shrink = PMPIX_Comm_shrink
+#pragma weak MPIX_Comm_shrink = PMPIX_Comm_shrink
 #endif
 
 #if OMPI_PROFILING_DEFINES
