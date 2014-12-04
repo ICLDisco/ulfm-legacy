@@ -16,14 +16,14 @@
  * PMPI_* symbols
  */
 
-#define MPI_Comm_revoke PMPIX_Comm_revoke
+#define MPIX_Comm_revoke PMPIX_Comm_revoke
 
-#define MPI_Comm_shrink PMPIX_Comm_shrink
+#define MPIX_Comm_shrink PMPIX_Comm_shrink
 
-#define MPI_Comm_failure_ack PMPIX_Comm_failure_ack
-#define MPI_Comm_failure_get_acked PMPIX_Comm_failure_get_acked
+#define MPIX_Comm_failure_ack PMPIX_Comm_failure_ack
+#define MPIX_Comm_failure_get_acked PMPIX_Comm_failure_get_acked
 
-#define MPI_Comm_agree PMPIX_Comm_agree
-#define MPI_Comm_iagree PMPIX_Comm_iagree
+#define MPIX_Comm_agree PMPIX_Comm_agree
+#define MPIX_Comm_iagree PMPIX_Comm_iagree
 
 #endif /* OMPI_MPIEXT_FTMPI_C_PROFILE_DEFINES_H */
