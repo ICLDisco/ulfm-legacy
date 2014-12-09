@@ -2283,7 +2283,6 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     }
 
     /* I participate */
-    assert( ERA_VALUE_BYTES_COUNT(&agreement_value.header) == sizeof(int) );
     agreement_value.bytes = (uint8_t*)contrib;
 
     era_agreement_value_set_gcrange(agreement_id, &agreement_value);
