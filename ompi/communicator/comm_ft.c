@@ -165,7 +165,6 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
         goto cleanup;
     }
 
- retry_shrink:
     /*
      * Step 2: Determine ranks for new communicator
      */
@@ -193,7 +192,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
     ret = ompi_group_difference(comm_group, failed_group, &alive_group);
     if( OMPI_SUCCESS != ret ) {
         exit_status = ret;
-        goto decide_commit;
+        goto cleanup;
     }
 
     /* Determine the collective leader - Lowest rank in the alive set */
@@ -217,11 +216,11 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                          );
     if( OMPI_SUCCESS != ret ) {
         exit_status = ret;
-        goto decide_commit;
+        goto cleanup;
     }
     if( NULL == newcomp ) {
         exit_status = MPI_ERR_INTERN;
-        goto decide_commit;
+        goto cleanup;
     }
     stop = MPI_Wtime();
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle, 
@@ -244,7 +243,7 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                              -1 );     /* send_first */
     if( OMPI_SUCCESS != ret ) {
         exit_status = ret;
-        goto decide_commit;
+        goto cleanup;
     }
     stop = MPI_Wtime();
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle, 
@@ -268,54 +267,15 @@ int ompi_comm_shrink_internal(ompi_communicator_t* comm, ompi_communicator_t** n
                               -1 );  
     if( OMPI_SUCCESS != ret ) {
         exit_status = ret;
-        goto decide_commit;
+        goto cleanup;
     }
     stop = MPI_Wtime();
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ompi: comm_shrink: COLL SELECT: %g seconds\n", 
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
- decide_commit:
-    /*
-     * Step 5: Agreement on whether the operation was successful or not
-     */
-    /* --------------------------------------------------------- */
-    OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                         "%s ompi: comm_shrink: Agreement on failed processes",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) ));
-    start = MPI_Wtime();
-    flag = (OMPI_SUCCESS == exit_status);
-    /* We only need to execute this agreement once, as we don't care about failed
-     * processes. The only thing that matters here is the return of the flag,
-     * indicating if all alive processes have agreed upon a new communicator. If
-     * the agreement fails, the entire process is repeted, including the cid selection.
-     * For this to have a chance to succeed, we need to reuse the previously computed 
-     * failed_group.
-     */
-    ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
-                                       &failed_group,
-                                       &ompi_mpi_op_band.op,
-                                       &ompi_mpi_int.dt,
-                                       1,
-                                       &flag,
-                                       comm->c_coll.coll_agreement_module);
-    if( OMPI_SUCCESS != ret && MPI_ERR_PROC_FAILED != ret ) {
-        exit_status = ret;
-        goto cleanup;
-    }
-    stop = MPI_Wtime();
-    if( OMPI_SUCCESS == ret && flag ) {
-        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                             "%s ompi: comm_shrink: COMMIT: %g seconds\n", 
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
-        *newcomm = newcomp;
-    } else {
-        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                             "%s ompi: comm_shrink: RETRY: %g seconds\n", 
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), stop-start));
-        exit_status = OMPI_SUCCESS;
-        goto retry_shrink;
-    }
-
+    
+    /** Step 5: assign the output communicator */
+    *newcomm = newcomp;
 
  cleanup:
     if( NULL != failed_group ) {
@@ -388,10 +348,8 @@ int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remot
 }
 
 /**
- * This is a trivial linear implementation of a reduction operation. As such
- * it can return non-consistent return codes, faliing on some processes while
- * succeeding on others. The only case when the return code is globally consistent
- * is when the root (leader) is dead before any participants call this function.
+ * Reduction operation using an agreement, to ensure that all processes
+ *  agree on the same list.
  */
 int ompi_comm_allreduce_intra_ft( int *inbuf, int *outbuf, 
                                   int count, struct ompi_op_t *op, 
@@ -401,119 +359,32 @@ int ompi_comm_allreduce_intra_ft( int *inbuf, int *outbuf,
                                   void* remote_leader, 
                                   int send_first )
 {
-    int ret, exit_status = OMPI_SUCCESS;
-    int root, rank, size, i;
-    int *tmp_buffer = NULL;
+    int ret;
+    ompi_group_t *failed_group = NULL;
 
-    /* JJH: This is a linear algorithm just for prototyping.
-     * JJH: Additionaly it uses 'agreement' which is costly.
-     * JJH: This can be improved, so return and implement something
-     * JJH: better later.
+    /** Because the agreement operates "in place",
+     *  one needs first to copy the inbuf into the outbuf
      */
-
-    rank = ompi_comm_rank(comm);
-    size = ompi_comm_size(comm);
-
-    /*
-     * Elect 'root'
-     */
-    root = comm->lleader;
-    if( root < 0 ) {
-        exit_status = OMPI_ERROR;
-        goto cleanup;
+    if( inbuf != outbuf ) {
+        memcpy(outbuf, inbuf, count * sizeof(int));
     }
 
-    OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-                         "%s ompi: comm_shrink: Allreduce: Linear Algorithm (Root = %3d)",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), root ));
-
-    /*
-     * Reduce to 'root'
-     */
-    if( rank != root ) {
-        ret = MCA_PML_CALL(send(inbuf, count, MPI_INT, root,
-                                MCA_COLL_BASE_TAG_SHRINK,
-                                MCA_PML_BASE_SEND_STANDARD, comm));
-        if( OMPI_SUCCESS != ret ) {
-            exit_status = ret;
+    failed_group = OBJ_NEW(ompi_group_t);
+    do {
+        ret = comm->c_coll.coll_agreement( (ompi_communicator_t*)comm,
+                                           &failed_group,
+                                           op,
+                                           &ompi_mpi_int.dt,
+                                           count,
+                                           outbuf,
+                                           comm->c_coll.coll_agreement_module);
+        if( ret != MPI_SUCCESS && ret != MPI_ERR_PROC_FAILED )
             goto cleanup;
-        }
-    } else {
-        tmp_buffer = (int*) malloc(sizeof(int) * count);
-        if(NULL == tmp_buffer ) {
-            ret = OMPI_ERR_OUT_OF_RESOURCE;
-            goto cleanup;
-        }
-
-        /*
-         * Initialize the receive buffer
-         */
-        tmp_buffer[0] = -1;
-        ompi_datatype_copy_content_same_ddt(MPI_INT, count, (char*)outbuf, (char*)inbuf);
-
-        for( i = 0; i < size; ++i ) {
-            if( rank == i ) {
-                ompi_op_reduce(op, inbuf, outbuf, count, MPI_INT);
-            } else {
-                if( !ompi_comm_is_proc_active(comm, i, false) ) {
-                    continue; /* Ignore failed processes */
-                }
-
-                ret = MCA_PML_CALL(recv(tmp_buffer, count, MPI_INT, i,
-                                        MCA_COLL_BASE_TAG_SHRINK, comm,
-                                        MPI_STATUS_IGNORE));
-                if( OMPI_SUCCESS != ret ) {
-                    continue; /* Ignore failed processes */
-                }
-
-                ompi_op_reduce(op, tmp_buffer, outbuf, count, MPI_INT);
-            }
-        }
-    }
-
-    /*
-     * Broadcast solution
-     */
-    if( rank != root ) {
-        ret = MCA_PML_CALL(recv(outbuf, count, MPI_INT, root,
-                                MCA_COLL_BASE_TAG_SHRINK, comm,
-                                MPI_STATUS_IGNORE));
-        if( OMPI_SUCCESS != ret ) {
-            exit_status = ret;
-            goto cleanup;
-        }
-    } else {
-        for( i = 0; i < size; ++i ) {
-            /* Root already has the output inthe outbuf, so skip */
-            if( rank != i ) {
-                if( !ompi_comm_is_proc_active(comm, i, false) ) {
-                    continue; /* Ignore failed processes */
-                }
-
-                ret = MCA_PML_CALL(send(outbuf, count, MPI_INT, i,
-                                        MCA_COLL_BASE_TAG_SHRINK,
-                                        MCA_PML_BASE_SEND_STANDARD, comm));
-                if( OMPI_SUCCESS != ret ) {
-                    continue; /* Ignore failed processes */
-                }
-            }
-        }
-    }
-
-    /*
-     * It is possible that the above algorithm failed due to root failure
-     * (all other failures are skipped over). In this case the calling
-     * operation will fail. This is checked at a higher level, and the
-     * routine will be tried again, with a new root.
-     */
+    } while( ret == MPI_ERR_PROC_FAILED );
 
  cleanup:
-    if( NULL != tmp_buffer ) {
-        free(tmp_buffer);
-        tmp_buffer = NULL;
-    }
-
-    return exit_status;
+    OBJ_RELEASE(failed_group);
+    return ret;
 }
 
 int ompi_comm_allreduce_inter_ft( int *inbuf, int *outbuf, 
