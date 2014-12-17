@@ -404,9 +404,6 @@ void ompi_comm_reg_finalize (void)
 {
     OBJ_DESTRUCT(&ompi_registered_comms);
     OBJ_DESTRUCT(&ompi_cid_lock);
-    opal_output(0, "%s CID REDUX LENGTH: %d / %d\n", 
-                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                cid_redux_nb_it, cid_redux_nb_calls);
 }
 
 
