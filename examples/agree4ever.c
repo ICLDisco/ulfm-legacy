@@ -11,7 +11,6 @@
  */
 
 #include "mpi.h"
-#include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
 #include <stdlib.h>
 #include <stdio.h>
