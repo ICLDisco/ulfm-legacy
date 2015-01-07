@@ -464,7 +464,10 @@ OMPI_DECLSPEC bool ompi_comm_is_proc_active(ompi_communicator_t *comm, int peer_
 OMPI_DECLSPEC int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remote);
 
 /*
- * MPI Interface early checks
+ * Returns true if point-to-point communications with the target process
+ * are supported (this means if the process is a valid peer, if the
+ * communicator is not revoked and if the peer is not already marked as
+ * a dead process).
  */
 static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int peer_id, int *err)
 {
@@ -472,26 +475,35 @@ static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int
         *err = MPI_ERR_REVOKED;
         return false;
     }
-    else if( !ompi_comm_is_proc_active(comm, peer_id, OMPI_COMM_IS_INTRA(comm)) ) {
+    if( !ompi_comm_is_proc_active(comm, peer_id, !OMPI_COMM_IS_INTRA(comm)) ) {
         *err = MPI_ERR_PROC_FAILED;
         return false;
     }
     return true;
 }
 
+/*
+ * Returns true if the communicator is locally valid for collective communications
+ */
 static inline bool ompi_comm_iface_coll_check(ompi_communicator_t *comm, int *err)
 {
     if( ompi_comm_is_revoked(comm) ) {
         *err = MPI_ERR_REVOKED;
         return false;
     }
-    else if( ompi_comm_force_error_on_collectives(comm) ) {
+    if( ompi_comm_force_error_on_collectives(comm) ) {
         *err = MPI_ERR_PROC_FAILED;
         return false;
     }
     return true;
 }
 
+/*
+ * Returns true if the communicator can be used by traditional MPI functions
+ * as an underlying communicator to create new communicators. The only
+ * communicator creation function that can help if this function returns
+ * true is MPI_Comm_shrink.
+ */
 static inline bool ompi_comm_iface_create_check(ompi_communicator_t *comm, int *err)
 {
     return ompi_comm_iface_coll_check(comm, err);
