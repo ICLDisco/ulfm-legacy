@@ -334,29 +334,22 @@ bool ompi_comm_is_proc_active(ompi_communicator_t *comm, int peer_id, bool remot
 {
     ompi_proc_t* ompi_proc;
 
+    /* Check MPI_ANY_SOURCE differently */
+    if( OPAL_UNLIKELY(peer_id == MPI_ANY_SOURCE) ) {
+        return ompi_comm_is_any_source_enabled(comm);
+    }
+    /* PROC_NULL is always 'ok' */
+    if( OPAL_UNLIKELY(peer_id == MPI_PROC_NULL) ) {
+        return true;
+    }
 #if OPAL_ENABLE_DEBUG
-    /* Sanity check
-     * Do not call with MPI_ANY_SOURCE, use the _any variation for the approprate list
-     */
-    if( (peer_id < 0 && peer_id != MPI_ANY_SOURCE && peer_id != MPI_PROC_NULL ) ||
+    /* Sanity check. Only valid ranks are accepted.  */
+    if( (peer_id < 0) ||
         (!OMPI_COMM_IS_INTRA(comm) && peer_id >= ompi_comm_remote_size(comm)) ||
         ( OMPI_COMM_IS_INTRA(comm) && peer_id >= ompi_comm_size(comm) ) ) {
         return false;
     }
 #endif
-
-    /*
-     * PROC_NULL is always 'ok'
-     */
-    if( OPAL_UNLIKELY(peer_id == MPI_PROC_NULL) ) {
-        return true;
-    }
-    /*
-     * Check MPI_ANY_SOURCE differently
-     */
-    else if( OPAL_UNLIKELY(peer_id == MPI_ANY_SOURCE) ) {
-        return ompi_comm_is_any_source_enabled(comm);
-    }
     ompi_proc = ompi_group_get_proc_ptr((remote ? comm->c_remote_group : comm->c_local_group),
                                         peer_id);
     return (NULL == ompi_proc) ? false : ompi_proc_is_active(ompi_proc);
