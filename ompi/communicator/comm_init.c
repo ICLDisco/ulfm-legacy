@@ -438,7 +438,7 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
 
 #if OPAL_ENABLE_FT_MPI
     if( NULL != comm->agreed_failed_ranks ) {
-        OBJ_RELEASE( comm->agreed_failed_ranks );
+        free( comm->agreed_failed_ranks );
     }
 #endif  /* OPAL_ENABLE_FT_MPI */
 

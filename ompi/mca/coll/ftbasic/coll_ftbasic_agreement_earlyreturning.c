@@ -179,6 +179,11 @@ typedef struct {
 OBJ_CLASS_INSTANCE(era_rank_item_t, opal_list_item_t, NULL, NULL /*print_destructor*/);
 
 /**
+ * topology-dependent tree structure
+ */
+typedef struct era_tree_s era_tree_t;
+
+/**
  * Main structure to remember the current status of an agreement that
  *  was started.
  */
@@ -190,11 +195,9 @@ typedef struct {
     uint16_t              min_passed_aid;    
     ompi_communicator_t  *comm;              /**< Communicator related to that agreement. Might be NULL
                                               *   if this process has not entered the agreement yet.*/
-    int                   alive_size;        /**< Size of the "alive" group = comm->c_local_group \ comm->agreed_failed_ranks
+    int                   tree_size;        /**< Size of the "alive" tree = comm->c_local_group \ comm->agreed_failed_ranks
                                               *   Also the size of the translation array below. */
-    int                  *alive_ta;          /**< Alive translation array: maps ranks in 0 - alive_size-1
-                                              *   to ranks in c_local_group. Used to compute the trees on
-                                              *   the alive group but return ranks in the communicator. */
+    era_tree_t           *tree;             /**< Tree structure (depends on the tree topology used). */
     int                   nb_acked;          /**< size of acked */
     int                  *acked;             /**< Last acknowledged processes when entering
                                               *   the agreement. Used to compare with the descendents 
@@ -209,18 +212,21 @@ typedef struct {
     int                   waiting_down_from; /**< If in BROADCAST state: who is supposed to send me the info */
 } era_agreement_info_t;
 
+static void era_build_tree_structure(era_agreement_info_t *ci);
+static void era_destroy_tree_structure(era_agreement_info_t *ci);
+static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm);
+static int era_parent(era_agreement_info_t *ci);
+
 static void  era_agreement_info_constructor (era_agreement_info_t *agreement_info)
 {
     agreement_info->agreement_id.ERAID_KEY = 0;
     agreement_info->status = NOT_CONTRIBUTED | OP_NOT_DEFINED;
     agreement_info->comm = NULL;
-    agreement_info->alive_size = 0;
-    agreement_info->alive_ta   = NULL;
     agreement_info->waiting_down_from = -1;
     agreement_info->nb_acked = 0;
     agreement_info->current_value = NULL;
     agreement_info->acked = NULL;
-    
+
     OBJ_CONSTRUCT(&agreement_info->gathered_info, opal_list_t);
     OBJ_CONSTRUCT(&agreement_info->waiting_res_from, opal_list_t);
     OBJ_CONSTRUCT(&agreement_info->early_requesters, opal_list_t);
@@ -247,10 +253,7 @@ static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info
     OBJ_DESTRUCT(&agreement_info->waiting_res_from);
     if( NULL != agreement_info->comm ) {
         OBJ_RELEASE(agreement_info->comm);
-        assert( NULL != agreement_info->alive_ta );
-        free(agreement_info->alive_ta);
-        agreement_info->alive_ta = NULL;
-        agreement_info->alive_size =  0;
+        era_destroy_tree_structure( agreement_info );
     }
     if( NULL != agreement_info->acked ) {
         free(agreement_info->acked);
@@ -261,6 +264,7 @@ static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info
         OBJ_RELEASE( agreement_info->current_value );
         agreement_info->current_value = NULL;
     }
+
 }
 
 OBJ_CLASS_INSTANCE(era_agreement_info_t,
@@ -637,15 +641,13 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
     ompi_group_t *tmp_grp1, *tmp_grp2;
     int *src_ra;
     int *dst_ra;
-    int r, grp_size;
+    int r, s, t, grp_size;
 
     assert( comm->c_contextid == ci->agreement_id.ERAID_FIELDS.contextid );
     assert( comm->c_epoch     == ci->agreement_id.ERAID_FIELDS.epoch     );
     assert( ci->comm          == NULL                                    );
     ci->comm = comm;
     OBJ_RETAIN(comm);
-
-    assert( comm->agreed_failed_ranks != NULL );
 
     /* Update the return value based on local knowledge of 'acknowleged' ranks */
     grp_size = ompi_group_size(acked_group);
@@ -666,59 +668,60 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
         free(dst_ra);
 
     /* Deal with the new_deads list */
-    tmp_grp2 = OBJ_NEW(ompi_group_t);
     ompi_group_intersection(comm->c_local_group, ompi_group_all_failed_procs, &tmp_grp1);
-    if( ompi_group_size(tmp_grp1) > 0 ) {
-        tmp_grp2 = OBJ_NEW(ompi_group_t);
-        ompi_group_difference(tmp_grp1, comm->agreed_failed_ranks, &tmp_grp2);
-        grp_size = ompi_group_size(tmp_grp2);
-
+    grp_size = ompi_group_size(tmp_grp1);
+    if( grp_size > comm->afr_size ) {
         OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) agreement (%d.%d).%d -- adding %d procs to the list of newly dead processes",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ci->agreement_id.ERAID_FIELDS.contextid,
                              ci->agreement_id.ERAID_FIELDS.epoch,
                              ci->agreement_id.ERAID_FIELDS.agreementid,
-                             grp_size));
+                             grp_size - comm->afr_size));
 
-        if( grp_size > 0 ) {
-            src_ra = (int*)malloc(grp_size * sizeof(int));
-            dst_ra = (int*)malloc(grp_size * sizeof(int));
-            for(r = 0 ; r < grp_size; r++)
-                src_ra[r] = r;
-            ompi_group_translate_ranks(tmp_grp2, grp_size, src_ra, comm->c_local_group, dst_ra);
-            free(src_ra);
-            qsort(dst_ra, grp_size, sizeof(int), compare_ints);
-            era_merge_new_dead_list(ci, grp_size, dst_ra);
-            free(dst_ra);
+        /* Find all dead processes, and sort their rank in comm */
+        src_ra = (int*)malloc(grp_size * sizeof(int));
+        dst_ra = (int*)malloc(grp_size * sizeof(int));
+        for(r = 0 ; r < grp_size; r++)
+            src_ra[r] = r;
+        ompi_group_translate_ranks(tmp_grp1, grp_size, src_ra, comm->c_local_group, dst_ra);
+        qsort(dst_ra, grp_size, sizeof(int), compare_ints);
+        
+        /* Remove the ranks in dst_ra that are already in agreed_failed_ranks */
+        for(s = 0, r = 0, t = 0; r < grp_size && s < comm->afr_size; r++) {
+            if(dst_ra[r] == comm->agreed_failed_ranks[s]) {
+                s++;
+            } else if (dst_ra[r] > comm->agreed_failed_ranks[s]) {
+                s++;
+                r--;
+            } else {
+                src_ra[t++] = dst_ra[r];
+            }
         }
-        OBJ_RELEASE(tmp_grp2);
+        for(; r < grp_size; r++) {
+            src_ra[t++] = dst_ra[r];
+        }
+
+#if defined(OPAL_ENABLE_DEBUG)
+        {
+            int _i, _j;
+            for(_i = 0; _i < t; _i++)
+                for(_j = _i+1; _j < t; _j++)
+                    assert(src_ra[_i] < src_ra[_j]);
+            for(_i = 0; _i < comm->afr_size; _i++)
+                for(_j = 0; _j < t; _j++)
+                    assert(src_ra[_j] != comm->agreed_failed_ranks[_i]);
+        }
+#endif
+
+        era_merge_new_dead_list(ci, t, src_ra);
+
+        free(src_ra);
+        free(dst_ra);
     }
     OBJ_RELEASE(tmp_grp1);
 
-    /* Compute the alive_ta translation array */
-    tmp_grp1 = OBJ_NEW(ompi_group_t);
-    ompi_group_difference(comm->c_local_group, comm->agreed_failed_ranks, &tmp_grp1);
-    ci->alive_size = ompi_group_size(tmp_grp1);
-    assert(NULL == ci->alive_ta);
-    ci->alive_ta = (int*)malloc(ci->alive_size * sizeof(int));
-    src_ra = (int*)malloc(ci->alive_size * sizeof(int));
-    for(r = 0 ; r < ci->alive_size; r++)
-        src_ra[r] = r;
-    ompi_group_translate_ranks(tmp_grp1, ci->alive_size, src_ra, comm->c_local_group, ci->alive_ta);
-
-    assert( era_comm_to_alive(ci, ompi_comm_rank(ci->comm)) == ompi_group_rank(tmp_grp1) );
-
-#if defined(OPAL_ENABLE_DEBUG)
-    /* Check: in order to keep the memory overhead small(er), we assume that
-     *   ranks in ci->alive_ta are ordered from small to big.
-     *   This loop checks this before we base the conversion on a wrong assumption
-     */
-    for(r = 1; r < ci->alive_size; r++)
-        assert(ci->alive_ta[r-1] < ci->alive_ta[r]);
-#endif
-    free(src_ra);
-    OBJ_RELEASE(tmp_grp1);
+    era_build_tree_structure(ci);
 }
 
 int mca_coll_ftbasic_agreement_era_comm_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module)
@@ -791,89 +794,236 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
     era_merge_new_dead_list(ni, value->header.nb_new_dead, value->new_dead_array);
 }
 
-/**
- * This search to find r such that ci->alive_ta[r] == r_in_comm
- * should be (in average) linear in the number of failures, so it's
- * better than translate_ranks which is linear in the communicator
- * size
- */
-static int era_comm_to_alive(era_agreement_info_t *ci, int r_in_comm)
-{
-    int r;
-    assert(NULL != ci->alive_ta);
-    assert(0 < ci->alive_size);
-    r = r_in_comm >= ci->alive_size ? ci->alive_size - 1 : r_in_comm;
-    while( r >= 0 && ci->alive_ta[r] > r_in_comm ) {
-        r--;
-    }
-    assert( r >= 0 && ci->alive_ta[r] >= r_in_comm );
-    assert( r >= 0 && r < ci->alive_size );
-    assert(ci->alive_ta[r] == r_in_comm);
-    return r;
-}
-
 #define ERA_TOPOLOGY_BINARY_TREE
 
 #if defined ERA_TOPOLOGY_BINARY_TREE
-static int era_parent_of(era_agreement_info_t *ci, int r_in_comm)
+struct era_tree_s {
+    int rank_in_comm;
+    int parent;
+    int next_sibling;
+    int first_child;
+};
+
+#if defined(OPAL_ENABLE_DEBUG)
+static int era_tree_check_node(era_agreement_info_t *ci, int r)
 {
-    ompi_communicator_t *comm = ci->comm;
-    int p_in_alive;
-    int r_in_alive = era_comm_to_alive(ci, r_in_comm);
+    int c, nb = 0, p;
+    if( (p = ci->tree[r].parent) != r ) {
+        for(c = ci->tree[p].first_child;
+            c != r;
+            c = ci->tree[c].next_sibling)
+            assert(c != ci->tree_size); /** My parent should have me in one of its children */
+    }
+    for(c = ci->tree[r].first_child;
+        c != ci->tree_size;
+        c = ci->tree[c].next_sibling) {
+        nb++;
+        assert(ci->tree[c].parent == r); /** Each of my children should have me as their parent */
+    }
+    return nb;
+}
 
-    if(r_in_comm == 0) {
-        /** We never ask the parent of a dead process */
-        assert( ompi_comm_is_proc_active(comm, r_in_comm, false) );
-        return 0;
+static void era_tree_check(era_agreement_info_t *ci)
+{
+    /** Tree consistency check */
+    int root = 0;
+    int children = 0;
+    int nodes = 0;
+    int r;
+
+    for(r = 0; r < ci->tree_size; r++) {
+        if( ci->tree[r].rank_in_comm == -1 )
+            continue;
+        if( ci->tree[r].parent == r ) {
+            root++;
+            assert(ci->tree[r].next_sibling == ci->tree_size);
+        }
+        nodes++;
+        children += era_tree_check_node(ci, r);
+    }
+    assert(root == 1);
+    assert(children + 1 == nodes);
+}
+#endif
+
+static void era_destroy_tree_structure(era_agreement_info_t *ci)
+{
+    assert(ci->tree != NULL);
+    free(ci->tree);
+    ci->tree = NULL;
+    ci->tree_size = 0;
+}
+
+static void era_build_tree_structure(era_agreement_info_t *ci)
+{
+    int m, n;
+    int offset, next_dead_idx;
+
+    n = ompi_comm_size(ci->comm);
+    ci->tree_size = n - ci->comm->afr_size;
+    ci->tree = (era_tree_t*)malloc(ci->tree_size * sizeof(era_tree_t));     /**< O(nb_alive) memory overhead during agreement */
+    
+    offset = 0;
+    next_dead_idx = 0;
+    for(m = 0; m < ci->tree_size; m++) { /**< O(comm_size) comp. overhead */
+        /** This assumes that agreed_failed_ranks is maintained sorted. */
+        while( next_dead_idx < ci->comm->afr_size && (m+offset) == ci->comm->agreed_failed_ranks[next_dead_idx] ) {
+            next_dead_idx++;
+            offset++;
+        }
+        ci->tree[m].rank_in_comm = m + offset;
     }
 
-    p_in_alive = (r_in_alive-1) / 2;
-
-    while( !ompi_comm_is_proc_active(comm, ci->alive_ta[p_in_alive], false) && (0 != p_in_alive) ) {
-        p_in_alive = (p_in_alive-1)/2;
+    for(m = 0; m < ci->tree_size; m++) { /**< O(nb_alive) comp. overhead */
+        ci->tree[m].parent        = m > 0 ? (m-1)/2 : 0;
+        ci->tree[m].first_child   = (2*m+1 < ci->tree_size) ? 2*m+1 : ci->tree_size;
+        ci->tree[m].next_sibling  = (m%2 != 0 && m+1 < ci->tree_size ) ? m + 1 : ci->tree_size;
     }
 
-    if(!ompi_comm_is_proc_active(comm, ci->alive_ta[p_in_alive], false)) {
-        assert( p_in_alive==0 );
-        for(p_in_alive = 0; p_in_alive < r_in_alive; p_in_alive++)
-            if(ompi_comm_is_proc_active(comm, ci->alive_ta[p_in_alive], false))
-                break;
+#if defined(OPAL_ENABLE_DEBUG)
+    era_tree_check(ci);
+#endif
+}
+
+static int era_tree_rank_from_comm_rank(era_agreement_info_t *ci, int r_in_comm)
+{
+    int r_in_tree = r_in_comm >= ci->tree_size ? ci->tree_size-1 : r_in_comm;
+
+    /** This search is at worst O(nb_dead) */
+    while( ci->tree[r_in_tree].rank_in_comm != r_in_comm ) {
+        assert( ci->tree[r_in_tree].rank_in_comm == -1 || ci->tree[r_in_tree].rank_in_comm > r_in_comm );
+        assert( r_in_tree > 0 );
+        r_in_tree--;
+    }
+    return r_in_tree;
+}
+
+static void era_tree_remove_node(era_agreement_info_t *ci, int r_in_tree)
+{
+    /** All indices are in tree */
+    int p, c, s, t;
+
+    p = ci->tree[r_in_tree].parent;
+    if( p != r_in_tree ) {
+        /** r_in_tree has a parent */
+
+        /** First, for each children process, re-attach them to their new parent,
+         *  reminding the first child in s, and the last child in c */
+        s = c = ci->tree[r_in_tree].first_child;
+        if(s != ci->tree_size ) {
+            while(1) {
+                ci->tree[c].parent = p;
+                if( ci->tree[c].next_sibling == ci->tree_size )
+                    break;
+                c = ci->tree[c].next_sibling;
+            }
+        } /** If r_in_tree is a leaf, we don't need to do anything special */
+
+        /** Then, unchain r_in_tree, inserting instead the chain s -> c if it exists */
+        if( ci->tree[p].first_child == r_in_tree ) {
+            if( s == ci->tree_size ) {
+                ci->tree[p].first_child = ci->tree[r_in_tree].next_sibling;
+            } else {
+                ci->tree[p].first_child = s;
+                ci->tree[c].next_sibling = ci->tree[r_in_tree].next_sibling;
+            }
+        } else {
+            for(t = ci->tree[p].first_child;
+                ci->tree[t].next_sibling != r_in_tree;
+                t = ci->tree[t].next_sibling) {
+                assert(t != ci->tree_size); /** r_in_tree should still be chained to its parent */
+            }
+            if( s == ci->tree_size ) {
+                ci->tree[t].next_sibling = ci->tree[r_in_tree].next_sibling;
+            } else {
+                ci->tree[t].next_sibling = s;
+                ci->tree[c].next_sibling = ci->tree[r_in_tree].next_sibling;
+            }
+        }
+    } else {
+        /* r_in_tree is root...*/
+        assert( ci->tree[r_in_tree].next_sibling == ci->tree_size );
+        assert( ci->tree[r_in_tree].first_child != ci->tree_size );
+        p = ci->tree[r_in_tree].first_child;
+        s = ci->tree[p].next_sibling;
+        ci->tree[p].parent = p;
+        ci->tree[p].next_sibling = ci->tree_size;
+        if( s != ci->tree_size ) {
+            c = s;
+            while(1) {
+                assert(ci->tree[c].parent == r_in_tree);
+                ci->tree[c].parent = p;
+                if( ci->tree[c].next_sibling == ci->tree_size )
+                    break;
+                c = ci->tree[c].next_sibling;
+            }
+            ci->tree[c].next_sibling = ci->tree[p].first_child;
+            ci->tree[p].first_child  = s;
+        }
     }
 
-    return ci->alive_ta[p_in_alive];
+#if defined(OPAL_ENABLE_DEBUG)
+    ci->tree[r_in_tree].rank_in_comm = -1;
+    ci->tree[r_in_tree].parent = ci->tree_size;
+    ci->tree[r_in_tree].first_child = ci->tree_size;
+    ci->tree[r_in_tree].next_sibling = ci->tree_size;
+    era_tree_check(ci);
+#endif
 }
 
 static int era_parent(era_agreement_info_t *ci)
 {
-    return era_parent_of(ci, ompi_comm_rank(ci->comm));
+    int r_in_comm = ompi_comm_rank(ci->comm);
+    int r_in_tree = era_tree_rank_from_comm_rank(ci, r_in_comm);
+    int p_in_comm, p_in_tree, s_in_tree, c_in_tree;
+
+    while(1) {
+        p_in_tree = ci->tree[r_in_tree].parent;
+        p_in_comm = ci->tree[p_in_tree].rank_in_comm;
+        if( ompi_comm_is_proc_active(ci->comm, p_in_comm, false) )
+            return p_in_comm;
+
+        era_tree_remove_node(ci, p_in_tree);
+        continue; /**< My new parent might be dead too: start again */
+    }
 }
 
 static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm)
 {
     ompi_communicator_t *comm = ci->comm;
-    int prev_child_in_alive = prev_child_in_comm == -1 ? -1 : era_comm_to_alive(ci, prev_child_in_comm);
-    int next_child_in_alive;
-    int r_in_comm = ompi_comm_rank(ci->comm);
-    int r_in_alive = era_comm_to_alive(ci, r_in_comm);
-    assert(MPI_UNDEFINED != r_in_alive);
+    int prev_child_in_tree;
+    int r_in_tree, c_in_tree, cc_in_tree, c_in_comm;
+    int s_in_tree, s_in_comm, sc_in_tree;
 
-    if( prev_child_in_alive == -1 )
-        next_child_in_alive = r_in_alive + 1;
-    else
-        next_child_in_alive = prev_child_in_alive + 1;
+    assert(NULL != comm);
 
-    /** Anybody with an ID > r is a potentation child */
-    while(next_child_in_alive < ci->alive_size) {
-        if( ompi_comm_is_proc_active(comm, ci->alive_ta[next_child_in_alive], false) && 
-            r_in_comm == era_parent_of(ci, ci->alive_ta[next_child_in_alive]) )
-            break;
-        next_child_in_alive++;
+    prev_child_in_tree = prev_child_in_comm == -1 ? -1 : era_tree_rank_from_comm_rank(ci, prev_child_in_comm);
+
+    if(prev_child_in_tree == -1) {
+        r_in_tree = era_tree_rank_from_comm_rank(ci, ompi_comm_rank(comm));
+        while(1) {
+            /* We search / fix the tree for the first alive child */
+            c_in_tree = ci->tree[r_in_tree].first_child;
+            if( c_in_tree == ci->tree_size )
+                return ompi_comm_size(comm); /** there are none */
+            c_in_comm = ci->tree[c_in_tree].rank_in_comm;
+            if( ompi_comm_is_proc_active(comm, c_in_comm, false) )
+                return c_in_comm;
+            era_tree_remove_node(ci, c_in_tree);
+        }
+    } else {
+        r_in_tree = era_tree_rank_from_comm_rank(ci, prev_child_in_comm);
+        while(1) {
+            /* We search / fix the tree for the next alive sibling of r */
+            s_in_tree = ci->tree[r_in_tree].next_sibling;
+            if( s_in_tree == ci->tree_size )
+                return ompi_comm_size(comm); /** No more */
+            s_in_comm = ci->tree[s_in_tree].rank_in_comm;
+            if( ompi_comm_is_proc_active(comm, s_in_comm, false) )
+                return s_in_comm;
+            era_tree_remove_node(ci, s_in_tree);
+        }
     }
-
-    if( next_child_in_alive == ci->alive_size )
-        return ompi_comm_size(ci->comm);
-
-    return ci->alive_ta[next_child_in_alive];
 }
 #endif
 
@@ -981,9 +1131,9 @@ static void era_collect_passed_agreements(era_identifier_t agreement_id, uint16_
 static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 {
     ompi_communicator_t *comm;
-    ompi_group_t *new_deads_group, *new_agreed;
+    int *new_agreed;
     era_rank_item_t *rl;
-    int r;
+    int r, s, dead_size;
     void *value;
 
     OBJ_RETAIN(decided_value);
@@ -1036,16 +1186,41 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
         }
 #endif /*OPAL_ENABLE_DEBUG*/
 
-        new_deads_group = OBJ_NEW(ompi_group_t);
-        new_agreed      = OBJ_NEW(ompi_group_t);
-        ompi_group_incl(comm->c_local_group, decided_value->header.nb_new_dead, 
-                        decided_value->new_dead_array, &new_deads_group);
-        ompi_group_union(comm->agreed_failed_ranks, new_deads_group, &new_agreed);
-        OBJ_RELEASE(comm->agreed_failed_ranks);
-        comm->agreed_failed_ranks = new_agreed;
-        era_debug_print_group(30, comm->agreed_failed_ranks, comm, "Added elements in agreed_failed_Groups");
-        OBJ_RELEASE(new_deads_group);
+        dead_size = comm->afr_size + decided_value->header.nb_new_dead;
+        comm->agreed_failed_ranks = (int*)realloc(comm->agreed_failed_ranks, dead_size * sizeof(int));
+
+        for(s = 0, r = 0; r < decided_value->header.nb_new_dead; r++) {
+            while(s < comm->afr_size && comm->agreed_failed_ranks[s] < decided_value->new_dead_array[r] ) s++;
+            if( s == comm->afr_size ) {
+                /** paste the remaining ints at the end of the array */
+                memcpy(comm->agreed_failed_ranks + comm->afr_size,
+                       decided_value->new_dead_array + r,
+                       (decided_value->header.nb_new_dead - r) * sizeof(int));
+                comm->afr_size += decided_value->header.nb_new_dead - r;
+                break;
+            } else if( comm->agreed_failed_ranks[s] > decided_value->new_dead_array[r] ) {
+                /** make some room for one int */
+                memmove(comm->agreed_failed_ranks + s + 1,
+                        comm->agreed_failed_ranks + s,
+                        (comm->afr_size - s) * sizeof(int));
+                comm->afr_size++;
+                /** and insert new_dead[r] */
+                comm->agreed_failed_ranks[s] = decided_value->new_dead_array[r];
+            } else {
+                /** It was already in, let's skip it */
+            }
+        }
+
+#if defined(OPAL_ENABLE_DEBUG)
+        {
+            int _i, _j;
+            for(_i = 0; _i < comm->afr_size; _i++)
+                for(_j = _i+1; _j < comm->afr_size; _j++)
+                    assert(comm->agreed_failed_ranks[_i] < comm->agreed_failed_ranks[_j]);
+        }
+#endif /*OPAL_ENABLE_DEBUG*/
     }
+
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: group of agreed deaths is of size %d\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -1055,7 +1230,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                          ci->agreement_id.ERAID_FIELDS.contextid,
                          ci->agreement_id.ERAID_FIELDS.epoch,                         
                          ci->agreement_id.ERAID_FIELDS.agreementid,
-                         ompi_group_size(comm->agreed_failed_ranks)));
+                         comm->afr_size));
 
     r = -1;
     while( (r = era_next_child(ci, r)) < ompi_comm_size(comm) ) {
@@ -2316,10 +2491,9 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
 
     /* Update the group of failed processes */
     if(NULL != group) {
-        OBJ_RELEASE(*group);
+        ompi_group_incl(comm->c_local_group, comm->afr_size,
+                        comm->agreed_failed_ranks, group);
     }
-    *group = comm->agreed_failed_ranks;
-    OBJ_RETAIN(comm->agreed_failed_ranks);
     era_debug_print_group(1, *group, comm, "After Agreement");
 
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
