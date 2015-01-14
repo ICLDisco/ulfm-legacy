@@ -2024,12 +2024,6 @@ static void msg_down(era_msg_header_t *msg_header, uint8_t *bytes, int *new_dead
          *  we received another DOWN from another sent REQUEST, and we
          *  decided, so stored that agreement in the passed_agreements
          */
-#if defined(OPAL_ENABLE_DEBUG)
-        void *value;
-        assert( opal_hash_table_get_value_uint64(&era_passed_agreements,
-                                                 msg_header->agreement_id.ERAID_KEY,
-                                                 &value) == OPAL_SUCCESS );
-#endif
         return;
     }
     /** if I receive a down message on an agreement I know about, I already participated. */
