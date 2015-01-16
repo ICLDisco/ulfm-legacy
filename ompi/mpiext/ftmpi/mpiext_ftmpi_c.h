@@ -1,9 +1,11 @@
 /*
  * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2010-2014 The Trustees of the University of Tennessee.
+ *                         All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  *
  */
@@ -12,43 +14,44 @@
 /********************************
  * Communicators
  ********************************/
-OMPI_DECLSPEC int OMPI_Comm_revoke(MPI_Comm comm);
+OMPI_DECLSPEC int MPIX_Comm_revoke(MPI_Comm comm);
+OMPI_DECLSPEC int MPIX_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm);
+OMPI_DECLSPEC int MPIX_Comm_failure_ack(MPI_Comm comm);
+OMPI_DECLSPEC int MPIX_Comm_failure_get_acked(MPI_Comm comm, MPI_Group *failedgrp);
 
-OMPI_DECLSPEC int OMPI_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm);
+OMPI_DECLSPEC int MPIX_Comm_agree(MPI_Comm comm, int *flag);
+OMPI_DECLSPEC int MPIX_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *request);
 
-OMPI_DECLSPEC int OMPI_Comm_failure_ack(MPI_Comm comm);
-OMPI_DECLSPEC int OMPI_Comm_failure_get_acked(MPI_Comm comm, MPI_Group *failedgrp);
+/**
+ * Deprecated functions to be soon removed.
+ */
+OMPI_DECLSPEC int OMPI_Comm_revoke(MPI_Comm comm) __mpi_interface_deprecated__("OMPI_Comm_revoke is deprecated, use MPIX_Comm_revoke");
 
-OMPI_DECLSPEC int OMPI_Comm_agree(MPI_Comm comm, int *flag);
-OMPI_DECLSPEC int OMPI_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *request);
+OMPI_DECLSPEC int OMPI_Comm_shrink(MPI_Comm comm, MPI_Comm *newcomm) __mpi_interface_deprecated__("OMPI_Comm_shrink is deprecated, use MPIX_Comm_shrink");
+
+OMPI_DECLSPEC int OMPI_Comm_failure_ack(MPI_Comm comm) __mpi_interface_deprecated__("OMPI_Comm_failure_ack is deprecated, use MPIX_Comm_failure_ack");
+OMPI_DECLSPEC int OMPI_Comm_failure_get_acked(MPI_Comm comm, MPI_Group *failedgrp) __mpi_interface_deprecated__("OMPI_Comm_failure_get_acked is deprecated, use MPIX_Comm_failure_get_acked");
+
+OMPI_DECLSPEC int OMPI_Comm_agree(MPI_Comm comm, int *flag) __mpi_interface_deprecated__("OMPI_Comm_agree is deprecated, use MPIX_Comm_agree");
+OMPI_DECLSPEC int OMPI_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *request) __mpi_interface_deprecated__("OMPI_Comm_iagree is deprecated, use MPIX_Comm_iagree");
 
 #if 0
 /********************************
  * Windows
  ********************************/
-OMPI_DECLSPEC int OMPI_Win_revoke(MPI_Win win);
-OMPI_DECLSPEC int OMPI_Win_get_failed(MPI_Win win, MPI_Group *failedgrp);
+OMPI_DECLSPEC int MPIX_Win_revoke(MPI_Win win);
+OMPI_DECLSPEC int MPIX_Win_get_failed(MPI_Win win, MPI_Group *failedgrp);
+
+OMPI_DECLSPEC int OMPI_Win_revoke(MPI_Win win) __mpi_interface_deprecated__("OMPI_Win_revoke is deprecated, use MPIX_Win_revoke");
+OMPI_DECLSPEC int OMPI_Win_get_failed(MPI_Win win, MPI_Group *failedgrp) __mpi_interface_deprecated__("OMPI_Win_get_failed is deprecated, use MPIX_Win_get_failed");
 #endif
 
 #if 0
 /********************************
  * I/O
  ********************************/
-OMPI_DECLSPEC int OMPI_File_revoke(MPI_File fh);
+OMPI_DECLSPEC int MPIX_File_revoke(MPI_File fh);
+
+OMPI_DECLSPEC int OMPI_File_revoke(MPI_File fh) __mpi_interface_deprecated__("OMPI_File_revoke is deprecated, use MPIX_File_revoke");
 #endif
 
-#if 0
-/********************************
- * Error Hanlders
- ********************************/
-OMPI_DECLSPEC int OMPI_Errhandler_compare(MPI_Errhandler errhandler1,
-                                          MPI_Errhandler errhandler2,
-                                          int *result);
-#endif
-
-#if 0
-/********************************
- * Kill
- ********************************/
-OMPI_DECLSPEC int OMPI_Kill(MPI_Comm comm, int rank, MPI_Info info);
-#endif

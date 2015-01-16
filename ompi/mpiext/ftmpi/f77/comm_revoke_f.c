@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+ * Copyright (c) 2010-2014 The Trustees of the University of Tennessee.
+ *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -16,7 +18,12 @@
 
 #include "ompi/mpiext/ftmpi/f77/ftmpi_f77_support.h"
 
-F77_STAMP_FN(OMPI_Comm_revoke_f,
+F77_STAMP_FN(MPIX_Comm_revoke_f,
+             mpix_comm_revoke,
+             MPIX_COMM_REVOKE,
+             (MPI_Fint *comm, MPI_Fint *ierr),
+             (comm, ierr))
+F77_STAMP_FN(MPIX_Comm_revoke_f,
              ompi_comm_revoke,
              OMPI_COMM_REVOKE,
              (MPI_Fint *comm, MPI_Fint *ierr),
@@ -28,9 +35,9 @@ F77_STAMP_FN(OMPI_Comm_revoke_f,
 
 #include "ompi/mpiext/ftmpi/mpiext_ftmpi_c.h"
 
-static void OMPI_Comm_revoke_f(MPI_Fint *comm, MPI_Fint *ierr)
+static void MPIX_Comm_revoke_f(MPI_Fint *comm, MPI_Fint *ierr)
 {
     MPI_Comm c_comm = MPI_Comm_f2c(*comm);
 
-    *ierr = OMPI_INT_2_FINT(OMPI_Comm_revoke(c_comm));
+    *ierr = OMPI_INT_2_FINT(MPIX_Comm_revoke(c_comm));
 }
