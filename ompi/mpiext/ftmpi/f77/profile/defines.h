@@ -16,6 +16,17 @@
  * PMPI_* symbols
  */
 
+#define MPIX_Comm_revoke PMPIX_Comm_revoke
+
+#define MPIX_Comm_shrink PMPIX_Comm_shrink
+
+#define MPIX_Comm_failure_ack PMPIX_Comm_failure_ack
+#define MPIX_Comm_failure_get_acked PMPIX_Comm_failure_get_acked
+
+#define MPIX_Comm_agree PMPIX_Comm_agree
+#define MPIX_Comm_iagree PMPIX_Comm_iagree
+
+/* Deprecated functions */
 #define OMPI_Comm_revoke POMPI_Comm_revoke
 
 #define OMPI_Comm_shrink POMPI_Comm_shrink
