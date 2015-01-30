@@ -460,26 +460,10 @@ int ompi_group_intersection(ompi_group_t* group1,ompi_group_t* group2,
     group1_pointer=(ompi_group_t *)group1;
     group2_pointer=(ompi_group_t *)group2;
 
-    /* determine the number of included processes for the incl-method */
-    k = 0;
-    for (proc1 = 0; proc1 < group1_pointer->grp_proc_count; proc1++) {
-        proc1_pointer = ompi_group_peer_lookup (group1_pointer , proc1);
-        
-        /* check to see if this proc is in group2 */
-    
-        for (proc2 = 0; proc2 < group2_pointer->grp_proc_count; proc2++) {
-            proc2_pointer = ompi_group_peer_lookup (group2_pointer , proc2);
-
-            if( proc1_pointer == proc2_pointer ) {
-                k++;
-                break;
-            }
-        }  /* end proc2 loop */
-    }  /* end proc1 loop */
-    
-    if (0 != k) {
-        ranks_included = (int *)malloc( k*(sizeof(int)));
-    }
+    k = ompi_group_size(group1);
+    if( k > ompi_group_size(group2) )
+        k = ompi_group_size(group2);
+    ranks_included = (int *)malloc( k*(sizeof(int)));
 
     /* determine the list of included processes for the incl-method */
     k = 0;
@@ -487,7 +471,6 @@ int ompi_group_intersection(ompi_group_t* group1,ompi_group_t* group2,
         proc1_pointer = ompi_group_peer_lookup (group1_pointer , proc1);
 
         /* check to see if this proc is in group2 */
-    
         for (proc2 = 0; proc2 < group2_pointer->grp_proc_count; proc2++) {
             proc2_pointer = ompi_group_peer_lookup (group2_pointer ,proc2);
 
@@ -500,7 +483,7 @@ int ompi_group_intersection(ompi_group_t* group1,ompi_group_t* group2,
     }  /* end proc1 loop */
 
     result = ompi_group_incl(group1, k, ranks_included, new_group);
-    
+
     if (NULL != ranks_included) {
         free(ranks_included);
     }
