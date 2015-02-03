@@ -385,7 +385,7 @@ static void era_debug_print_group(int lvl, ompi_group_t *group, ompi_communicato
         free(gra);
 }
 #else
-#define era_debug_print_group(g, c, i) do {} while(0)
+#define era_debug_print_group(g, c, i, h) do {} while(0)
 #endif
 
 static int era_comm_to_alive(era_agreement_info_t *ci, int r_in_comm);
