@@ -79,7 +79,7 @@ typedef struct {
 #define ERAID_KEY    u.uint64
 #define ERAID_FIELDS u.fields
 
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
 #define PROGRESS_FAILURE_PROB 0.1
 #endif
 
@@ -349,7 +349,7 @@ static era_agreement_info_t *era_create_agreement_info(era_identifier_t agreemen
     return ci;
 }
 
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
 static void era_debug_print_group(int lvl, ompi_group_t *group, ompi_communicator_t *comm, char *info)
 {
     int *gra = NULL;
@@ -542,7 +542,7 @@ static void era_merge_new_dead_list(era_agreement_info_t *ci, int nb_src, int *s
     dst = ci->current_value->new_dead_array;
     nb_dst = ci->current_value->header.nb_new_dead;
 
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
         {
             for(d = 1; d < nb_dst; d++) 
                 assert(dst[d-1] < dst[d]);
@@ -702,7 +702,7 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
             src_ra[t++] = dst_ra[r];
         }
 
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
         {
             int _i, _j;
             for(_i = 0; _i < t; _i++)
@@ -804,7 +804,7 @@ struct era_tree_s {
     int first_child;
 };
 
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
 static int era_tree_check_node(era_agreement_info_t *ci, int r)
 {
     int c, nb = 0, p;
@@ -880,7 +880,7 @@ static void era_build_tree_structure(era_agreement_info_t *ci)
         ci->tree[m].next_sibling  = (m%2 != 0 && m+1 < ci->tree_size ) ? m + 1 : ci->tree_size;
     }
 
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
     era_tree_check(ci);
 #endif
 }
@@ -962,7 +962,7 @@ static void era_tree_remove_node(era_agreement_info_t *ci, int r_in_tree)
         }
     }
 
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
     ci->tree[r_in_tree].rank_in_comm = -1;
     ci->tree[r_in_tree].parent = ci->tree_size;
     ci->tree[r_in_tree].first_child = ci->tree_size;
@@ -1173,7 +1173,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                              ci->agreement_id.ERAID_FIELDS.agreementid,
                              decided_value->header.nb_new_dead));
         
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
         {
             int _i, _j;
             for(_i = 0; _i < decided_value->header.nb_new_dead; _i++) {
@@ -1211,7 +1211,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
             }
         }
 
-#if defined(OPAL_ENABLE_DEBUG)
+#if OPAL_ENABLE_DEBUG
         {
             int _i, _j;
             for(_i = 0; _i < comm->afr_size; _i++)
