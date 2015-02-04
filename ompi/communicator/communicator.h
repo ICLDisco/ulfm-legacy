@@ -210,8 +210,7 @@ struct ompi_communicator_t {
     int                      lleader;
     int                      rleader;
 
-    int                     *agreed_failed_ranks;
-    int                      afr_size;
+    opal_object_t           *agreement_specific;
 #endif /* OPAL_ENABLE_FT_MPI */
 };
 typedef struct ompi_communicator_t ompi_communicator_t;
@@ -403,8 +402,7 @@ static inline int ompi_comm_peer_lookup_id(ompi_communicator_t* comm, ompi_proc_
         (COMM)->lleader             = 0;                                \
         (COMM)->rleader             = 0;                                \
         (COMM)->c_epoch             = (EPOCH);                          \
-        (COMM)->agreed_failed_ranks = NULL;                             \
-        (COMM)->afr_size            = 0;                                \
+        (COMM)->agreement_specific  = NULL;                             \
     } while (0)
 
 /*
