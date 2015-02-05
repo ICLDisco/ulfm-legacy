@@ -184,6 +184,44 @@ OBJ_CLASS_INSTANCE(era_rank_item_t, opal_list_item_t, NULL, NULL /*print_destruc
 typedef struct era_tree_s era_tree_t;
 
 /**
+ * Communicator-specific Agreement persistent information
+ */
+typedef struct era_comm_agreement_specific_s {
+    opal_object_t parent;
+    int          *agreed_failed_ranks;
+    int           afr_size;
+    era_tree_t   *tree;
+    int           tree_size;
+    int           ags_dirty;
+} era_comm_agreement_specific_t;
+
+static void  era_agreement_comm_specific_constructor(era_comm_agreement_specific_t *comm_specific)
+{
+    comm_specific->agreed_failed_ranks = NULL;
+    comm_specific->afr_size            = 0;
+    comm_specific->tree                = NULL;
+    comm_specific->tree_size           = 0;
+    comm_specific->ags_dirty           = 1; /**< the AGS does not exist, so it needs to be created */
+}
+
+static void  era_agreement_comm_specific_destructor(era_comm_agreement_specific_t *comm_specific)
+{
+    if( NULL != comm_specific->agreed_failed_ranks ) {
+        free(comm_specific->agreed_failed_ranks );
+    }
+    if( NULL != comm_specific->tree ) {
+        free(comm_specific->tree);
+    }
+}
+
+OBJ_CLASS_INSTANCE(era_comm_agreement_specific_t,
+                   opal_object_t, 
+                   era_agreement_comm_specific_constructor,
+                   era_agreement_comm_specific_destructor);
+
+#define AGS(comm)  ( (era_comm_agreement_specific_t*)(comm)->agreement_specific )
+
+/**
  * Main structure to remember the current status of an agreement that
  *  was started.
  */
@@ -195,9 +233,9 @@ typedef struct {
     uint16_t              min_passed_aid;    
     ompi_communicator_t  *comm;              /**< Communicator related to that agreement. Might be NULL
                                               *   if this process has not entered the agreement yet.*/
-    int                   tree_size;        /**< Size of the "alive" tree = comm->c_local_group \ comm->agreed_failed_ranks
-                                              *   Also the size of the translation array below. */
-    era_tree_t           *tree;             /**< Tree structure (depends on the tree topology used). */
+    era_comm_agreement_specific_t *ags;      /**< Communicator-specific agreement information, at
+                                              *   the time this agreement was started (might be different
+                                              *   from comm->ags during the agreement) */
     int                   nb_acked;          /**< size of acked */
     int                  *acked;             /**< Last acknowledged processes when entering
                                               *   the agreement. Used to compare with the descendents 
@@ -213,7 +251,6 @@ typedef struct {
 } era_agreement_info_t;
 
 static void era_build_tree_structure(era_agreement_info_t *ci);
-static void era_destroy_tree_structure(era_agreement_info_t *ci);
 static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm);
 static int era_parent(era_agreement_info_t *ci);
 
@@ -253,7 +290,6 @@ static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info
     OBJ_DESTRUCT(&agreement_info->waiting_res_from);
     if( NULL != agreement_info->comm ) {
         OBJ_RELEASE(agreement_info->comm);
-        era_destroy_tree_structure( agreement_info );
     }
     if( NULL != agreement_info->acked ) {
         free(agreement_info->acked);
@@ -271,41 +307,6 @@ OBJ_CLASS_INSTANCE(era_agreement_info_t,
                    opal_object_t, 
                    era_agreement_info_constructor, 
                    era_agreement_info_destructor);
-
-typedef struct era_comm_agreement_specific_s {
-    opal_object_t parent;
-    int          *agreed_failed_ranks;
-    int           afr_size;
-    era_tree_t   *tree;
-    int           tree_size;
-    int           tree_dirty;
-} era_comm_agreement_specific_t;
-
-static void  era_agreement_comm_specific_constructor(era_comm_agreement_specific_t *comm_specific)
-{
-    comm_specific->agreed_failed_ranks = NULL;
-    comm_specific->afr_size            = 0;
-    comm_specific->tree                = NULL;
-    comm_specific->tree_size           = 0;
-    comm_specific->tree_dirty          = 1; /**< the tree does not exist, so it needs to be created */
-}
-
-static void  era_agreement_comm_specific_destructor(era_comm_agreement_specific_t *comm_specific)
-{
-    if( NULL != comm_specific->agreed_failed_ranks ) {
-        free(comm_specific->agreed_failed_ranks );
-    }
-    if( NULL != comm_specific->tree ) {
-        free(comm_specific->tree);
-    }
-}
-
-OBJ_CLASS_INSTANCE(era_comm_agreement_specific_t,
-                   opal_object_t, 
-                   era_agreement_comm_specific_constructor,
-                   era_agreement_comm_specific_destructor);
-
-#define AGS(comm)  ( (era_comm_agreement_specific_t*)(comm)->agreement_specific )
 
 #if OPAL_ENABLE_DEBUG
 static char *era_status_to_string(era_proc_status_t s) {
@@ -671,6 +672,99 @@ static void era_agreement_value_set_gcrange(era_identifier_t eid, era_value_t *e
 
 }
 
+static void era_update_new_dead_list(era_agreement_info_t *ci)
+{
+    int *ra, s, r, t;
+    era_comm_agreement_specific_t *ags;
+    ompi_communicator_t *comm;
+
+    comm = ci->comm;
+    ags  = AGS(comm);
+    assert(ags->afr_size >= 0); /**< I should be working on an ags still attached to the communicator */
+    
+    /** Worst case: all processes minus me are dead */
+    ra = (int*)malloc( (ompi_group_size(comm->c_local_group) - 1) * sizeof(int) );
+    t = 0;
+    r = 0;
+    for(s = 0; s < ompi_group_size(comm->c_local_group); s++) {
+        if( t < ags->afr_size && ags->agreed_failed_ranks[t] == s ) {
+            t++;
+            continue;
+        }
+        if( !ompi_comm_is_proc_active(comm, s, false) ) {
+            ra[r++] = s;
+        }
+    }
+
+    OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
+                         "%s ftbasic:agreement (ERA) agreement (%d.%d).%d -- adding %d procs to the list of newly dead processes",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         ci->agreement_id.ERAID_FIELDS.contextid,
+                         ci->agreement_id.ERAID_FIELDS.epoch,
+                         ci->agreement_id.ERAID_FIELDS.agreementid,
+                         r));
+
+#if OPAL_ENABLE_DEBUG
+    {
+        int _i, _j;
+        for(_i = 0; _i < r; _i++)
+            for(_j = _i+1; _j < r; _j++)
+                assert(ra[_i] < ra[_j]);
+        for(_i = 0; _i < ags->afr_size; _i++)
+            for(_j = 0; _j < r; _j++)
+                assert(ra[_j] != ags->agreed_failed_ranks[_i]);
+    }
+#endif
+
+    era_merge_new_dead_list(ci, r, ra);
+
+    free(ra);
+}
+
+static void era_ci_get_clean_ags_copy(era_agreement_info_t *ci)
+{
+    era_comm_agreement_specific_t *old, *new;
+
+    if( AGS(ci->comm)->ags_dirty ) {
+        old = AGS(ci->comm);
+
+        if( AGS(ci->comm)->parent.obj_reference_count > 1 ) {
+            /** Not only ci->comm points to this AGS at this time.
+             *  This means that some other ci points to it, so it's unsafe to
+             *  reuse it: create a copy for the other cis that point to it,
+             *  and attach that new copy to the communicator, then update it.
+             */
+            new = OBJ_NEW(era_comm_agreement_specific_t);
+
+            if( old->afr_size > 0 ) {
+                /** old does not need to remember the agreed_failed ranks, avoid allocating memory */
+                new->agreed_failed_ranks = old->agreed_failed_ranks;
+                new->afr_size            = old->afr_size;
+
+                old->agreed_failed_ranks = NULL;
+                old->afr_size            = -1;
+            }
+
+            ci->comm->agreement_specific = &new->parent;
+
+            old->ags_dirty = 0;
+            OBJ_RELEASE(old);
+        }
+
+    }
+
+    ci->ags = AGS(ci->comm);
+    OBJ_RETAIN(ci->ags);
+
+    if( ci->ags->ags_dirty ) {
+
+        era_build_tree_structure(ci);
+        era_update_new_dead_list(ci);
+
+        ci->ags->ags_dirty = 0;
+    }
+}
+
 static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communicator_t *comm, ompi_group_t *acked_group)
 {
     ompi_group_t *tmp_grp1, *tmp_grp2;
@@ -707,61 +801,7 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
     if( grp_size > 0 )
         free(dst_ra);
 
-    /* Deal with the new_deads list */
-    ompi_group_intersection(comm->c_local_group, ompi_group_all_failed_procs, &tmp_grp1);
-    grp_size = ompi_group_size(tmp_grp1);
-    if( grp_size > AGS(comm)->afr_size ) {
-        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) agreement (%d.%d).%d -- adding %d procs to the list of newly dead processes",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             ci->agreement_id.ERAID_FIELDS.contextid,
-                             ci->agreement_id.ERAID_FIELDS.epoch,
-                             ci->agreement_id.ERAID_FIELDS.agreementid,
-                             grp_size - AGS(comm)->afr_size));
-
-        /* Find all dead processes, and sort their rank in comm */
-        src_ra = (int*)malloc(grp_size * sizeof(int));
-        dst_ra = (int*)malloc(grp_size * sizeof(int));
-        for(r = 0 ; r < grp_size; r++)
-            src_ra[r] = r;
-        ompi_group_translate_ranks(tmp_grp1, grp_size, src_ra, comm->c_local_group, dst_ra);
-        qsort(dst_ra, grp_size, sizeof(int), compare_ints);
-        
-        /* Remove the ranks in dst_ra that are already in agreed_failed_ranks */
-        for(s = 0, r = 0, t = 0; r < grp_size && s < AGS(comm)->afr_size; r++) {
-            if(dst_ra[r] == AGS(comm)->agreed_failed_ranks[s]) {
-                s++;
-            } else if (dst_ra[r] > AGS(comm)->agreed_failed_ranks[s]) {
-                s++;
-                r--;
-            } else {
-                src_ra[t++] = dst_ra[r];
-            }
-        }
-        for(; r < grp_size; r++) {
-            src_ra[t++] = dst_ra[r];
-        }
-
-#if OPAL_ENABLE_DEBUG
-        {
-            int _i, _j;
-            for(_i = 0; _i < t; _i++)
-                for(_j = _i+1; _j < t; _j++)
-                    assert(src_ra[_i] < src_ra[_j]);
-            for(_i = 0; _i < AGS(comm)->afr_size; _i++)
-                for(_j = 0; _j < t; _j++)
-                    assert(src_ra[_j] != AGS(comm)->agreed_failed_ranks[_i]);
-        }
-#endif
-
-        era_merge_new_dead_list(ci, t, src_ra);
-
-        free(src_ra);
-        free(dst_ra);
-    }
-    OBJ_RELEASE(tmp_grp1);
-
-    era_build_tree_structure(ci);
+    era_ci_get_clean_ags_copy(ci);
 }
 
 int mca_coll_ftbasic_agreement_era_comm_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module)
@@ -848,17 +888,17 @@ struct era_tree_s {
 static int era_tree_check_node(era_agreement_info_t *ci, int r)
 {
     int c, nb = 0, p;
-    if( (p = ci->tree[r].parent) != r ) {
-        for(c = ci->tree[p].first_child;
+    if( (p = ci->ags->tree[r].parent) != r ) {
+        for(c = ci->ags->tree[p].first_child;
             c != r;
-            c = ci->tree[c].next_sibling)
-            assert(c != ci->tree_size); /** My parent should have me in one of its children */
+            c = ci->ags->tree[c].next_sibling)
+            assert(c != ci->ags->tree_size); /** My parent should have me in one of its children */
     }
-    for(c = ci->tree[r].first_child;
-        c != ci->tree_size;
-        c = ci->tree[c].next_sibling) {
+    for(c = ci->ags->tree[r].first_child;
+        c != ci->ags->tree_size;
+        c = ci->ags->tree[c].next_sibling) {
         nb++;
-        assert(ci->tree[c].parent == r); /** Each of my children should have me as their parent */
+        assert(ci->ags->tree[c].parent == r); /** Each of my children should have me as their parent */
     }
     return nb;
 }
@@ -871,12 +911,12 @@ static void era_tree_check(era_agreement_info_t *ci)
     int nodes = 0;
     int r;
 
-    for(r = 0; r < ci->tree_size; r++) {
-        if( ci->tree[r].rank_in_comm == -1 )
+    for(r = 0; r < ci->ags->tree_size; r++) {
+        if( ci->ags->tree[r].rank_in_comm == -1 )
             continue;
-        if( ci->tree[r].parent == r ) {
+        if( ci->ags->tree[r].parent == r ) {
             root++;
-            assert(ci->tree[r].next_sibling == ci->tree_size);
+            assert(ci->ags->tree[r].next_sibling == ci->ags->tree_size);
         }
         nodes++;
         children += era_tree_check_node(ci, r);
@@ -886,52 +926,33 @@ static void era_tree_check(era_agreement_info_t *ci)
 }
 #endif
 
-static void era_destroy_tree_structure(era_agreement_info_t *ci)
-{
-    assert(ci->tree != NULL);
-    free(ci->tree);
-    ci->tree = NULL;
-    ci->tree_size = 0;
-}
-
 static void era_build_tree_structure(era_agreement_info_t *ci)
 {
     int m, n;
     int offset, next_dead_idx;
 
-    if( AGS(ci->comm)->tree_dirty ) {
+    n = ompi_comm_size(ci->comm);
+    AGS(ci->comm)->tree_size = n - AGS(ci->comm)->afr_size;
+    /**< O(nb_alive) memory overhead during agreement */
+    AGS(ci->comm)->tree = (era_tree_t*)realloc(AGS(ci->comm)->tree,
+                                               AGS(ci->comm)->tree_size * sizeof(era_tree_t));
 
-        n = ompi_comm_size(ci->comm);
-        AGS(ci->comm)->tree_size = n - AGS(ci->comm)->afr_size;
-        /**< O(nb_alive) memory overhead during agreement */
-        AGS(ci->comm)->tree = (era_tree_t*)realloc(AGS(ci->comm)->tree, AGS(ci->comm)->tree_size * sizeof(era_tree_t));
-    
-        offset = 0;
-        next_dead_idx = 0;
-        for(m = 0; m < AGS(ci->comm)->tree_size; m++) { /**< O(comm_size) comp. overhead */
-            /** This assumes that agreed_failed_ranks is maintained sorted. */
-            while( next_dead_idx < AGS(ci->comm)->afr_size && (m+offset) == AGS(ci->comm)->agreed_failed_ranks[next_dead_idx] ) {
-                next_dead_idx++;
-                offset++;
-            }
-            AGS(ci->comm)->tree[m].rank_in_comm = m + offset;
+    offset = 0;
+    next_dead_idx = 0;
+    for(m = 0; m < AGS(ci->comm)->tree_size; m++) { /**< O(comm_size) comp. overhead */
+        /** This assumes that agreed_failed_ranks is maintained sorted. */
+        while( next_dead_idx < AGS(ci->comm)->afr_size && (m+offset) == AGS(ci->comm)->agreed_failed_ranks[next_dead_idx] ) {
+            next_dead_idx++;
+            offset++;
         }
-
-        for(m = 0; m < AGS(ci->comm)->tree_size; m++) { /**< O(nb_alive) comp. overhead */
-            AGS(ci->comm)->tree[m].parent        = m > 0 ? (m-1)/2 : 0;
-            AGS(ci->comm)->tree[m].first_child   = (2*m+1 < AGS(ci->comm)->tree_size) ? 2*m+1 : AGS(ci->comm)->tree_size;
-            AGS(ci->comm)->tree[m].next_sibling  = (m%2 != 0 && m+1 < AGS(ci->comm)->tree_size ) ? m + 1 : AGS(ci->comm)->tree_size;
-        }
-
-        AGS(ci->comm)->tree_dirty = 0;
+        AGS(ci->comm)->tree[m].rank_in_comm = m + offset;
     }
 
-    /** O(nb_alive) memory and computation overhead, but hopefully faster than computing
-     *  everything
-     */
-    ci->tree = (era_tree_t*)malloc(AGS(ci->comm)->tree_size * sizeof(era_tree_t));
-    memcpy(ci->tree, AGS(ci->comm)->tree, AGS(ci->comm)->tree_size * sizeof(era_tree_t));
-    ci->tree_size = AGS(ci->comm)->tree_size;
+    for(m = 0; m < AGS(ci->comm)->tree_size; m++) { /**< O(nb_alive) comp. overhead */
+        AGS(ci->comm)->tree[m].parent        = m > 0 ? (m-1)/2 : 0;
+        AGS(ci->comm)->tree[m].first_child   = (2*m+1 < AGS(ci->comm)->tree_size) ? 2*m+1 : AGS(ci->comm)->tree_size;
+        AGS(ci->comm)->tree[m].next_sibling  = (m%2 != 0 && m+1 < AGS(ci->comm)->tree_size ) ? m + 1 : AGS(ci->comm)->tree_size;
+    }
 
 #if OPAL_ENABLE_DEBUG
     era_tree_check(ci);
@@ -940,11 +961,11 @@ static void era_build_tree_structure(era_agreement_info_t *ci)
 
 static int era_tree_rank_from_comm_rank(era_agreement_info_t *ci, int r_in_comm)
 {
-    int r_in_tree = r_in_comm >= ci->tree_size ? ci->tree_size-1 : r_in_comm;
+    int r_in_tree = r_in_comm >= ci->ags->tree_size ? ci->ags->tree_size-1 : r_in_comm;
 
     /** This search is at worst O(nb_dead) */
-    while( ci->tree[r_in_tree].rank_in_comm != r_in_comm ) {
-        assert( ci->tree[r_in_tree].rank_in_comm == -1 || ci->tree[r_in_tree].rank_in_comm > r_in_comm );
+    while( ci->ags->tree[r_in_tree].rank_in_comm != r_in_comm ) {
+        assert( ci->ags->tree[r_in_tree].rank_in_comm == -1 || ci->ags->tree[r_in_tree].rank_in_comm > r_in_comm );
         assert( r_in_tree > 0 );
         r_in_tree--;
     }
@@ -956,70 +977,70 @@ static void era_tree_remove_node(era_agreement_info_t *ci, int r_in_tree)
     /** All indices are in tree */
     int p, c, s, t;
 
-    p = ci->tree[r_in_tree].parent;
+    p = ci->ags->tree[r_in_tree].parent;
     if( p != r_in_tree ) {
         /** r_in_tree has a parent */
 
         /** First, for each children process, re-attach them to their new parent,
          *  reminding the first child in s, and the last child in c */
-        s = c = ci->tree[r_in_tree].first_child;
-        if(s != ci->tree_size ) {
+        s = c = ci->ags->tree[r_in_tree].first_child;
+        if(s != ci->ags->tree_size ) {
             while(1) {
-                ci->tree[c].parent = p;
-                if( ci->tree[c].next_sibling == ci->tree_size )
+                ci->ags->tree[c].parent = p;
+                if( ci->ags->tree[c].next_sibling == ci->ags->tree_size )
                     break;
-                c = ci->tree[c].next_sibling;
+                c = ci->ags->tree[c].next_sibling;
             }
         } /** If r_in_tree is a leaf, we don't need to do anything special */
 
         /** Then, unchain r_in_tree, inserting instead the chain s -> c if it exists */
-        if( ci->tree[p].first_child == r_in_tree ) {
-            if( s == ci->tree_size ) {
-                ci->tree[p].first_child = ci->tree[r_in_tree].next_sibling;
+        if( ci->ags->tree[p].first_child == r_in_tree ) {
+            if( s == ci->ags->tree_size ) {
+                ci->ags->tree[p].first_child = ci->ags->tree[r_in_tree].next_sibling;
             } else {
-                ci->tree[p].first_child = s;
-                ci->tree[c].next_sibling = ci->tree[r_in_tree].next_sibling;
+                ci->ags->tree[p].first_child = s;
+                ci->ags->tree[c].next_sibling = ci->ags->tree[r_in_tree].next_sibling;
             }
         } else {
-            for(t = ci->tree[p].first_child;
-                ci->tree[t].next_sibling != r_in_tree;
-                t = ci->tree[t].next_sibling) {
-                assert(t != ci->tree_size); /** r_in_tree should still be chained to its parent */
+            for(t = ci->ags->tree[p].first_child;
+                ci->ags->tree[t].next_sibling != r_in_tree;
+                t = ci->ags->tree[t].next_sibling) {
+                assert(t != ci->ags->tree_size); /** r_in_tree should still be chained to its parent */
             }
-            if( s == ci->tree_size ) {
-                ci->tree[t].next_sibling = ci->tree[r_in_tree].next_sibling;
+            if( s == ci->ags->tree_size ) {
+                ci->ags->tree[t].next_sibling = ci->ags->tree[r_in_tree].next_sibling;
             } else {
-                ci->tree[t].next_sibling = s;
-                ci->tree[c].next_sibling = ci->tree[r_in_tree].next_sibling;
+                ci->ags->tree[t].next_sibling = s;
+                ci->ags->tree[c].next_sibling = ci->ags->tree[r_in_tree].next_sibling;
             }
         }
     } else {
         /* r_in_tree is root...*/
-        assert( ci->tree[r_in_tree].next_sibling == ci->tree_size );
-        assert( ci->tree[r_in_tree].first_child != ci->tree_size );
-        p = ci->tree[r_in_tree].first_child;
-        s = ci->tree[p].next_sibling;
-        ci->tree[p].parent = p;
-        ci->tree[p].next_sibling = ci->tree_size;
-        if( s != ci->tree_size ) {
+        assert( ci->ags->tree[r_in_tree].next_sibling == ci->ags->tree_size );
+        assert( ci->ags->tree[r_in_tree].first_child != ci->ags->tree_size );
+        p = ci->ags->tree[r_in_tree].first_child;
+        s = ci->ags->tree[p].next_sibling;
+        ci->ags->tree[p].parent = p;
+        ci->ags->tree[p].next_sibling = ci->ags->tree_size;
+        if( s != ci->ags->tree_size ) {
             c = s;
             while(1) {
-                assert(ci->tree[c].parent == r_in_tree);
-                ci->tree[c].parent = p;
-                if( ci->tree[c].next_sibling == ci->tree_size )
+                assert(ci->ags->tree[c].parent == r_in_tree);
+                ci->ags->tree[c].parent = p;
+                if( ci->ags->tree[c].next_sibling == ci->ags->tree_size )
                     break;
-                c = ci->tree[c].next_sibling;
+                c = ci->ags->tree[c].next_sibling;
             }
-            ci->tree[c].next_sibling = ci->tree[p].first_child;
-            ci->tree[p].first_child  = s;
+            ci->ags->tree[c].next_sibling = ci->ags->tree[p].first_child;
+            ci->ags->tree[p].first_child  = s;
         }
     }
 
 #if OPAL_ENABLE_DEBUG
-    ci->tree[r_in_tree].rank_in_comm = -1;
-    ci->tree[r_in_tree].parent = ci->tree_size;
-    ci->tree[r_in_tree].first_child = ci->tree_size;
-    ci->tree[r_in_tree].next_sibling = ci->tree_size;
+    ci->ags->tree[r_in_tree].rank_in_comm = -1;
+    ci->ags->tree[r_in_tree].parent = ci->ags->tree_size;
+    ci->ags->tree[r_in_tree].first_child = ci->ags->tree_size;
+    ci->ags->tree[r_in_tree].next_sibling = ci->ags->tree_size;
     era_tree_check(ci);
 #endif
 }
@@ -1031,8 +1052,8 @@ static int era_parent(era_agreement_info_t *ci)
     int p_in_comm, p_in_tree, s_in_tree, c_in_tree;
 
     while(1) {
-        p_in_tree = ci->tree[r_in_tree].parent;
-        p_in_comm = ci->tree[p_in_tree].rank_in_comm;
+        p_in_tree = ci->ags->tree[r_in_tree].parent;
+        p_in_comm = ci->ags->tree[p_in_tree].rank_in_comm;
         if( ompi_comm_is_proc_active(ci->comm, p_in_comm, false) )
             return p_in_comm;
 
@@ -1056,10 +1077,10 @@ static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm)
         r_in_tree = era_tree_rank_from_comm_rank(ci, ompi_comm_rank(comm));
         while(1) {
             /* We search / fix the tree for the first alive child */
-            c_in_tree = ci->tree[r_in_tree].first_child;
-            if( c_in_tree == ci->tree_size )
+            c_in_tree = ci->ags->tree[r_in_tree].first_child;
+            if( c_in_tree == ci->ags->tree_size )
                 return ompi_comm_size(comm); /** there are none */
-            c_in_comm = ci->tree[c_in_tree].rank_in_comm;
+            c_in_comm = ci->ags->tree[c_in_tree].rank_in_comm;
             if( ompi_comm_is_proc_active(comm, c_in_comm, false) )
                 return c_in_comm;
             era_tree_remove_node(ci, c_in_tree);
@@ -1068,10 +1089,10 @@ static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm)
         r_in_tree = era_tree_rank_from_comm_rank(ci, prev_child_in_comm);
         while(1) {
             /* We search / fix the tree for the next alive sibling of r */
-            s_in_tree = ci->tree[r_in_tree].next_sibling;
-            if( s_in_tree == ci->tree_size )
+            s_in_tree = ci->ags->tree[r_in_tree].next_sibling;
+            if( s_in_tree == ci->ags->tree_size )
                 return ompi_comm_size(comm); /** No more */
-            s_in_comm = ci->tree[s_in_tree].rank_in_comm;
+            s_in_comm = ci->ags->tree[s_in_tree].rank_in_comm;
             if( ompi_comm_is_proc_active(comm, s_in_comm, false) )
                 return s_in_comm;
             era_tree_remove_node(ci, s_in_tree);
@@ -2235,7 +2256,7 @@ static void era_on_comm_rank_failure(ompi_communicator_t *comm, int rank, bool r
                          comm->c_epoch));
 
     if( NULL != AGS(comm) ) {
-        AGS(comm)->tree_dirty = 1;
+        AGS(comm)->ags_dirty = 1;
     }
     /** We still need to do the rest, even if AGS(comm) is not allocated,
      *  since there might be incomplet messages and agreement structures
