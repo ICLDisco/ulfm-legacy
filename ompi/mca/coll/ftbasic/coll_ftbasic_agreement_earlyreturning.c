@@ -26,6 +26,7 @@
 #include "ompi/op/op.h"
 #include "ompi/mca/bml/base/base.h"
 #include "orte/mca/errmgr/errmgr.h"
+#include "orte/mca/ess/ess.h"
 
 #include MCA_timer_IMPLEMENTATION_HEADER
 #include "coll_ftbasic.h"
@@ -874,9 +875,6 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
     era_merge_new_dead_list(ni, value->header.nb_new_dead, value->new_dead_array);
 }
 
-#define ERA_TOPOLOGY_BINARY_TREE
-
-#if defined ERA_TOPOLOGY_BINARY_TREE
 struct era_tree_s {
     int rank_in_comm;
     int parent;
@@ -885,25 +883,63 @@ struct era_tree_s {
 };
 
 #if OPAL_ENABLE_DEBUG
-static int era_tree_check_node(era_agreement_info_t *ci, int r)
+static int __tree_errors;
+
+static int era_tree_check_node(era_tree_t *tree, int tree_size, int r, int display)
 {
-    int c, nb = 0, p;
-    if( (p = ci->ags->tree[r].parent) != r ) {
-        for(c = ci->ags->tree[p].first_child;
-            c != r;
-            c = ci->ags->tree[c].next_sibling)
-            assert(c != ci->ags->tree_size); /** My parent should have me in one of its children */
+    int c, nb = 0, p, f, i;
+
+    if(display) {
+        fprintf(stderr, "TC -- %d/%d (%d) -- Parent: %d\n",
+                r, tree_size, tree[r].rank_in_comm,
+                tree[r].parent);
     }
-    for(c = ci->ags->tree[r].first_child;
-        c != ci->ags->tree_size;
-        c = ci->ags->tree[c].next_sibling) {
+
+    if( (p = tree[r].parent) != r ) {
+        
+        f = 0;
+        for(c = tree[p].first_child;
+            c != r && c!=tree_size;
+            c = tree[c].next_sibling) {
+            /** Nothing */
+        }
+        if( c != r ) {
+            __tree_errors++;
+            fprintf(stderr, "TC -- %d/%d: my parent (%d) should have me in one of its children\n", 
+                    r, tree_size, tree[r].parent);
+        }
+    }
+
+    for(c = tree[r].first_child;
+        c != tree_size;
+        c = tree[c].next_sibling) {
         nb++;
-        assert(ci->ags->tree[c].parent == r); /** Each of my children should have me as their parent */
+        if( display ) {
+            fprintf(stderr, "TC -- %d/%d (%d) -- Child %d: %d\n",
+                    r, tree_size, tree[r].rank_in_comm,
+                    nb, c);
+        }
+        if( tree[c].parent != r) {
+            __tree_errors++;
+            fprintf(stderr, "TC -- %d/%d: Each of my children should have me as their parent. %d has %d as parent.\n",
+                    r, tree_size, c,  tree[c].parent);
+        }
+        if( nb > tree_size ) {
+            __tree_errors++;
+            fprintf(stderr, "TC -- %d/%d: There is a cycle somewhere: I counted %d children, which is more than the tree size.\n",
+                    r, tree_size, nb);
+            break;
+        }
     }
+
+    if(display) {
+        fprintf(stderr, "\n");
+    }
+
     return nb;
 }
 
-static void era_tree_check(era_agreement_info_t *ci)
+static void era_tree_check(era_tree_t *tree, int tree_size, int display)
 {
     /** Tree consistency check */
     int root = 0;
@@ -911,19 +947,143 @@ static void era_tree_check(era_agreement_info_t *ci)
     int nodes = 0;
     int r;
 
-    for(r = 0; r < ci->ags->tree_size; r++) {
-        if( ci->ags->tree[r].rank_in_comm == -1 )
+    __tree_errors = 0;
+
+    for(r = 0; r < tree_size; r++) {
+        if( tree[r].rank_in_comm == -1 )
             continue;
-        if( ci->ags->tree[r].parent == r ) {
+        if( tree[r].parent == r ) {
             root++;
-            assert(ci->ags->tree[r].next_sibling == ci->ags->tree_size);
+            if( tree[r].next_sibling != tree_size ) {
+                fprintf(stderr, "TC -- %d/%d: root cannot have a sibling (%d)\n",
+                        r, tree_size, tree[r].next_sibling);
+                __tree_errors++;
+            }
         }
         nodes++;
-        children += era_tree_check_node(ci, r);
+        children += era_tree_check_node(tree, tree_size, r, display);
     }
-    assert(root == 1);
-    assert(children + 1 == nodes);
+    if( root != 1 ) {
+        fprintf(stderr, "TC -- There are %d roots in this tree. That's too many\n", root);
+        __tree_errors++;
+    }
+    if(children + 1 != nodes) {
+        fprintf(stderr, "TC -- There are %d nodes in this tree, and not %d\n", children+1, nodes);
+        __tree_errors++;
+    }
+
+    assert(__tree_errors == 0);
 }
+#endif
+
+
+#define ERA_TOPOLOGY_BINARY_TREE
+#define ERA_TOPOLOGY_HARDWARE_SPECIFIC
+
+#if defined ERA_TOPOLOGY_STAR
+static void era_build_tree_topology_specific(era_tree_t *tree, int tree_size)
+{
+    int m
+    for(m = 0; m < ree_size; m++) { /**< O(nb_alive) comp. overhead */
+        tree[m].parent        = 0;
+        /** For tree_size == 1, 1 is also the terminating value, so this works */
+        tree[m].first_child   = m == 0 ? 1 : tree_size;
+        tree[m].next_sibling  = m == 0 ? tree_size : m + 1;
+    }
+}
+#endif
+
+#if defined ERA_TOPOLOGY_STRING
+static void era_build_tree_topology_specific(era_tree_t *tree, int tree_size)
+{
+    int m
+    for(m = 0; m < >tree_size; m++) { /**< O(nb_alive) comp. overhead */
+        tree[m].parent        = m > 0 ? m-1 : 0;
+        tree[m].first_child   = m + 1;
+        tree[m].next_sibling  = tree_size;
+    }
+}
+#endif
+
+#if defined ERA_TOPOLOGY_BINARY_TREE
+static void era_build_tree_topology_specific(era_tree_t *tree, int tree_size)
+{
+    int m;
+
+    for(m = 0; m < tree_size; m++) { /**< O(nb_alive) comp. overhead */
+        tree[m].parent        = m > 0 ? (m-1)/2 : 0;
+        tree[m].first_child   = (2*m+1 < tree_size) ? 2*m+1 : tree_size;
+        tree[m].next_sibling  = (m%2 != 0 && m+1 < tree_size ) ? m + 1 : tree_size;
+    }
+}
+#endif
+
+#if defined ERA_TOPOLOGY_HARDWARE_SPECIFIC
+static void era_build_tree_topology(era_agreement_info_t *ci)
+{
+    era_tree_t  *rep_tree, *rep_p;
+    int          rep_tree_size, r;
+    opal_hash_table_t *rep_table;
+    ompi_proc_t *proc;
+    orte_vpid_t  daemon_id;
+
+    assert( sizeof(daemon_id) == sizeof(uint32_t) );
+
+    rep_table = OBJ_NEW(opal_hash_table_t);
+    opal_hash_table_init(rep_table, orte_process_info.num_nodes);
+
+    rep_tree = (era_tree_t *)malloc(orte_process_info.num_nodes * sizeof(era_tree_t));
+    rep_tree_size = 0;
+    for(r = 0; r < AGS(ci->comm)->tree_size; r++) {
+        proc = ompi_group_get_proc_ptr(ci->comm->c_local_group, AGS(ci->comm)->tree[r].rank_in_comm);
+        daemon_id = orte_ess.proc_get_daemon( &proc->proc_name );
+        assert( ORTE_VPID_INVALID != daemon_id );
+        if( opal_hash_table_get_value_uint32(rep_table, (uint32_t)daemon_id, (void**)&rep_p) != OPAL_SUCCESS ) {
+            assert(rep_tree_size < orte_process_info.num_nodes);
+            rep_tree[rep_tree_size].rank_in_comm = r;
+            opal_hash_table_set_value_uint32(rep_table, (uint32_t)daemon_id, (void*)&rep_tree[rep_tree_size]);
+            rep_tree_size++;
+        }
+    }
+
+    era_build_tree_topology_specific(rep_tree, rep_tree_size);
+#if OPAL_ENABLE_DEBUG
+    era_tree_check(rep_tree, rep_tree_size, 0);
+#endif
+
+    for(r = 0; r < AGS(ci->comm)->tree_size; r++) {
+        proc = ompi_group_get_proc_ptr(ci->comm->c_local_group, AGS(ci->comm)->tree[r].rank_in_comm);
+        daemon_id = orte_ess.proc_get_daemon( &proc->proc_name );
+        assert( ORTE_VPID_INVALID != daemon_id );
+        rep_p = NULL;
+        opal_hash_table_get_value_uint32(rep_table, (uint32_t)daemon_id, (void**)&rep_p);
+        assert( rep_p != NULL );
+
+        /* Nobody assigned anything to that node yet */
+        assert( AGS(ci->comm)->tree[r].parent == r );
+        assert( AGS(ci->comm)->tree[r].first_child == AGS(ci->comm)->tree_size );
+        assert( AGS(ci->comm)->tree[r].next_sibling == AGS(ci->comm)->tree_size );
+
+        if( rep_p->rank_in_comm == r ) {
+            AGS(ci->comm)->tree[r].parent           = rep_tree[ rep_p->parent ].rank_in_comm;
+            if( rep_p->first_child < rep_tree_size )
+                AGS(ci->comm)->tree[r].first_child  = rep_tree[ rep_p->first_child ].rank_in_comm;
+            if( rep_p->next_sibling < rep_tree_size )
+                AGS(ci->comm)->tree[r].next_sibling = rep_tree[ rep_p->next_sibling ].rank_in_comm;
+        } else {
+            assert( rep_p->rank_in_comm < r );
+
+            AGS(ci->comm)->tree[r].parent                        = rep_p->rank_in_comm;
+            AGS(ci->comm)->tree[r].next_sibling                  = AGS(ci->comm)->tree[rep_p->rank_in_comm].first_child;
+            AGS(ci->comm)->tree[rep_p->rank_in_comm].first_child = r;
+        }
+    }
+    opal_hash_table_remove_all(rep_table);
+    OBJ_RELEASE(rep_table);
+    free(rep_tree);
+}
+#else
+#define era_build_tree_topology(ci) era_build_tree_topology_specific( AGS(ci)->tree, AGC(ci)->tree_size )
 #endif
 
 static void era_build_tree_structure(era_agreement_info_t *ci)
@@ -946,16 +1106,16 @@ static void era_build_tree_structure(era_agreement_info_t *ci)
             offset++;
         }
         AGS(ci->comm)->tree[m].rank_in_comm = m + offset;
+        /** Initialize each node as a separate root by itself */
+        AGS(ci->comm)->tree[m].parent = m;
+        AGS(ci->comm)->tree[m].first_child  = AGS(ci->comm)->tree_size;
+        AGS(ci->comm)->tree[m].next_sibling = AGS(ci->comm)->tree_size;
     }
 
-    for(m = 0; m < AGS(ci->comm)->tree_size; m++) { /**< O(nb_alive) comp. overhead */
-        AGS(ci->comm)->tree[m].parent        = m > 0 ? (m-1)/2 : 0;
-        AGS(ci->comm)->tree[m].first_child   = (2*m+1 < AGS(ci->comm)->tree_size) ? 2*m+1 : AGS(ci->comm)->tree_size;
-        AGS(ci->comm)->tree[m].next_sibling  = (m%2 != 0 && m+1 < AGS(ci->comm)->tree_size ) ? m + 1 : AGS(ci->comm)->tree_size;
-    }
+    era_build_tree_topology(ci);
 
 #if OPAL_ENABLE_DEBUG
-    era_tree_check(ci);
+    era_tree_check(ci->ags->tree, ci->ags->tree_size, 0);
 #endif
 }
 
@@ -1041,7 +1201,7 @@ static void era_tree_remove_node(era_agreement_info_t *ci, int r_in_tree)
     ci->ags->tree[r_in_tree].parent = ci->ags->tree_size;
     ci->ags->tree[r_in_tree].first_child = ci->ags->tree_size;
     ci->ags->tree[r_in_tree].next_sibling = ci->ags->tree_size;
-    era_tree_check(ci);
+    era_tree_check(ci->ags->tree, ci->ags->tree_size, 0);
 #endif
 }
 
@@ -1099,67 +1259,6 @@ static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm)
         }
     }
 }
-#endif
-
-#if defined ERA_TOPOLOGY_STAR
-static int era_parent(era_agreement_info_t *ci)
-{
-    int r;
-    for(r = 0; r < ci->comm->c_my_rank; r++) {
-        if( ompi_comm_is_proc_active(ci->comm, r, false) )
-            break;
-    }
-    return r;
-}
-
-static int era_next_child(era_agreement_info_t *ci, int prev_child)
-{
-    ompi_communicator_t *comm = ci->comm;
-    if( era_parent(ci) == comm->c_my_rank ) {
-        if( prev_child == -1 ) 
-            r = comm->c_my_rank+1;
-        else 
-            r = prev_child + 1;
-        while( r < ompi_comm_size(comm) ) {
-            if( ompi_comm_is_proc_active(comm, r, false) )
-                break;
-            r++;
-        }
-        return r;
-    } else {
-        return ompi_comm_size(comm);
-    }
-}
-#endif
-
-#if defined ERA_TOPOLOGY_STRING
-static int era_parent(era_agreement_info_t *ci)
-{
-    int r;
-    ompi_communicator_t *comm = ci->comm;
-    for(r = comm->c_my_rank - 1; r >= 0; r--)
-        if( ompi_comm_is_proc_active(comm, r, false) )
-            break;
-    if( r < 0 )
-        return comm->c_my_rank; /* I'm root! */
-    return r;
-}
-
-static int era_next_child(era_agreement_info_t *ci, int prev_child)
-{
-    ompi_communicator_t *comm = ci->comm;
-    int r;
-
-    if( prev_child == -1 ) {
-        for(r = comm->c_my_rank + 1; r < ompi_comm_size(comm); r++)
-            if( ompi_comm_is_proc_active(comm, r, false) )
-                break;
-        return r;
-    } else {
-        return ompi_comm_size(comm);
-    }
-}
-#endif
 
 static void era_collect_passed_agreements(era_identifier_t agreement_id, uint16_t min_aid, uint16_t max_aid)
 {
