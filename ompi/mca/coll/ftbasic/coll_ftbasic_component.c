@@ -52,6 +52,7 @@ bool mca_coll_ftbasic_use_agreement_timer = false;
 bool mca_coll_ftbasic_agreement_use_progress = true;
 int mca_coll_ftbasic_agreement_log_max_len = 2;
 int mca_coll_ftbasic_agreement_help_wait_cycles_inc = 10;
+int mca_coll_ftbasic_cur_era_topology = 1;
 
 /*
  * Local function
@@ -172,6 +173,17 @@ ftbasic_register(void)
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
         break;
     }
+
+    mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
+                           "era_topology",
+                           "Early Returned Agreement Topology ("
+                           "positive number -> network topology aware (default); negative number -> flat topology;"
+                           "1 -> binary tree (default);"
+                           "2 -> star tree;"
+                           "3 -> string tree)",
+                           false, false,
+                           mca_coll_ftbasic_cur_era_topology,
+                           &mca_coll_ftbasic_cur_era_topology);
 
     mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
                            "agreement_progress",
