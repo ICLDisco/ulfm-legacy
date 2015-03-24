@@ -10,7 +10,8 @@
  * $HEADER$
  */
 
-#include "mpi.h"
+#include <mpi.h>
+#include <mpi-ext.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -72,6 +73,7 @@ int main(int argc, char *argv[])
     unsigned int seed = 1789;
 
     int  verbose = 0;
+    int  keep = 0;
     int  before = 10;
     int  after  = 10;
     int *faults;
@@ -88,19 +90,23 @@ int main(int argc, char *argv[])
     while(1) {
         static struct option long_options[] = {
             { "verbose",      0, 0, 'v' },
-            { "before",       0, 0, 'b' },
-            { "after",        0, 0, 'a' },
-            { "faults",       0, 0, 'f' },
+            { "before",       1, 0, 'b' },
+            { "after",        1, 0, 'a' },
+            { "faults",       1, 0, 'f' },
+            { "keep",         1, 0, 'k' },
             { NULL,           0, 0, 0   }
         };
 
-        c = getopt_long(argc, argv, "vb:a:f:", long_options, NULL);
+        c = getopt_long(argc, argv, "vb:k:a:f:", long_options, NULL);
         if (c == -1)
             break;
 
         switch(c) {
         case 'v':
             verbose = 1;
+            break;
+        case 'k':
+            keep = atoi(optarg);
             break;
         case 'b':
             before = atoi(optarg);
@@ -116,7 +122,7 @@ int main(int argc, char *argv[])
 
     stat_init(&sbefore, 0);
     stat_init(&sstab, 0);
-    stat_init(&safter, 0);
+    stat_init(&safter, keep);
 
     common = rand_r(&seed);
     srand(getpid());
@@ -128,7 +134,7 @@ int main(int argc, char *argv[])
         flag = rand() | common;
 
         start = MPI_Wtime();
-        ret = OMPI_Comm_agree(MPI_COMM_WORLD, &flag);
+        ret = MPIX_Comm_agree(MPI_COMM_WORLD, &flag);
         stat_record(&sbefore, MPI_Wtime() - start);
 
         if( ret != MPI_SUCCESS ) {
@@ -140,56 +146,47 @@ int main(int argc, char *argv[])
     MPI_Barrier(MPI_COMM_WORLD);
     printf("BEFORE_FAILURE %g s (stdev %g ) per agreement on rank %d (average over %d agreements)\n", 
            stat_get_mean(&sbefore), stat_get_stdev(&sbefore), rank, stat_get_nbsamples(&sbefore));
-
+    
+    MPI_Barrier(MPI_COMM_WORLD);
     if( faults[rank] ) {
         if(verbose) {
             fprintf(stderr, "Rank %d dies\n", rank);
         }
-        raise(SIGKILL);
+        raise(SIGKILL); do { pause(); } while(1);
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    if(verbose) {
-        fprintf(stderr, "Rank %d out of barrier after failure\n", rank);
-    }
     flag = rand() | common;
 
     start = MPI_Wtime();
-    ret = OMPI_Comm_agree(MPI_COMM_WORLD, &flag);
+    ret = MPIX_Comm_agree(MPI_COMM_WORLD, &flag);
     dfailure = MPI_Wtime() - start;
-    stat_record(&sstab, dfailure);
-
-    OMPI_Comm_failure_ack(MPI_COMM_WORLD);
     if(verbose) {
         fprintf(stderr, "Rank %d out of first agreement after failure; ret = %d\n", rank, ret);
     }
 
-    i = 1;
+    i = 0;
     while(ret != MPI_SUCCESS) {
+        MPIX_Comm_failure_ack(MPI_COMM_WORLD);
         i++;
         start = MPI_Wtime();
-        ret = OMPI_Comm_agree(MPI_COMM_WORLD, &flag);
+        ret = MPIX_Comm_agree(MPI_COMM_WORLD, &flag);
         stat_record(&sstab, MPI_Wtime()-start);
 
-        if( ret != MPI_SUCCESS ) {
-            OMPI_Comm_failure_ack(MPI_COMM_WORLD);
-        }
         if(verbose) {
             fprintf(stderr, "Rank %d out of %d agreement after failure; ret = %d\n", rank, i, ret);
         }
     }
     
-    MPI_Barrier(MPI_COMM_WORLD);
     printf("FIRST_AGREEMENT_AFTER_FAILURE %g s to do that agreement on rank %d\n", dfailure, rank);
     printf("STABILIZE_AGREEMENT %g s (stdev %g ) per agreements in %d agreements to stabilize to SUCCESS on rank %d\n",
            stat_get_mean(&sstab), stat_get_stdev(&sstab), stat_get_nbsamples(&sstab), rank);
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPIX_Comm_agree(MPI_COMM_WORLD,&flag);
     for(i = 0; i < after; i++) {
         flag = rand() | common;
 
         start = MPI_Wtime();
-        ret = OMPI_Comm_agree(MPI_COMM_WORLD, &flag);
+        ret = MPIX_Comm_agree(MPI_COMM_WORLD, &flag);
         stat_record(&safter, MPI_Wtime() - start);
 
         if( ret != MPI_SUCCESS ) {
@@ -198,14 +195,11 @@ int main(int argc, char *argv[])
         }
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
     printf("AFTER_FAILURE %g s (stdev %g ) per agreement on rank %d (average over %d agreements) -- Precision is %g\n",
                stat_get_mean(&safter), stat_get_stdev(&safter), rank, stat_get_nbsamples(&safter), MPI_Wtick());
 
-    if( verbose ) {
-        for(i = 0; i < safter.n && i < safter.ks; i++) {
-            fprintf(stderr, "%d %g\n", rank, safter.samples[i]);
-        }
+    for(i = 0; i < safter.n && i < safter.ks; i++) {
+        printf("%d %g\n", rank, safter.samples[i]);
     }
 
     MPI_Finalize();
