@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
     
     printf("FIRST_AGREEMENT_AFTER_FAILURE %g s to do that agreement on rank %d\n", dfailure, rank);
     printf("STABILIZE_AGREEMENT %g s (stdev %g ) per agreements in %d agreements to stabilize to SUCCESS on rank %d\n",
-           stat_get_mean(&sstab), stat_get_stdev(&sstab), stat_get_nbsamples(&sstab), rank);
+           stat_get_mean(&sstab), stat_get_stdev(&sstab), stat_get_nbsamples(&sstab), i, rank);
 
     MPIX_Comm_agree(MPI_COMM_WORLD,&flag);
     for(i = 0; i < after; i++) {
