@@ -164,16 +164,13 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Rank %d out of first agreement after failure; ret = %d\n", rank, ret);
     }
 
-    i = 0;
     while(ret != MPI_SUCCESS) {
         MPIX_Comm_failure_ack(MPI_COMM_WORLD);
-        i++;
         start = MPI_Wtime();
         ret = MPIX_Comm_agree(MPI_COMM_WORLD, &flag);
         stat_record(&sstab, MPI_Wtime()-start);
-
         if(verbose) {
-            fprintf(stderr, "Rank %d out of %d agreement after failure; ret = %d\n", rank, i, ret);
+            fprintf(stderr, "Rank %d out of %d agreement to stabilize; ret = %d\n", rank, stat_get_nbsamples(&sstab), ret);
         }
     }
     

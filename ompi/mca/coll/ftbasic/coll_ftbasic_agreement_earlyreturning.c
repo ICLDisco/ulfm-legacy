@@ -2693,7 +2693,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_value_t agreement_value, *av;
     era_value_t *pa;
     mca_coll_ftbasic_agreement_t *ag_info;
-    int ret;
+    int i, ret;
 
     ag_info = ( (mca_coll_ftbasic_module_t *)module )->agreement_info;
     assert( NULL != ag_info );
@@ -2797,6 +2797,11 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
      * from slow processes */
 
     /* Update the group of failed processes */
+    for(i = 0; i < AGS(comm)->afr_size; i++) {
+        ompi_proc_t *proc = ompi_group_get_proc_ptr(comm->c_local_group, AGS(comm)->agreed_failed_ranks[i]);
+        ompi_errmgr_mark_failed_peer(proc, ORTE_PROC_STATE_TERMINATED);
+    }
+    /* User wants the group of new failures */
     if(NULL != group) {
         ompi_group_incl(comm->c_local_group, AGS(comm)->afr_size,
                         AGS(comm)->agreed_failed_ranks, group);
