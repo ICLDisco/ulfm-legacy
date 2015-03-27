@@ -836,6 +836,12 @@ static void update_proc(orte_job_t *jdata,
         }
     }
     if (NULL == jobdat) {
+        OPAL_OUTPUT((mca_errmgr_rts_hnp_component.output_handle,
+                    "%s failed to update the state of proc %s(pid %d) to %s(exit code %d) in jobid %s",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                    ORTE_NAME_PRINT(proc), (int)pid,
+                    orte_job_state_to_str(state), (int)exit_code,
+                    ORTE_JOBID_PRINT(jdata->jobid)));
         ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
     }
 
