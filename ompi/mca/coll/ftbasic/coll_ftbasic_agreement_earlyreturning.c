@@ -56,7 +56,8 @@ enum {
     /* These values are for the current process */
     NOT_CONTRIBUTED = 1,
     GATHERING,
-    BROADCASTING
+    BROADCASTING,
+    COMPLETED
 };
 typedef uint32_t era_proc_status_t;
 #define OP_NOT_DEFINED     (1<<31)
@@ -1004,6 +1005,8 @@ static void era_tree_check(era_tree_t *tree, int tree_size, int display)
 
     assert(__tree_errors == 0);
 }
+
+static char *era_debug_tree(era_tree_t *tree, int tree_size);
 #endif
 
 static void era_tree_fn_star(era_tree_t *tree, int tree_size)
@@ -1041,13 +1044,21 @@ static void era_tree_fn_binary(era_tree_t *tree, int tree_size)
 typedef void (*era_tree_fn_t)(era_tree_t *, int);
 static era_tree_fn_t era_tree_fn = era_tree_fn_binary;
 
+typedef struct {
+    int rep;
+    int size;
+    era_tree_t *tree;
+} hierarch_tree_info_t;
+
 static void era_call_tree_fn(era_agreement_info_t *ci)
 {
-    era_tree_t  *rep_tree, *rep_p;
-    int          rep_tree_size, r;
+    hierarch_tree_info_t *reps, *rep_p;
+    int                   rep, r, rc;
     opal_hash_table_t *rep_table;
     ompi_proc_t *proc;
     orte_vpid_t  daemon_id;
+    era_tree_t  *subtree, *rep_tree;
+    int          subtree_size, rep_tree_size;
 
     if( mca_coll_ftbasic_cur_era_topology > 0 ) {
         assert( sizeof(daemon_id) == sizeof(uint32_t) );
@@ -1055,62 +1066,127 @@ static void era_call_tree_fn(era_agreement_info_t *ci)
         rep_table = OBJ_NEW(opal_hash_table_t);
         opal_hash_table_init(rep_table, orte_process_info.num_daemons);
 
-        rep_tree = (era_tree_t *)malloc(orte_process_info.num_daemons * sizeof(era_tree_t));
-        rep_tree_size = 0;
+        reps = (hierarch_tree_info_t *)malloc( (orte_process_info.num_daemons) * sizeof(hierarch_tree_info_t) );
+
+        rep = 0;
         for(r = 0; r < AGS(ci->comm)->tree_size; r++) {
             proc = ompi_group_get_proc_ptr(ci->comm->c_local_group, AGS(ci->comm)->tree[r].rank_in_comm);
             daemon_id = orte_ess.proc_get_daemon( &proc->proc_name );
             assert( ORTE_VPID_INVALID != daemon_id );
             if( opal_hash_table_get_value_uint32(rep_table, (uint32_t)daemon_id, (void**)&rep_p) != OPAL_SUCCESS ) {
-                assert(rep_tree_size <= orte_process_info.num_daemons);
-                rep_tree[rep_tree_size].rank_in_comm = r;
-                opal_hash_table_set_value_uint32(rep_table, (uint32_t)daemon_id, (void*)&rep_tree[rep_tree_size]);
-                rep_tree_size++;
+                assert(rep <= orte_process_info.num_daemons);
+                reps[rep].rep = r;
+                reps[rep].size = 1;
+                opal_hash_table_set_value_uint32(rep_table, (uint32_t)daemon_id, (void*)&reps[rep]);
+                rep++;
+            } else {
+                rep_p->size++;
             }
         }
-        
-        era_tree_fn(rep_tree, rep_tree_size);
-#if OPAL_ENABLE_DEBUG
-        era_tree_check(rep_tree, rep_tree_size, 0);
-#endif
+
+        subtree = (era_tree_t *)malloc( (ompi_comm_size(ci->comm) + orte_process_info.num_daemons) * sizeof(era_tree_t));
+        subtree_size = 0;
+        for(r = 0; r < rep; r++) {
+            reps[r].tree = &subtree[subtree_size];
+            subtree_size += reps[r].size;
+            reps[r].size = 0;
+        }
+        rep_tree_size = 0;
+        rep_tree = &subtree[subtree_size];
 
         for(r = 0; r < AGS(ci->comm)->tree_size; r++) {
             proc = ompi_group_get_proc_ptr(ci->comm->c_local_group, AGS(ci->comm)->tree[r].rank_in_comm);
             daemon_id = orte_ess.proc_get_daemon( &proc->proc_name );
             assert( ORTE_VPID_INVALID != daemon_id );
-            rep_p = NULL;
-            opal_hash_table_get_value_uint32(rep_table, (uint32_t)daemon_id, (void**)&rep_p);
-            assert( rep_p != NULL );
+            rc = opal_hash_table_get_value_uint32(rep_table, (uint32_t)daemon_id, (void**)&rep_p);
+            assert( rc == OPAL_SUCCESS );
+            rep_p->tree[rep_p->size].rank_in_comm = r;
+
+            if( rep_p->size == 0 ) {
+                rep_tree[rep_tree_size].rank_in_comm = r;
+                rep_tree_size++;
+            }
+            rep_p->size++;
+        }
+
+        for(r = 0; r < rep; r++) {
+            era_tree_fn(reps[r].tree, reps[r].size);
+#if OPAL_ENABLE_DEBUG
+            era_tree_check(reps[r].tree, reps[r].size, 0);
+            OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
+                                 "subtree[%d] = %s\n", r, era_debug_tree(reps[r].tree, reps[r].size)));
+#endif
+        }
+
+        era_tree_fn(rep_tree, rep_tree_size);
+#if OPAL_ENABLE_DEBUG
+        era_tree_check(rep_tree, rep_tree_size, 0);
+        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
+                             "overtree = %s\n", era_debug_tree(rep_tree, rep_tree_size)));
+#endif
+
+        /* Merge all the subtrees in AGS(ci->comm)->tree */
+        for(r = 0; r < rep; r++) {
+            int s, rr;
             
-            /* Nobody assigned anything to that node yet */
-            assert( AGS(ci->comm)->tree[r].parent == r );
-            assert( AGS(ci->comm)->tree[r].first_child == AGS(ci->comm)->tree_size );
-            assert( AGS(ci->comm)->tree[r].next_sibling == AGS(ci->comm)->tree_size );
+            /* Translate from subtrees indexes to big tree indexes */
+            for(s = 0; s < reps[r].size; s++) {
+                rr = reps[r].tree[s].rank_in_comm;
+                AGS(ci->comm)->tree[rr].parent = reps[r].tree[ reps[r].tree[s].parent ].rank_in_comm;
+
+                AGS(ci->comm)->tree[rr].next_sibling = reps[r].tree[s].next_sibling == reps[r].size ? 
+                    AGS(ci->comm)->tree_size :
+                    reps[r].tree[ reps[r].tree[s].next_sibling ].rank_in_comm;
+                AGS(ci->comm)->tree[rr].first_child  = reps[r].tree[s].first_child  == reps[r].size ? 
+                    AGS(ci->comm)->tree_size :
+                    reps[r].tree[ reps[r].tree[s].first_child  ].rank_in_comm;
+            }
             
-            if( rep_p->rank_in_comm == r ) {
-                AGS(ci->comm)->tree[r].parent           = rep_tree[ rep_p->parent ].rank_in_comm;
-                if( rep_p->first_child < rep_tree_size )
-                    AGS(ci->comm)->tree[r].first_child  = rep_tree[ rep_p->first_child ].rank_in_comm;
-                if( rep_p->next_sibling < rep_tree_size )
-                    AGS(ci->comm)->tree[r].next_sibling = rep_tree[ rep_p->next_sibling ].rank_in_comm;
-            } else {
-                assert( rep_p->rank_in_comm < r );
-                
-                AGS(ci->comm)->tree[r].parent                        = rep_p->rank_in_comm;
-                AGS(ci->comm)->tree[r].next_sibling                  = AGS(ci->comm)->tree[rep_p->rank_in_comm].first_child;
-                AGS(ci->comm)->tree[rep_p->rank_in_comm].first_child = r;
+            /* Merge the subtrees according to the rep_tree */
+            rr = rep_tree[r].rank_in_comm;
+            AGS(ci->comm)->tree[rr].parent = rep_tree[ rep_tree[r].parent ].rank_in_comm;
+
+            if( rep_tree[r].next_sibling != rep_tree_size ) {
+                if( AGS(ci->comm)->tree[rr].next_sibling == AGS(ci->comm)->tree_size ) {
+                    AGS(ci->comm)->tree[rr].next_sibling = rep_tree[rep_tree[r].next_sibling].rank_in_comm;
+                } else {
+                    s = AGS(ci->comm)->tree[rr].next_sibling;
+                    do {
+                        s = AGS(ci->comm)->tree[s].next_sibling;
+                    } while( AGS(ci->comm)->tree[s].next_sibling != AGS(ci->comm)->tree_size );
+                    AGS(ci->comm)->tree[s].next_sibling = rep_tree[rep_tree[r].next_sibling].rank_in_comm;
+                }
+            }
+
+            if( rep_tree[r].first_child != rep_tree_size ) {
+                if( AGS(ci->comm)->tree[rr].first_child == AGS(ci->comm)->tree_size ) {
+                    AGS(ci->comm)->tree[rr].first_child = rep_tree[rep_tree[r].first_child].rank_in_comm;
+                } else {
+                    s = AGS(ci->comm)->tree[rr].first_child;
+                    while( AGS(ci->comm)->tree[s].next_sibling != AGS(ci->comm)->tree_size ) {
+                        s = AGS(ci->comm)->tree[s].next_sibling;
+                    }
+                    AGS(ci->comm)->tree[s].next_sibling = rep_tree[rep_tree[r].first_child].rank_in_comm;
+                }
             }
         }
+
+#if OPAL_ENABLE_DEBUG
+        era_tree_check(AGS(ci->comm)->tree, AGS(ci->comm)->tree_size, 0);
+        OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
+                             "finaltree = %s\n", era_debug_tree(AGS(ci->comm)->tree, AGS(ci->comm)->tree_size)));
+#endif
+
         opal_hash_table_remove_all(rep_table);
         OBJ_RELEASE(rep_table);
-        free(rep_tree);
+        free(subtree);
     } else {
         era_tree_fn(AGS(ci->comm)->tree, AGS(ci->comm)->tree_size);
     }
 }
 
 #if OPAL_ENABLE_DEBUG
-#define ERA_TREE_BUFFER_SIZE 128
+#define ERA_TREE_BUFFER_SIZE 4096
 static char era_tree_buffer[ERA_TREE_BUFFER_SIZE];
 
 static void era_debug_walk_tree(era_tree_t *tree, int tree_size, int node)
@@ -1173,14 +1249,16 @@ static void era_build_tree_structure(era_agreement_info_t *ci)
 
     era_call_tree_fn(ci);
 
-    OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
-                         "%s ftbasic:agreement (ERA) Agreement (%d.%d).%d: re-built the tree structure with size %d: %s\n",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
-                         ci->agreement_id.ERAID_FIELDS.contextid,
-                         ci->agreement_id.ERAID_FIELDS.epoch,
-                         ci->agreement_id.ERAID_FIELDS.agreementid,
-                         AGS(ci->comm)->tree_size,
-                         era_debug_tree(ci->ags->tree, ci->ags->tree_size)));
+    if( ompi_comm_rank(ci->comm) == 0 ) {
+        OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+                             "%s ftbasic:agreement (ERA) Agreement (%d.%d).%d: re-built the tree structure with size %d: %s\n",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
+                             ci->agreement_id.ERAID_FIELDS.contextid,
+                             ci->agreement_id.ERAID_FIELDS.epoch,
+                             ci->agreement_id.ERAID_FIELDS.agreementid,
+                             AGS(ci->comm)->tree_size,
+                             era_debug_tree(ci->ags->tree, ci->ags->tree_size)));
+    }
 
 #if OPAL_ENABLE_DEBUG
     era_tree_check(ci->ags->tree, ci->ags->tree_size, 0);
@@ -1447,6 +1525,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     opal_hash_table_remove_value_uint64(&era_ongoing_agreements, ci->agreement_id.ERAID_KEY);
     assert( opal_hash_table_get_value_uint64(&era_passed_agreements, 
                                              ci->agreement_id.ERAID_KEY, &value) != OMPI_SUCCESS );
+    ci->status = COMPLETED;
     opal_hash_table_set_value_uint64(&era_passed_agreements,
                                      ci->agreement_id.ERAID_KEY,
                                      decided_value);
@@ -1555,8 +1634,6 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     }
     
     era_collect_passed_agreements(ci->agreement_id, decided_value->header.min_aid, decided_value->header.max_aid);
-
-    OBJ_RELEASE(ci); /* This will take care of the content of ci too */
 }
 
 static void era_check_status(era_agreement_info_t *ci)
@@ -2740,8 +2817,6 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     agreement_value.header.datatype    = dt->id;
     agreement_value.header.nb_new_dead = 0;
 
-    
-
     /* Let's create or find the current value */
     ci = era_lookup_agreeement_info(agreement_id);
     if( NULL == ci ) {
@@ -2780,16 +2855,18 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_check_status(ci);
 
     /* Wait for the agreement to be resolved */
-    while(1) {
+    while(ci->status != COMPLETED) {
         opal_progress();
-        if( opal_hash_table_get_value_uint64(&era_passed_agreements,
-                                             agreement_id.ERAID_KEY,
-                                             &value) == OPAL_SUCCESS ) {
-            av = (era_value_t *)value;
-            break;
-        }
-    } 
+    }
     
+    OBJ_RELEASE(ci); /* This will take care of the content of ci too */
+
+    ret = opal_hash_table_get_value_uint64(&era_passed_agreements,
+                                           agreement_id.ERAID_KEY,
+                                           &value);
+    assert( OPAL_SUCCESS == ret);
+    av = (era_value_t *)value;
+
     memcpy(contrib, av->bytes, ERA_VALUE_BYTES_COUNT(&av->header));
     ret = av->header.ret;
 
