@@ -53,7 +53,7 @@ bool mca_coll_ftbasic_agreement_use_progress = true;
 int mca_coll_ftbasic_agreement_log_max_len = 2;
 int mca_coll_ftbasic_agreement_help_wait_cycles_inc = 10;
 int mca_coll_ftbasic_cur_era_topology = 1;
-int mca_coll_ftbasic_cur_era_rebuild = 1;
+int mca_coll_ftbasic_era_rebuild = 1;
 
 /*
  * Local function
@@ -190,8 +190,8 @@ ftbasic_register(void)
                            "era_rebuild",
                            "ERA rebuild the tree after a post-failure agreement (default 1)",
                            false, false,
-                           mca_coll_ftbasic_cur_era_rebuild,
-                           &mca_coll_ftbasic_cur_era_rebuild);
+                           mca_coll_ftbasic_era_rebuild,
+                           &mca_coll_ftbasic_era_rebuild);
     mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
                            "agreement_progress",
                            "(DEBUGGING ONLY) Turn on/off agreement progress (Default: on)",
