@@ -187,6 +187,13 @@ OBJ_CLASS_INSTANCE(era_rank_item_t, opal_list_item_t, NULL, NULL /*print_destruc
  */
 typedef struct era_tree_s era_tree_t;
 
+struct era_tree_s {
+    int rank_in_comm;
+    int parent;
+    int next_sibling;
+    int first_child;
+};
+
 /**
  * Communicator-specific Agreement persistent information
  */
@@ -741,7 +748,6 @@ static void era_ci_get_clean_ags_copy(era_agreement_info_t *ci)
              *  and attach that new copy to the communicator, then update it.
              */
             new = OBJ_NEW(era_comm_agreement_specific_t);
-
             if( old->afr_size > 0 ) {
                 /** old does not need to remember the agreed_failed ranks, avoid allocating memory */
                 new->agreed_failed_ranks = old->agreed_failed_ranks;
@@ -750,7 +756,13 @@ static void era_ci_get_clean_ags_copy(era_agreement_info_t *ci)
                 old->agreed_failed_ranks = NULL;
                 old->afr_size            = -1;
             }
-
+            /* Do not rebuild the tree if not dirty */
+            new->ags_status = old->ags_status;
+            if( ! ( new->ags_status & AGS_TREE_DIRTY ) ) {
+                new->tree_size = old->tree_size;
+                new->tree = (era_tree_t*)malloc(new->tree_size * sizeof(era_tree_t));
+                memcpy(new->tree, old->tree, new->tree_size * sizeof(era_tree_t));
+            }
             ci->comm->agreement_specific = &new->parent;
 
             old->ags_status = 0; /**< The old is clean w.r.t. the tree, and it does not need the AFR */
@@ -899,12 +911,6 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
     era_merge_new_dead_list(ni, value->header.nb_new_dead, value->new_dead_array);
 }
 
-struct era_tree_s {
-    int rank_in_comm;
-    int parent;
-    int next_sibling;
-    int first_child;
-};
 
 #if OPAL_ENABLE_DEBUG
 static int __tree_errors;
@@ -1250,7 +1256,7 @@ static void era_build_tree_structure(era_agreement_info_t *ci)
     era_call_tree_fn(ci);
 
     if( ompi_comm_rank(ci->comm) == 0 ) {
-        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
+        OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) Agreement (%d.%d).%d: re-built the tree structure with size %d: %s\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                              ci->agreement_id.ERAID_FIELDS.contextid,
@@ -1278,20 +1284,10 @@ static int era_tree_rank_from_comm_rank(era_agreement_info_t *ci, int r_in_comm)
     return r_in_tree;
 }
 
-static era_tree_t *last_removed = NULL;
-static int         lr_size = 0;
-
 static void era_tree_remove_node(era_agreement_info_t *ci, int r_in_tree)
 {
     /** All indices are in tree */
     int p, c, s, t;
-
-    if( last_removed != NULL ) {
-        free(last_removed);
-    }
-    last_removed = (era_tree_t*)malloc(ci->ags->tree_size * sizeof(era_tree_t));
-    memcpy(last_removed, ci->ags->tree, ci->ags->tree_size * sizeof(era_tree_t));
-    lr_size = ci->ags->tree_size;
 
     p = ci->ags->tree[r_in_tree].parent;
     if( p != r_in_tree ) {
@@ -1569,7 +1565,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                        decided_value->new_dead_array + r,
                        (decided_value->header.nb_new_dead - r) * sizeof(int));
                 AGS(comm)->afr_size += decided_value->header.nb_new_dead - r;
-                if(mca_coll_ftbasic_cur_era_rebuild) AGS(comm)->ags_status |= AGS_TREE_DIRTY;
+                if(mca_coll_ftbasic_era_rebuild) AGS(comm)->ags_status |= AGS_TREE_DIRTY;
                 break;
             } else if( AGS(comm)->agreed_failed_ranks[s] > decided_value->new_dead_array[r] ) {
                 /** make some room for one int */
@@ -1577,7 +1573,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                         AGS(comm)->agreed_failed_ranks + s,
                         (AGS(comm)->afr_size - s) * sizeof(int));
                 AGS(comm)->afr_size++;
-                if(mca_coll_ftbasic_cur_era_rebuild) AGS(comm)->ags_status |= AGS_TREE_DIRTY;
+                if(mca_coll_ftbasic_era_rebuild) AGS(comm)->ags_status |= AGS_TREE_DIRTY;
                 /** and insert new_dead[r] */
                 AGS(comm)->agreed_failed_ranks[s] = decided_value->new_dead_array[r];
             } else {
