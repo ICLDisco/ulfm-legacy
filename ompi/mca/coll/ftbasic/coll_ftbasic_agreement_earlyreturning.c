@@ -1250,7 +1250,7 @@ static void era_build_tree_structure(era_agreement_info_t *ci)
     era_call_tree_fn(ci);
 
     if( ompi_comm_rank(ci->comm) == 0 ) {
-        OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
+        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) Agreement (%d.%d).%d: re-built the tree structure with size %d: %s\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
                              ci->agreement_id.ERAID_FIELDS.contextid,
@@ -1569,7 +1569,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                        decided_value->new_dead_array + r,
                        (decided_value->header.nb_new_dead - r) * sizeof(int));
                 AGS(comm)->afr_size += decided_value->header.nb_new_dead - r;
-                AGS(comm)->ags_status |= AGS_TREE_DIRTY;
+                if(mca_coll_ftbasic_cur_era_rebuild) AGS(comm)->ags_status |= AGS_TREE_DIRTY;
                 break;
             } else if( AGS(comm)->agreed_failed_ranks[s] > decided_value->new_dead_array[r] ) {
                 /** make some room for one int */
@@ -1577,7 +1577,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                         AGS(comm)->agreed_failed_ranks + s,
                         (AGS(comm)->afr_size - s) * sizeof(int));
                 AGS(comm)->afr_size++;
-                AGS(comm)->ags_status |= AGS_TREE_DIRTY;
+                if(mca_coll_ftbasic_cur_era_rebuild) AGS(comm)->ags_status |= AGS_TREE_DIRTY;
                 /** and insert new_dead[r] */
                 AGS(comm)->agreed_failed_ranks[s] = decided_value->new_dead_array[r];
             } else {
