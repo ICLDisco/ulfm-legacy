@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
     int common, flag, ret;
     unsigned int seed = 1789;
 
+    int mf=0;
     int  verbose = 0;
     int  keep = 0;
     int  before = 10;
@@ -94,10 +95,11 @@ int main(int argc, char *argv[])
             { "after",        1, 0, 'a' },
             { "faults",       1, 0, 'f' },
             { "keep",         1, 0, 'k' },
+            { "multifaults",  1, 0, 'm' },
             { NULL,           0, 0, 0   }
         };
 
-        c = getopt_long(argc, argv, "vb:k:a:f:", long_options, NULL);
+        c = getopt_long(argc, argv, "vb:k:a:f:m:", long_options, NULL);
         if (c == -1)
             break;
 
@@ -117,6 +119,9 @@ int main(int argc, char *argv[])
         case 'f':
             faults[ atoi(optarg) ] = 1;
             break;
+        case 'm':
+            mf=atoi(optarg);
+            break;
         }
     }
 
@@ -124,6 +129,17 @@ int main(int argc, char *argv[])
     stat_init(&sstab, 0);
     stat_init(&safter, keep);
 
+    srand(1);
+    for(i = 0; i < mf; i++) {
+        do {
+            ret = rand();
+            ret = ret % size;
+            if(!faults[ret]) {
+                faults[ret] = 1;
+                break;
+            }
+        } while(1);
+    }
     common = rand_r(&seed);
     srand(getpid());
 
@@ -154,6 +170,8 @@ int main(int argc, char *argv[])
         }
         raise(SIGKILL); do { pause(); } while(1);
     }
+    //sleep(1);
+    MPI_Barrier(MPI_COMM_WORLD);
 
     flag = rand() | common;
 
