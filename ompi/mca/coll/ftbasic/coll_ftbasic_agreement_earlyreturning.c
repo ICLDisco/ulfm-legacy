@@ -1653,6 +1653,7 @@ static void era_check_status(era_agreement_info_t *ci)
     if( ci->status == GATHERING ) {
         /* I contributed myself, and I may just have received a contribution from a child */
         /* Let's see if it's time to pass up */
+        (void)era_parent(ci); /* Maybe I'm becoming the root, need to recheck my children. TODO: only rebuild the necessary part */
         r = -1;
         while( (r = era_next_child(ci, r)) < ompi_comm_size(ci->comm) ) {
             OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
