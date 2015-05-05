@@ -47,6 +47,21 @@ const char *ibv_get_sysfs_path(void);
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <stddef.h>
+#if BTL_OPENIB_MALLOC_HOOKS_ENABLED
+/*
+ * The include of malloc.h below breaks abstractions in OMPI (by
+ * directly including a header file from another component), but has
+ * been ruled "ok" because the openib component is only supported on
+ * Linux.  
+ *
+ * The malloc hooks in newer glibc were deprecated, including stock
+ * malloc.h causes compilation warnings.  Instead, we use the internal
+ * linux component malloc.h which does not cause these warnings.
+ * Internally, OMPI uses the built-in ptmalloc from the linux memory
+ * component anyway.
+ */
+#include "opal/mca/memory/linux/malloc.h"
+#endif
 
 #include "opal/mca/event/event.h"
 #include "opal/align.h"
@@ -61,6 +76,7 @@ const char *ibv_get_sysfs_path(void);
 #include "opal/mca/carto/base/base.h"
 #include "opal/mca/paffinity/base/base.h"
 #include "opal/mca/installdirs/installdirs.h"
+#include "opal/mca/timer/base/base.h"
 #include "opal_stdint.h"
 
 #include "orte/util/show_help.h"
@@ -71,7 +87,6 @@ const char *ibv_get_sysfs_path(void);
 #include "ompi/constants.h"
 #include "ompi/proc/proc.h"
 #include "ompi/mca/btl/btl.h"
-#include "ompi/mca/common/cuda/common_cuda.h"
 #include "ompi/mca/mpool/base/base.h"
 #include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "ompi/mca/btl/base/base.h"
@@ -111,6 +126,8 @@ static int btl_openib_component_progress(void);
  * Local variables
  */
 static mca_btl_openib_device_t *receive_queues_device = NULL;
+static bool malloc_hook_set = false;
+static int num_devices_intentionally_ignored = 0;
 
 mca_btl_openib_component_t mca_btl_openib_component = {
     {
@@ -138,6 +155,26 @@ mca_btl_openib_component_t mca_btl_openib_component = {
         btl_openib_component_progress,
     }
 };
+
+#if BTL_OPENIB_MALLOC_HOOKS_ENABLED
+/* This is a memory allocator hook. The purpose of this is to make
+ * every malloc aligned since this speeds up IB HCA work.
+ * There two basic cases here:
+ * 1. Memory manager for Open MPI is enabled. Then memalign below will be
+ * overridden by __memalign_hook which is set to opal_memory_linux_memalign_hook.
+ * Thus, _malloc_hook is going to use opal_memory_linux_memalign_hook.
+ * 2. No memory manager support. The memalign below is just regular glibc
+ * memalign which will be called through __malloc_hook instead of malloc.
+ */
+static void *btl_openib_malloc_hook(size_t sz, const void* caller)
+{
+    if (sz < mca_btl_openib_component.memalign_threshold) {
+        return mca_btl_openib_component.previous_malloc_hook(sz, caller);
+    } else {
+        return memalign(mca_btl_openib_component.use_memalign, sz);
+    }
+}
+#endif
 
 static int btl_openib_component_register(void)
 {
@@ -231,9 +268,7 @@ static int btl_openib_component_close(void)
 #endif
 
     ompi_btl_openib_connect_base_finalize();
-#ifndef __WINDOWS__
     ompi_btl_openib_fd_finalize();
-#endif
     ompi_btl_openib_ini_finalize();
     if (NULL != mca_btl_openib_component.receive_queues) {
         free(mca_btl_openib_component.receive_queues);
@@ -242,6 +277,15 @@ static int btl_openib_component_close(void)
     if (NULL != mca_btl_openib_component.default_recv_qps) {
         free(mca_btl_openib_component.default_recv_qps);
     }
+    
+#if BTL_OPENIB_MALLOC_HOOKS_ENABLED
+    /* Must check to see whether the malloc hook was set before 
+       assigning it back because ompi_info will call _register() and 
+       then _close() (which won't set the hook) */ 
+    if (malloc_hook_set) { 
+        __malloc_hook = mca_btl_openib_component.previous_malloc_hook; 
+    } 
+#endif
 
     return rc;
 }
@@ -334,7 +378,7 @@ static int btl_openib_modex_send(void)
                 mca_btl_openib_component.openib_btls[i]->cpcs[j]->data.cbm_modex_message_len;
         }
     }
-    message = (char *) malloc(msg_size);
+    message = malloc(msg_size);
     if (NULL == message) {
         BTL_ERROR(("Failed malloc"));
         return OMPI_ERR_OUT_OF_RESOURCE;
@@ -566,28 +610,25 @@ static int openib_reg_mr(void *reg_data, void *base, size_t size,
     }
 #endif
 
-    openib_reg->mr = ibv_reg_mr(device->ib_pd, base, size, access_flag);
-
-    if (NULL == openib_reg->mr) {
-        orte_show_help("help-mpi-btl-openib.txt", "mem-reg-fail",
-                        orte_process_info.nodename,
-                        ibv_get_device_name(device->ib_dev),
-                        __func__, strerror(errno));
+    if (device->mem_reg_max &&
+        device->mem_reg_max < (device->mem_reg_active + size)) {
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 
-#if OMPI_CUDA_SUPPORT
-    if (reg->flags & MCA_MPOOL_FLAGS_CUDA_REGISTER_MEM) {
-        mca_common_cuda_register(base, size,
-            openib_reg->base.mpool->mpool_component->mpool_version.mca_component_name);
+    device->mem_reg_active += size;
+
+    openib_reg->mr = ibv_reg_mr(device->ib_pd, base, size, access_flag);
+
+    if (NULL == openib_reg->mr) {
+        return OMPI_ERR_OUT_OF_RESOURCE;
     }
-#endif
 
     return OMPI_SUCCESS;
 }
 
 static int openib_dereg_mr(void *reg_data, mca_mpool_base_registration_t *reg)
 {
+    mca_btl_openib_device_t *device = (mca_btl_openib_device_t*)reg_data;
     mca_btl_openib_reg_t *openib_reg = (mca_btl_openib_reg_t*)reg;
 
     if(openib_reg->mr != NULL) {
@@ -596,15 +637,10 @@ static int openib_dereg_mr(void *reg_data, mca_mpool_base_registration_t *reg)
                        __func__, strerror(errno)));
             return OMPI_ERROR;
         }
-
-#if OMPI_CUDA_SUPPORT
-        if (reg->flags & MCA_MPOOL_FLAGS_CUDA_REGISTER_MEM) {
-            mca_common_cuda_unregister(openib_reg->base.base,
-                openib_reg->base.mpool->mpool_component->mpool_version.mca_component_name);
-        }
-#endif
-
     }
+
+    device->mem_reg_active -= (uint64_t) (reg->bound - reg->base + 1);
+
     openib_reg->mr = NULL;
     return OMPI_SUCCESS;
 }
@@ -762,7 +798,7 @@ static int init_one_port(opal_list_t *btl_list, mca_btl_openib_device_t *device,
         for(i = 0; i < mca_btl_openib_component.btls_per_lid; i++){
             char param[40];
 
-            openib_btl = (mca_btl_openib_module_t *) malloc(sizeof(mca_btl_openib_module_t));
+            openib_btl = (mca_btl_openib_module_t *)calloc(1, sizeof(mca_btl_openib_module_t));
             if(NULL == openib_btl) {
                 BTL_ERROR(("Failed malloc: %s:%d", __FILE__, __LINE__));
                 return OMPI_ERR_OUT_OF_RESOURCE;
@@ -786,6 +822,7 @@ static int init_one_port(opal_list_t *btl_list, mca_btl_openib_device_t *device,
 
             openib_btl->cpcs = NULL;
             openib_btl->num_cpcs = 0;
+            openib_btl->local_procs = 0;
 
             mca_btl_base_active_message_trigger[MCA_BTL_TAG_IB].cbfunc = btl_openib_control;
             mca_btl_base_active_message_trigger[MCA_BTL_TAG_IB].cbdata = NULL;
@@ -845,6 +882,18 @@ static int init_one_port(opal_list_t *btl_list, mca_btl_openib_device_t *device,
                     /* 10.0Gbps * 0.8, in megabits */
                     openib_btl->super.btl_bandwidth = 8000;
                     break;
+                case 8:
+                    /* FDR10: 10 Gbps * 64/66, in megabits */
+                    openib_btl->super.btl_bandwidth = 9700;
+                    break;
+                case 16:
+                    /* FDR: 14 Gbps * 64/66, in megabits */
+                    openib_btl->super.btl_bandwidth = 13600;
+                    break;
+                case 32:
+                    /* EDR: 25 Gbps * 64/66, in megabits */
+                    openib_btl->super.btl_bandwidth = 24200;
+                    break;
                 default:
                     /* Who knows?  Declare this port unreachable (do
                        *not* return ERR_VALUE_OF_OUT_OF_BOUNDS; that
@@ -902,6 +951,8 @@ static void device_construct(mca_btl_openib_device_t *device)
     device->ib_channel = NULL;
 #endif
     device->btls = 0;
+    device->endpoints = NULL;
+    device->device_btls = NULL;
     device->ib_cq[BTL_OPENIB_HP_CQ] = NULL;
     device->ib_cq[BTL_OPENIB_LP_CQ] = NULL;
     device->cq_size[BTL_OPENIB_HP_CQ] = 0;
@@ -1622,6 +1673,10 @@ static int init_one_device(opal_list_t *btl_list, struct ibv_device* ib_dev)
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 
+    device->mem_reg_active = 0;
+    /* NTH: set some high default until we know how many local peers we have */
+    device->mem_reg_max    = 1ull << 48;
+
     device->ib_dev = ib_dev;
     device->ib_dev_context = ibv_open_device(ib_dev);
     device->ib_pd = NULL;
@@ -1648,6 +1703,7 @@ static int init_one_device(opal_list_t *btl_list, struct ibv_device* ib_dev)
     if (0 == port_cnt) {
         free(allowed_ports);
         ret = OMPI_SUCCESS;
+        ++num_devices_intentionally_ignored;
         goto error;
     }
 
@@ -1675,6 +1731,17 @@ static int init_one_device(opal_list_t *btl_list, struct ibv_device* ib_dev)
                            device->ib_dev_attr.vendor_part_id);
         }
     }
+
+    /* If we're supposed to ignore devices of this vendor/part ID,
+       then do so */
+    if (values.ignore_device_set && values.ignore_device) {
+        BTL_VERBOSE(("device %s skipped; ignore_device=1",
+                     ibv_get_device_name(device->ib_dev)));
+        ret = OMPI_SUCCESS;
+        ++num_devices_intentionally_ignored;
+        goto error;
+    }
+
     /* Note that even if we don't find default values, "values" will
        be set indicating that it does not have good values */
     ret = ompi_btl_openib_ini_query(0, 0, &default_values);
@@ -2455,7 +2522,17 @@ btl_openib_component_init(int *num_btl_modules,
     /* initialization */
     *num_btl_modules = 0;
     num_devs = 0;
-
+#if BTL_OPENIB_MALLOC_HOOKS_ENABLED 
+    /* If we got this far, then setup the memory alloc hook (because 
+       we're most likely going to be using this component). The hook is to be set up 
+       as early as possible in this function since we want most of the allocated resources 
+       be aligned.*/ 
+    if (mca_btl_openib_component.use_memalign > 0) { 
+        mca_btl_openib_component.previous_malloc_hook = __malloc_hook; 
+        __malloc_hook = btl_openib_malloc_hook;  
+        malloc_hook_set = true; 
+    } 
+#endif 
     /* Currently refuse to run if MPI_THREAD_MULTIPLE is enabled */
     if (ompi_mpi_thread_multiple && !mca_btl_base_thread_multiple_override) {
         BTL_VERBOSE(("openib BTL disqualifying itself because MPI_THREAD_MULTIPLE is being used"));
@@ -2471,24 +2548,20 @@ btl_openib_component_init(int *num_btl_modules,
         goto no_btls;
     }
 
-#ifndef __WINDOWS__
     seedv[0] = ORTE_PROC_MY_NAME->vpid;
     seedv[1] = opal_timer_base_get_cycles();
     seedv[2] = opal_timer_base_get_cycles();
     seed48(seedv);
-#endif
 
     /* Read in INI files with device-specific parameters */
     if (OMPI_SUCCESS != (ret = ompi_btl_openib_ini_init())) {
         goto no_btls;
     }
 
-#ifndef __WINDOWS__
     /* Initialize FD listening */
     if (OMPI_SUCCESS != ompi_btl_openib_fd_init()) {
         goto no_btls;
     }
-#endif
 
     /* Init CPC components */
     if (OMPI_SUCCESS != (ret = ompi_btl_openib_connect_base_init())) {
@@ -2557,17 +2630,6 @@ btl_openib_component_init(int *num_btl_modules,
         }
     }
 
-    index = mca_base_param_find("btl", "openib", "flags");
-    if (index >= 0) {
-        if (OPAL_SUCCESS == mca_base_param_lookup_int(index, &value)) {
-            if (value & MCA_BTL_FLAGS_GET) {
-                /* Until GET flow is fixed - we do not support GET
-                   in openib btl. */
-                BTL_ERROR(("openib btl does not support GET flag"));
-            }
-        }
-    }
-
     OBJ_CONSTRUCT(&mca_btl_openib_component.send_free_coalesced, ompi_free_list_t);
     OBJ_CONSTRUCT(&mca_btl_openib_component.send_user_free, ompi_free_list_t);
     OBJ_CONSTRUCT(&mca_btl_openib_component.recv_user_free, ompi_free_list_t);
@@ -2577,9 +2639,13 @@ btl_openib_component_init(int *num_btl_modules,
     init_data->order = mca_btl_openib_component.rdma_qp;
     init_data->list = &mca_btl_openib_component.send_user_free;
 
+    /* Align fragments on 8-byte boundaries (instead of 2) to fix bus errors that
+       occur on some 32-bit platforms. Depending on the size of the fragment this
+       will waste 2-6 bytes of space per frag. In most cases this shouldn't waste
+       any space. */
     if (OMPI_SUCCESS != ompi_free_list_init_ex_new(
                 &mca_btl_openib_component.send_user_free,
-                sizeof(mca_btl_openib_put_frag_t), 2,
+                sizeof(mca_btl_openib_put_frag_t), 8,
                 OBJ_CLASS(mca_btl_openib_put_frag_t),
                 0, 0,
                 mca_btl_openib_component.ib_free_list_num,
@@ -2596,7 +2662,7 @@ btl_openib_component_init(int *num_btl_modules,
 
     if(OMPI_SUCCESS != ompi_free_list_init_ex_new(
                 &mca_btl_openib_component.recv_user_free,
-                sizeof(mca_btl_openib_get_frag_t), 2,
+                sizeof(mca_btl_openib_get_frag_t), 8,
                 OBJ_CLASS(mca_btl_openib_get_frag_t),
                 0, 0,
                 mca_btl_openib_component.ib_free_list_num,
@@ -2613,7 +2679,7 @@ btl_openib_component_init(int *num_btl_modules,
 
     if(OMPI_SUCCESS != ompi_free_list_init_ex(
                 &mca_btl_openib_component.send_free_coalesced,
-                length, 2, OBJ_CLASS(mca_btl_openib_coalesced_frag_t),
+                length, 8, OBJ_CLASS(mca_btl_openib_coalesced_frag_t),
                 mca_btl_openib_component.ib_free_list_num,
                 mca_btl_openib_component.ib_free_list_max,
                 mca_btl_openib_component.ib_free_list_inc,
@@ -2732,8 +2798,8 @@ btl_openib_component_init(int *num_btl_modules,
         }
 
         found = true;
-        if (OMPI_SUCCESS !=
-            (ret = init_one_device(&btl_list, dev_sorted[i].ib_dev))) {
+        ret = init_one_device(&btl_list, dev_sorted[i].ib_dev);
+        if (OMPI_SUCCESS != ret && OMPI_ERR_NOT_SUPPORTED != ret) {
             free(dev_sorted);
             goto no_btls;
         }
@@ -2765,8 +2831,13 @@ btl_openib_component_init(int *num_btl_modules,
     }
 
     if(0 == mca_btl_openib_component.ib_num_btls) {
-        orte_show_help("help-mpi-btl-openib.txt",
-                "no active ports found", true, orte_process_info.nodename);
+        /* If there were unusable devices that weren't specifically
+           ignored, warn about it */
+        if (num_devices_intentionally_ignored < num_devs) {
+            orte_show_help("help-mpi-btl-openib.txt",
+                           "no active ports found", true, 
+                           orte_process_info.nodename);
+        }
         goto no_btls;
     }
 
@@ -2824,33 +2895,32 @@ btl_openib_component_init(int *num_btl_modules,
         ib_selected = (mca_btl_base_selected_module_t*)item;
         openib_btl = (mca_btl_openib_module_t*)ib_selected->btl_module;
         device = openib_btl->device;
+        OBJ_RELEASE(ib_selected);
 
         /* Search for a CPC that can handle this port */
         ret = ompi_btl_openib_connect_base_select_for_local_port(openib_btl);
-        /* If we get NOT_SUPPORTED, then no CPC was found for this
-           port.  But that's not a fatal error -- just keep going;
-           let's see if we find any usable openib modules or not. */
-        if (OMPI_ERR_NOT_SUPPORTED == OPAL_SOS_GET_ERROR_CODE(ret)) {
-            continue;
-        } else if (OMPI_SUCCESS != ret) {
-            /* All others *are* fatal.  Note that we already did a
-               show_help in the lower layer */
+        if ((OMPI_SUCCESS != OPAL_SOS_GET_ERROR_CODE(ret)) && (OMPI_ERR_NOT_SUPPORTED != OPAL_SOS_GET_ERROR_CODE(ret))) {
+            /* All errors except NOT_SUPPORTED are fatal. Note that we already
+               did a show_help in the lower layer */
             goto no_btls;
         }
 
-        if (mca_btl_openib_component.max_hw_msg_size > 0 &&
-            (uint32_t)mca_btl_openib_component.max_hw_msg_size > openib_btl->ib_port_attr.max_msg_sz) {
-            BTL_ERROR(("max_hw_msg_size (%" PRIu32 ") is larger than hw max message size (%" PRIu32 ")",
-                mca_btl_openib_component.max_hw_msg_size, openib_btl->ib_port_attr.max_msg_sz));
-        }
-
-        mca_btl_openib_component.openib_btls[i] = openib_btl;
-        OBJ_RELEASE(ib_selected);
-        btls[i] = &openib_btl->super;
+        /* Finish BTL initialization */
         if (finish_btl_init(openib_btl) != OMPI_SUCCESS) {
             goto no_btls;
         }
-        ++i;
+
+        /* If we get NOT_SUPPORTED, then no CPC was found for this
+            port.  But that's not a fatal error -- destroy this openib module
+            and keep going; let's see if we find any usable openib modules or not. */
+        if (OMPI_ERR_NOT_SUPPORTED == OPAL_SOS_GET_ERROR_CODE(ret)) {
+            mca_btl_openib_finalize(&openib_btl->super);
+            continue;
+        } else /* OMPI_SUCCESS == ret */ {
+            mca_btl_openib_component.openib_btls[i] = openib_btl;
+            btls[i] = &openib_btl->super;
+            ++i;
+        }
 
         /* For each btl module that we made - find every
            base device that doesn't have device->qps setup on it yet (remember
@@ -2917,13 +2987,14 @@ btl_openib_component_init(int *num_btl_modules,
     /* If we fail early enough in the setup, we just modex around that
        there are no openib BTL's in this process and return NULL. */
 
-#ifndef __WINDOWS__
-    /* Be sure to shut down the fd listener */
-    ompi_btl_openib_fd_finalize();
-#endif
-
     mca_btl_openib_component.ib_num_btls = 0;
     btl_openib_modex_send();
+#if BTL_OPENIB_MALLOC_HOOKS_ENABLED 
+    /*Unset malloc hook since the component won't start*/ 
+    if (malloc_hook_set) { 
+        __malloc_hook = mca_btl_openib_component.previous_malloc_hook; 
+    } 
+#endif
     return NULL;
 }
 
@@ -3167,6 +3238,9 @@ static char* btl_openib_component_status_to_string(enum ibv_wc_status status)
     case IBV_WC_LOC_QP_OP_ERR:
         return "LOCAL QP OPERATION ERROR";
         break;
+    case IBV_WC_LOC_EEC_OP_ERR:
+        return "LOCAL EEC OPERATION ERROR";
+        break;
     case IBV_WC_LOC_PROT_ERR:
         return "LOCAL PROTOCOL ERROR";
         break;
@@ -3283,6 +3357,7 @@ static void handle_wc(mca_btl_openib_device_t* device, const uint32_t cq,
     mca_btl_openib_module_t *openib_btl = NULL;
     ompi_proc_t* remote_proc = NULL;
     int qp, btl_ownership;
+    int n;
 
     des = (mca_btl_base_descriptor_t*)(uintptr_t)wc->wr_id;
     frag = to_com_frag(des);
@@ -3346,8 +3421,11 @@ static void handle_wc(mca_btl_openib_device_t* device, const uint32_t cq,
             /* return send wqe */
             qp_put_wqe(endpoint, qp);
 
+            /* return wqes that were sent before this frag */
+            n = qp_frag_to_wqe(endpoint, qp, to_com_frag(des));
+
             if(IBV_WC_SEND == wc->opcode && !BTL_OPENIB_QP_TYPE_PP(qp)) {
-                OPAL_THREAD_ADD32(&openib_btl->qps[qp].u.srq_qp.sd_credits, 1);
+                OPAL_THREAD_ADD32(&openib_btl->qps[qp].u.srq_qp.sd_credits, 1+n);
 
                 /* new SRQ credit available. Try to progress pending frags*/
                 progress_pending_frags_srq(openib_btl, qp);
@@ -3427,8 +3505,9 @@ error:
         orte_notifier.log_peer(ORTE_NOTIFIER_CRIT, ORTE_ERR_COMM_FAILURE,
                                remote_proc ? &remote_proc->proc_name : NULL,
                                "\n\tIB polling %s with status %s "
-                               "status number %d for wr_id %llu opcode %d vendor error %d qp_idx %d",
-                               cq_name[cq], btl_openib_component_status_to_string(wc->status),
+                               "status number %d for wr_id %" PRIx64 " opcode %d vendor error %d qp_idx %d",
+                               cq_name[cq],
+                             btl_openib_component_status_to_string(wc->status),
                                wc->status, wc->wr_id,
                                wc->opcode, wc->vendor_err, qp);
     }
@@ -3483,12 +3562,13 @@ static int poll_device(mca_btl_openib_device_t* device, int count)
 {
     int ne = 0, cq;
     uint32_t hp_iter = 0;
-    struct ibv_wc wc;
+    struct ibv_wc wc[MCA_BTL_OPENIB_CQ_POLL_BATCH_DEFAULT];
+    int i;
 
     device->pollme = false;
     for(cq = 0; cq < 2 && hp_iter < mca_btl_openib_component.cq_poll_progress;)
     {
-        ne = ibv_poll_cq(device->ib_cq[cq], 1, &wc);
+        ne = ibv_poll_cq(device->ib_cq[cq], mca_btl_openib_component.cq_poll_batch, wc);
         if(0 == ne) {
             /* don't check low prio cq if there was something in high prio cq,
              * but for each cq_poll_ratio hp cq polls poll lp cq once */
@@ -3510,7 +3590,8 @@ static int poll_device(mca_btl_openib_device_t* device, int count)
             device->hp_cq_polls--;
         }
 
-        handle_wc(device, cq, &wc);
+        for (i = 0; i < ne; i++)
+            handle_wc(device, cq, &wc[i]);
     }
 
     return count;

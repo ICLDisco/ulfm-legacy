@@ -134,6 +134,7 @@ int btl_openib_register_mca_params(void)
 {
     char default_qps[100];
     uint32_t mid_qp_size;
+    int i;
     char *msg, *str, *pkey;
     int ival, ival2, ret, tmp;
 
@@ -166,6 +167,20 @@ int btl_openib_register_mca_params(void)
                   1, &ival, 0));
     mca_btl_openib_component.warn_nonexistent_if = (0 != ival);
 
+    /* If we print a warning about not having enough registered memory
+       available, do we want to abort? */
+    CHECK(reg_int("abort_not_enough_reg_mem", NULL,
+                  "If there is not enough registered memory available on the system for Open MPI to function properly, Open MPI will issue a warning.  If this MCA parameter is set to true, then Open MPI will also abort all MPI jobs "
+                  "(0 = warn, but do not abort; any other value = warn and abort)",
+                  0, &ival, 0));
+    mca_btl_openib_component.abort_not_enough_reg_mem = (0 != ival);
+
+    CHECK(reg_int("poll_cq_batch", NULL,
+                  "Retrieve up to poll_cq_batch completions from CQ",
+                  MCA_BTL_OPENIB_CQ_POLL_BATCH_DEFAULT, &ival, REGINT_GE_ONE));
+
+    mca_btl_openib_component.cq_poll_batch = (ival > MCA_BTL_OPENIB_CQ_POLL_BATCH_DEFAULT)? MCA_BTL_OPENIB_CQ_POLL_BATCH_DEFAULT : ival;
+
     if (OMPI_HAVE_IBV_FORK_INIT) {
         ival2 = -1;
     } else {
@@ -192,8 +207,8 @@ int btl_openib_register_mca_params(void)
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
     CHECK(reg_string("device_param_files", "hca_param_files",
-                     "Colon-delimited list of INI-style files that contain device vendor/part-specific parameters (use semicolon for Windows)",
-                     str, &mca_btl_openib_component.device_params_file_names,
+                     "Colon-delimited list of INI-style files that contain device vendor/part-specific parameters",
+                     str, &mca_btl_openib_component.device_params_file_names, 
                      0));
     free(str);
 
@@ -252,7 +267,7 @@ int btl_openib_register_mca_params(void)
                   "(CQs are automatically sized based on the number "
                   "of peer MPI processes; this value determines the "
                   "*minimum* size of all CQs)",
-                  1000, &ival, REGINT_GE_ONE));
+                  8192, &ival, REGINT_GE_ONE));
     mca_btl_openib_component.ib_cq_size[BTL_OPENIB_LP_CQ] =
         mca_btl_openib_component.ib_cq_size[BTL_OPENIB_HP_CQ] = (uint32_t) ival;
 
@@ -519,11 +534,6 @@ int btl_openib_register_mca_params(void)
                   10, &ival, REGINT_GE_ONE));
     mca_btl_openib_component.cq_poll_progress = (uint32_t)ival;
 
-    CHECK(reg_int("max_hw_msg_size", NULL,
-                  "Maximum size (in bytes) of a single fragment of a long message when using the RDMA protocols (must be > 0 and <= hw capabilities).",
-                  0, &ival, REGINT_GE_ZERO));
-    mca_btl_openib_component.max_hw_msg_size = (uint32_t)ival;
-
     /* Info only */
     mca_base_param_reg_int(&mca_btl_openib_component.super.btl_version,
                            "have_fork_support",
@@ -541,7 +551,7 @@ int btl_openib_register_mca_params(void)
     mca_btl_openib_module.super.btl_rdma_pipeline_send_length = 1024 * 1024;
     mca_btl_openib_module.super.btl_rdma_pipeline_frag_size = 1024 * 1024;
     mca_btl_openib_module.super.btl_min_rdma_pipeline_size = 256 * 1024;
-    mca_btl_openib_module.super.btl_flags = MCA_BTL_FLAGS_PUT |
+    mca_btl_openib_module.super.btl_flags = MCA_BTL_FLAGS_RDMA |
         MCA_BTL_FLAGS_NEED_ACK | MCA_BTL_FLAGS_NEED_CSUM | MCA_BTL_FLAGS_HETEROGENEOUS_RDMA;
 #if BTL_OPENIB_FAILOVER_ENABLED
     mca_btl_openib_module.super.btl_flags |= MCA_BTL_FLAGS_FAILOVER_SUPPORT;
@@ -554,16 +564,22 @@ int btl_openib_register_mca_params(void)
             &mca_btl_openib_module.super));
 
     /* setup all the qp stuff */
+    mid_qp_size = mca_btl_openib_module.super.btl_eager_limit / 4;
     /* round mid_qp_size to smallest power of two */
-    mid_qp_size = opal_next_poweroftwo (mca_btl_openib_module.super.btl_eager_limit / 4) >> 1;
+    for(i = 31; i > 0; i--) {
+        if(!(mid_qp_size & (1<<i))) {
+            continue;
+        }
+        mid_qp_size = (1<<i);
+        break;
+    }
 
-    /* mid_qp_size = MAX (mid_qp_size, 1024); ?! */
     if(mid_qp_size <= 128) {
         mid_qp_size = 1024;
     }
 
     snprintf(default_qps, 100,
-            "P,128,256,192,128:S,%u,256,128,32:S,%u,256,128,32:S,%u,256,128,32",
+            "P,128,256,192,128:S,%u,1024,1008,64:S,%u,1024,1008,64:S,%u,1024,1008,64",
             mid_qp_size,
             (uint32_t)mca_btl_openib_module.super.btl_eager_limit,
             (uint32_t)mca_btl_openib_module.super.btl_max_send_size);
@@ -608,6 +624,36 @@ int btl_openib_register_mca_params(void)
                   0, &mca_btl_openib_component.gid_index,
                   REGINT_GE_ZERO));
 
+#if BTL_OPENIB_MALLOC_HOOKS_ENABLED
+    CHECK(reg_int("memalign", NULL,
+                  "[64 | 32 | 0] - Enable (64bit or 32bit)/Disable(0) memory"
+                  "alignment for all malloc calls if btl openib is used.",
+                  32, &mca_btl_openib_component.use_memalign,
+                  REGINT_GE_ZERO));
+    
+    if (mca_btl_openib_component.use_memalign != 32  
+        && mca_btl_openib_component.use_memalign != 64
+        && mca_btl_openib_component.use_memalign != 0){ 
+        orte_show_help("help-mpi-btl-openib.txt", "invalid mca param value",
+                       true, "Wrong btl_openib_memalign parameter value. Allowed values: 64, 32, 0.",
+                       "btl_openib_memalign is reset to 32");
+        mca_btl_openib_component.use_memalign = 32; 
+    }
+    reg_int("memalign_threshold", NULL,
+            "Allocating memory more than btl_openib_memalign_threshhold"
+            "bytes will automatically be algined to the value of btl_openib_memalign bytes."
+            "memalign_threshhold defaults to the same value as mca_btl_openib_eager_limit.",
+            mca_btl_openib_component.eager_limit,
+            &ival,
+            REGINT_GE_ZERO);
+    if (ival < 0){
+        orte_show_help("help-mpi-btl-openib.txt", "invalid mca param value",
+                       true, "btl_openib_memalign_threshold must be positive",
+                       "btl_openib_memalign_threshold is reset to btl_openib_eager_limit");
+        ival = mca_btl_openib_component.eager_limit;
+    }
+    mca_btl_openib_component.memalign_threshold = (size_t)ival;
+#endif
     /* Register any MCA params for the connect pseudo-components */
     if (OMPI_SUCCESS == ret) {
         ret = ompi_btl_openib_connect_base_register();

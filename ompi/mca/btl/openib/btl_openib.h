@@ -57,6 +57,7 @@ BEGIN_C_DECLS
 #define MCA_BTL_IB_LEAVE_PINNED 1
 #define IB_DEFAULT_GID_PREFIX 0xfe80000000000000ll
 #define MCA_BTL_IB_PKEY_MASK 0x7fff
+#define MCA_BTL_OPENIB_CQ_POLL_BATCH_DEFAULT (256)
 
 
 /*--------------------------------------------------------------------*/
@@ -199,7 +200,6 @@ struct mca_btl_openib_component_t {
 
     size_t eager_limit;      /**< Eager send limit of first fragment, in Bytes */
     size_t max_send_size;    /**< Maximum send size, in Bytes */
-    uint32_t max_hw_msg_size;/**< Maximum message size for RDMA protocols in Bytes */
     uint32_t reg_mru_len;    /**< Length of the registration cache most recently used list */
     uint32_t use_srq;        /**< Use the Shared Receive Queue (SRQ mode) */
 
@@ -267,6 +267,10 @@ struct mca_btl_openib_component_t {
     /** Whether we want a warning if the user specifies a non-existent
         device and/or port via btl_openib_if_[in|ex]clude MCA params */
     bool warn_nonexistent_if;
+    /** Whether we want to abort if there's not enough registered
+        memory available */
+    bool abort_not_enough_reg_mem;
+
     /** Dummy argv-style list; a copy of names from the
         if_[in|ex]clude list that we use for error checking (to ensure
         that they all exist) */
@@ -274,6 +278,7 @@ struct mca_btl_openib_component_t {
     bool use_message_coalescing;
     uint32_t cq_poll_ratio;
     uint32_t cq_poll_progress;
+    uint32_t cq_poll_batch;
     uint32_t eager_rdma_poll_ratio;
 #ifdef HAVE_IBV_FORK_INIT
     /** Whether we want fork support or not */
@@ -296,6 +301,11 @@ struct mca_btl_openib_component_t {
     bool enable_srq_resize;
 #if BTL_OPENIB_FAILOVER_ENABLED
     int verbose_failover;
+#endif
+#if BTL_OPENIB_MALLOC_HOOKS_ENABLED
+    int use_memalign;
+    size_t memalign_threshold;
+    void* (*previous_malloc_hook)(size_t __size, const void*);
 #endif
 }; typedef struct mca_btl_openib_component_t mca_btl_openib_component_t;
 
@@ -385,6 +395,8 @@ typedef struct mca_btl_openib_device_t {
     mca_btl_openib_device_qp_t *qps;
     /* Maximum value supported by this device for max_inline_data */
     uint32_t max_inline_data;
+    /* Registration limit and current count */
+    uint64_t mem_reg_max, mem_reg_active;
 } mca_btl_openib_device_t;
 OBJ_CLASS_DECLARATION(mca_btl_openib_device_t);
 
@@ -462,6 +474,8 @@ struct mca_btl_openib_module_t {
     mca_btl_base_module_error_cb_fn_t error_cb; /**< error handler */
 
     mca_btl_openib_module_qp_t * qps;
+
+    int local_procs;                   /** number of local procs */
 };
 typedef struct mca_btl_openib_module_t mca_btl_openib_module_t;
 
