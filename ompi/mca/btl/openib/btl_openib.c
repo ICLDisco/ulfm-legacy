@@ -31,6 +31,7 @@
 #endif
 #include "orte/util/show_help.h"
 #include "orte/runtime/orte_globals.h"
+#include "orte/mca/errmgr/base/base.h"
 #include "opal/class/opal_bitmap.h"
 #include "opal/util/output.h"
 #include "opal/util/arch.h"
@@ -57,6 +58,9 @@
 #include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "orte/util/proc_info.h"
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <string.h>
 #include <math.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -70,6 +74,9 @@
 #endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
+#ifdef OPAL_HAVE_HWLOC
+#include "opal/mca/hwloc/hwloc.h"
 #endif
 #ifndef MIN
 #define MIN(a,b) ((a)<(b)?(a):(b))
@@ -122,9 +129,7 @@ void mca_btl_openib_show_init_error(const char *file, int line,
 {
     if (ENOMEM == errno) {
         int ret;
-#ifndef __WINDOWS__
         struct rlimit limit;
-#endif
         char *str_limit = NULL;
 
 #if HAVE_DECL_RLIMIT_MEMLOCK
@@ -132,7 +137,6 @@ void mca_btl_openib_show_init_error(const char *file, int line,
 #else
         ret = -1;
 #endif
-#ifndef __WINDOWS__
         if (0 != ret) {
             asprintf(&str_limit, "Unknown");
         } else if (limit.rlim_cur == RLIM_INFINITY) {
@@ -140,7 +144,6 @@ void mca_btl_openib_show_init_error(const char *file, int line,
         } else {
             asprintf(&str_limit, "%ld", (long)limit.rlim_cur);
         }
-#endif
 
         orte_show_help("help-mpi-btl-openib.txt", "init-fail-no-mem",
                        true, orte_process_info.nodename,
@@ -154,7 +157,7 @@ void mca_btl_openib_show_init_error(const char *file, int line,
     }
 }
 
-static inline struct ibv_cq *create_cq_compat(struct ibv_context *context,
+static inline struct ibv_cq *ibv_create_cq_compat(struct ibv_context *context,
         int cqe, void *cq_context, struct ibv_comp_channel *channel,
         int comp_vector)
 {
@@ -179,7 +182,7 @@ static int adjust_cq(mca_btl_openib_device_t *device, const int cq)
         cq_size = device->ib_dev_attr.max_cqe;
 
     if(NULL == device->ib_cq[cq]) {
-        device->ib_cq[cq] = create_cq_compat(device->ib_dev_context, cq_size,
+        device->ib_cq[cq] = ibv_create_cq_compat(device->ib_dev_context, cq_size,
 #if OMPI_ENABLE_PROGRESS_THREADS == 1
                 device, device->ib_channel,
 #else
@@ -579,6 +582,104 @@ static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl,
     return OMPI_SUCCESS;
 }
 
+/* read a single integer from a linux module parameters file */
+static uint64_t read_module_param(char *file, uint64_t value)
+{
+    int fd = open(file, O_RDONLY);
+    char buffer[64];
+    uint64_t ret;
+
+    if (0 > fd) {
+        return value;
+    }
+
+    read (fd, buffer, 64);
+
+    close (fd);
+
+    errno = 0;
+    ret = strtoull(buffer, NULL, 10);
+
+    return (0 == errno) ? ret : value;
+}
+
+/* calculate memory registation limits */
+static uint64_t calculate_total_mem (void)
+{
+#if OPAL_HAVE_HWLOC
+    hwloc_obj_t machine;
+
+    machine = hwloc_get_next_obj_by_type (opal_hwloc_topology, HWLOC_OBJ_MACHINE, NULL);
+    if (NULL == machine) {
+        return 0;
+    }
+    
+    return machine->memory.total_memory;
+#else
+    return 0;
+#endif
+}
+
+static uint64_t calculate_max_reg (void) 
+{
+    struct stat statinfo;
+    uint64_t mtts_per_seg = 1;
+    uint64_t num_mtt = 1 << 19;
+    uint64_t reserved_mtt = 0;
+    uint64_t max_reg, mem_total;
+
+    mem_total = calculate_total_mem ();
+
+    if (0 == stat("/sys/module/mlx5_core", &statinfo)) {
+        /* mlx5 means that we have ofed 2.0 and it can always register 2xmem_total for any mlx hca */
+        max_reg = 2 * mem_total;
+    }
+    else if (0 == stat("/sys/module/mlx4_core/parameters", &statinfo)) {
+        mtts_per_seg = 1 << read_module_param("/sys/module/mlx4_core/parameters/log_mtts_per_seg", 1);
+        num_mtt = 1 << read_module_param("/sys/module/mlx4_core/parameters/log_num_mtt", 20);
+        if (1 == num_mtt) {
+            /* NTH: is 19 a minimum? when log_num_mtt is set to 0 use 19 */
+            num_mtt = 1 << 20;
+        }
+
+        max_reg = (num_mtt - reserved_mtt) * getpagesize () * mtts_per_seg;
+    } else if (0 == stat("/sys/module/ib_mthca/parameters", &statinfo)) {
+        mtts_per_seg = 1 << read_module_param("/sys/module/ib_mthca/parameters/log_mtts_per_seg", 1);
+        num_mtt = read_module_param("/sys/module/ib_mthca/parameters/num_mtt", 1 << 20);
+        reserved_mtt = read_module_param("/sys/module/ib_mthca/parameters/fmr_reserved_mtts", 0);
+
+        max_reg = (num_mtt - reserved_mtt) * getpagesize () * mtts_per_seg;
+    } else {
+        /* Need to update to determine the registration limit for this
+           configuration */
+        max_reg = mem_total;
+    }
+
+    /* Print a warning if we can't register more than 75% of physical
+       memory.  Abort if the abort_not_enough_reg_mem MCA param was
+       set. */
+    if (max_reg < mem_total * 3 / 4) {
+        char *action;
+
+        if (mca_btl_openib_component.abort_not_enough_reg_mem) {
+            action = "Your MPI job will now abort.";
+        } else {
+            action = "Your MPI job will continue, but may be behave poorly and/or hang.";
+        }
+        orte_show_help("help-mpi-btl-openib.txt", "reg mem limit low", true,
+                       orte_process_info.nodename, (unsigned long)(max_reg >> 20),
+                       (unsigned long)(mem_total >> 20), action);
+        if (mca_btl_openib_component.abort_not_enough_reg_mem) {
+            orte_errmgr.abort(1, NULL);
+        }
+    }
+
+    /* Limit us to 87.5% of the registered memory (some fluff for QPs,
+       file systems, etc) */
+    return (max_reg * 7) >> 3;
+}
+
+
 /*
  *  add a proc to this btl module
  *    creates an endpoint that is setup on the
@@ -592,7 +693,7 @@ int mca_btl_openib_add_procs(
     opal_bitmap_t* reachable)
 {
     mca_btl_openib_module_t* openib_btl = (mca_btl_openib_module_t*)btl;
-    int i,j, rc;
+    int i,j, rc, local_procs;
     int rem_subnet_id_port_cnt;
     int lcl_subnet_id_port_cnt = 0;
     int btl_rank = 0;
@@ -621,12 +722,16 @@ int mca_btl_openib_add_procs(
     }
 #endif
 
-    for (i = 0; i < (int) nprocs; i++) {
+    for (i = 0, local_procs = 0 ; i < (int) nprocs; i++) {
         struct ompi_proc_t* ompi_proc = ompi_procs[i];
         mca_btl_openib_proc_t* ib_proc;
         int remote_matching_port;
 
         opal_output(-1, "add procs: adding proc %d", i);
+
+        if (OPAL_PROC_ON_LOCAL_NODE(ompi_proc->proc_flags)) {
+            local_procs ++;
+        }
 
         /* OOB, XOOB, and RDMACM do not support SELF comunication, so
          * mark the prco as unreachable by openib btl  */
@@ -793,6 +898,9 @@ int mca_btl_openib_add_procs(
 
         peers[i] = endpoint;
     }
+
+    openib_btl->local_procs += local_procs;
+    openib_btl->device->mem_reg_max = calculate_max_reg () / openib_btl->local_procs;
 
     return mca_btl_openib_size_queues(openib_btl, nprocs);
 }
@@ -986,7 +1094,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_alloc(
     cfrag->hdr = (mca_btl_openib_header_coalesced_t*)((unsigned char*)(sfrag->hdr + 1) + 
                   sfrag->coalesced_length +
                   to_base_frag(sfrag)->segment.seg_len);
-    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)BTL_OPENIB_ALIGN_COALESCE_HDR(cfrag->hdr);
+    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)(unsigned char*)(BTL_OPENIB_ALIGN_COALESCE_HDR((unsigned char*)(cfrag->hdr)));
     cfrag->hdr->alloc_size = size;
 
     /* point coalesced frag pointer into a data buffer */
@@ -1201,36 +1309,16 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_dst(
     uint32_t flags)
 {
     mca_btl_openib_module_t *openib_btl;
-    mca_btl_openib_component_t *openib_component;
     mca_btl_openib_com_frag_t *frag;
     mca_btl_openib_reg_t *openib_reg;
-    uint32_t max_msg_sz;
     int rc;
     void *buffer;
 
     openib_btl = (mca_btl_openib_module_t*)btl;
-    openib_component = (mca_btl_openib_component_t*)btl->btl_component;
 
     frag = alloc_recv_user_frag();
     if(NULL == frag) {
         return NULL;
-    }
-
-    /* max_msg_sz is the maximum message size of the HCA (hw limitation)
-       set the minimum between local max_msg_sz and the remote */
-    max_msg_sz = MIN(openib_btl->ib_port_attr.max_msg_sz,
-                     endpoint->endpoint_btl->ib_port_attr.max_msg_sz);
-
-    /* check if user has explicitly limited the max message size */
-    if (openib_component->max_hw_msg_size > 0 &&
-        max_msg_sz > (size_t)openib_component->max_hw_msg_size) {
-        max_msg_sz = openib_component->max_hw_msg_size;
-    }
-
-    /* limit the message so to max_msg_sz */
-    if (*size > (size_t)max_msg_sz) {
-        *size = (size_t)max_msg_sz;
-        BTL_VERBOSE(("message size limited to %" PRIsize_t "\n", *size));
     }
 
     opal_convertor_get_current_pointer(convertor, &buffer);
@@ -1283,25 +1371,27 @@ static int mca_btl_openib_finalize_resources(struct mca_btl_base_module_t* btl) 
     }
 
     /* Release all QPs */
-    for (ep_index=0;
-         ep_index < opal_pointer_array_get_size(openib_btl->device->endpoints);
-         ep_index++) {
-        endpoint=(mca_btl_openib_endpoint_t *)opal_pointer_array_get_item(openib_btl->device->endpoints,
-                                                  ep_index);
-        if(!endpoint) {
-            BTL_VERBOSE(("In finalize, got another null endpoint"));
-            continue;
-        }
-        if(endpoint->endpoint_btl != openib_btl) {
-            continue;
-        }
-        for(i = 0; i < openib_btl->device->eager_rdma_buffers_count; i++) {
-            if(openib_btl->device->eager_rdma_buffers[i] == endpoint) {
-                openib_btl->device->eager_rdma_buffers[i] = NULL;
-                OBJ_RELEASE(endpoint);
+    if (NULL != openib_btl->device->endpoints) {
+        for (ep_index=0;
+             ep_index < opal_pointer_array_get_size(openib_btl->device->endpoints);
+             ep_index++) {
+            endpoint=opal_pointer_array_get_item(openib_btl->device->endpoints,
+                                                 ep_index);
+            if(!endpoint) {
+                BTL_VERBOSE(("In finalize, got another null endpoint"));
+                continue;
             }
+            if(endpoint->endpoint_btl != openib_btl) {
+                continue;
+            }
+            for(i = 0; i < openib_btl->device->eager_rdma_buffers_count; i++) {
+                if(openib_btl->device->eager_rdma_buffers[i] == endpoint) {
+                    openib_btl->device->eager_rdma_buffers[i] = NULL;
+                    OBJ_RELEASE(endpoint);
+                }
+            }
+            OBJ_RELEASE(endpoint);
         }
-        OBJ_RELEASE(endpoint);
     }
 
     /* Release SRQ resources */
@@ -1427,6 +1517,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     ompi_free_list_item_t* item = NULL;
     mca_btl_openib_frag_t *frag;
     mca_btl_openib_header_t *hdr;
+    int send_signaled;
 
     OPAL_THREAD_LOCK(&ep->endpoint_lock);
 
@@ -1527,12 +1618,22 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         hdr->cm_seen = cm_return;
     }
 
-    ib_rc = post_send(ep, to_send_frag(item), do_rdma);
+#if BTL_OPENIB_FAILOVER_ENABLED
+    send_signaled = 1;
+#else
+    send_signaled = qp_need_signal(ep, qp, payload_size + header_size, do_rdma);
+#endif
+    ib_rc = post_send(ep, to_send_frag(item), do_rdma, send_signaled);
 
     if(!ib_rc) {
+        if (0 == send_signaled) {
+            MCA_BTL_IB_FRAG_RETURN(frag);
+        }
 #if BTL_OPENIB_FAILOVER_ENABLED
-        /* Return up in case needed for failover */
-        *descriptor = (struct mca_btl_base_descriptor_t *) frag;
+        else {
+            /* Return up in case needed for failover */
+            *descriptor = (struct mca_btl_base_descriptor_t *) frag;
+        }
 #endif
         OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
         return OMPI_SUCCESS;
@@ -1666,7 +1767,9 @@ int mca_btl_openib_put( mca_btl_base_module_t* btl,
     /* Setting opcode on a frag constructor isn't enough since prepare_src
      * may return send_frag instead of put_frag */
     frag->sr_desc.opcode = IBV_WR_RDMA_WRITE;
-    frag->sr_desc.send_flags = ib_send_flags(descriptor->des_src->seg_len, &(ep->qps[qp]));
+    frag->sr_desc.send_flags = ib_send_flags(descriptor->des_src->seg_len, &(ep->qps[qp]), 1);
+    qp_inflight_wqe_to_frag(ep, qp, to_com_frag(frag));
+    qp_reset_signal_count(ep, qp);
     if(ibv_post_send(ep->qps[qp].qp->lcl_qp, &frag->sr_desc, &bad_wr))
         return OMPI_ERROR;
 
@@ -1744,6 +1847,10 @@ int mca_btl_openib_get(mca_btl_base_module_t* btl,
         frag->sr_desc.xrc_remote_srq_num=ep->rem_info.rem_srqs[qp].rem_srq_num;
 #endif
     descriptor->order = qp;
+
+    qp_inflight_wqe_to_frag(ep, qp, to_com_frag(frag));
+    qp_reset_signal_count(ep, qp);
+
     if(ibv_post_send(ep->qps[qp].qp->lcl_qp, &frag->sr_desc, &bad_wr))
         return OMPI_ERROR;
 
