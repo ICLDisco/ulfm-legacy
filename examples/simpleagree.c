@@ -11,6 +11,7 @@
  */
 
 #include "mpi.h"
+#include "mpi-ext.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -153,7 +154,7 @@ int main(int argc, char *argv[])
             if( verbose ) {
                 fprintf(stderr, "Agreement Nb %d: Rank %d/%d enters MPI_Comm_agree with %08x\n", ag_nb, rank, size, flag);
             }
-            ret = OMPI_Comm_agree(MPI_COMM_WORLD, &flag);
+            ret = MPIX_Comm_agree(MPI_COMM_WORLD, &flag);
             if( verbose ) {
                 fprintf(stderr, "Agreement Nb %d: Rank %d/%d leaves MPI_Comm_agree with %08x and %d\n", ag_nb, rank, size, flag, ret);
             }
@@ -164,7 +165,7 @@ int main(int argc, char *argv[])
                 MPI_Group alive_grp;
 
                 MPI_Comm_group(MPI_COMM_WORLD, &world_grp);
-                OMPI_Comm_failure_get_acked(MPI_COMM_WORLD, &failed_grp);
+                MPIX_Comm_failure_get_acked(MPI_COMM_WORLD, &failed_grp);
                 MPI_Group_difference(world_grp, failed_grp, &alive_grp);
 
                 MPI_Group_size(alive_grp, &alive_size);
@@ -184,7 +185,7 @@ int main(int argc, char *argv[])
                 MPI_Group_free(&alive_grp);
                     
             } else {
-                OMPI_Comm_failure_ack(MPI_COMM_WORLD);
+                MPIX_Comm_failure_ack(MPI_COMM_WORLD);
             }
         } while(ret != MPI_SUCCESS);
     } while(1);
