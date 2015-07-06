@@ -46,12 +46,7 @@ const char *mca_coll_ftbasic_component_version_string =
  * Global variables
  */
 int mca_coll_ftbasic_priority  = 0;
-int mca_coll_ftbasic_crossover = 4;
 mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_RETURNING;
-bool mca_coll_ftbasic_use_agreement_timer = false;
-bool mca_coll_ftbasic_agreement_use_progress = true;
-int mca_coll_ftbasic_agreement_log_max_len = 2;
-int mca_coll_ftbasic_agreement_help_wait_cycles_inc = 10;
 int mca_coll_ftbasic_cur_era_topology = 1;
 int mca_coll_ftbasic_era_rebuild = 1;
 
@@ -116,58 +111,23 @@ ftbasic_register(void)
                            "Priority of the ftbasic coll component",
                            false, false, mca_coll_ftbasic_priority,
                            &mca_coll_ftbasic_priority);
-    mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
-                           "crossover",
-                           "Minimum number of processes in a communicator before using the logarithmic algorithms",
-                           false, false, mca_coll_ftbasic_crossover,
-                           &mca_coll_ftbasic_crossover);
-
-    mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
-                           "agreement_timing",
-                           "Activate agreement timers and reporting (Default: off)",
-                           false, false,
-                           0, 
-                           &value);
-    mca_coll_ftbasic_use_agreement_timer = OPAL_INT_TO_BOOL(value);
 
     mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
                            "method",
-                           "Agreement method (0 = AllReduce (unsafe),"
-                           " 1 = Two-Phase Commit (unsafe),"
-                           " 2 = Log Two-Phase Commit (unsafe),"
-                           " 3 = Early Consensus Termination (default),"
-                           " 4 = Early Returning Consensus)",
+                           "Agreement method"
+                           " 0 = Early Returning Consensus,"
+                           " 1 = Early Consensus Termination (default))",
                            false, false,
                            mca_coll_ftbasic_cur_agreement_method,
                            &value);
     switch(value) {
-#if 0
     case 0:
-        mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_ALLREDUCE;
-        opal_output_verbose(6, ompi_ftmpi_output_handle,
-                            "%s ftbasic:register) Agreement Algorithm - AllReduce (for Debug only!)",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
-        break;
-    case 1:
-        mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_TWO_PHASE;
-        opal_output_verbose(6, ompi_ftmpi_output_handle,
-                            "%s ftbasic:register) Agreement Algorithm - Two-Phase Commit",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
-        break;
-    case 2:
-        mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_LOG_TWO_PHASE;
-        opal_output_verbose(6, ompi_ftmpi_output_handle,
-                            "%s ftbasic:register) Agreement Algorithm - Log Two-Phase Commit",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
-        break;
-#endif
-    case 3:
         mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_TERMINATION;
         opal_output_verbose(6, ompi_ftmpi_output_handle,
                             "%s ftbasic:register) Agreement Algorithm - Early Terminating Consensus Algorithm",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME) );
         break;
-    default:  /* Includes the valid case 4 */
+    default:  /* Includes the valid case 1 */
         mca_coll_ftbasic_cur_agreement_method = COLL_FTBASIC_EARLY_RETURNING;
         opal_output_verbose(6, ompi_ftmpi_output_handle,
                             "%s ftbasic:register) Agreement Algorithm - Early Returning Consensus Algorithm",
@@ -188,39 +148,10 @@ ftbasic_register(void)
 
     mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
                            "era_rebuild",
-                           "ERA rebuild the tree after a post-failure agreement (default 1)",
+                           "ERA rebuild the tree after a post-failure agreement (default 0)",
                            false, false,
                            mca_coll_ftbasic_era_rebuild,
                            &mca_coll_ftbasic_era_rebuild);
-    mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
-                           "agreement_progress",
-                           "(DEBUGGING ONLY) Turn on/off agreement progress (Default: on)",
-                           false, false,
-                           (int)mca_coll_ftbasic_agreement_use_progress, 
-                           &value);
-    mca_coll_ftbasic_agreement_use_progress = OPAL_INT_TO_BOOL(value);
-
-    mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
-                           "progress_wait_inc",
-                           "(DEBUGGING ONLY) Length of time to wait between progress checks",
-                           false, false, mca_coll_ftbasic_agreement_help_wait_cycles_inc,
-                           &mca_coll_ftbasic_agreement_help_wait_cycles_inc);
-    if( mca_coll_ftbasic_agreement_help_wait_cycles_inc <= 0 ) {
-        mca_coll_ftbasic_agreement_help_wait_cycles_inc = 1;
-    }
-
-    mca_base_param_reg_int(&mca_coll_ftbasic_component.collm_version,
-                           "max_log_length",
-                           "Agreement method max log length",
-                           false, false,
-                           mca_coll_ftbasic_agreement_log_max_len,
-                           &mca_coll_ftbasic_agreement_log_max_len);
-    if( mca_coll_ftbasic_agreement_log_max_len <= 1 ) {
-        mca_coll_ftbasic_agreement_log_max_len = 2;
-    }
-    opal_output_verbose(6, ompi_ftmpi_output_handle,
-                        "%s ftbasic:register) Agreement Algorithm Max Log Length %3d.",
-                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), mca_coll_ftbasic_agreement_log_max_len );
 
 
     return OMPI_SUCCESS;

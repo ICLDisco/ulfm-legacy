@@ -65,21 +65,12 @@ OMPI_DECLSPEC extern int coll_ftbasic_era_debug_rank_may_fail;
 #endif
 
 enum mca_coll_ftbasic_agreement_method_t {
-    /*
-    COLL_FTBASIC_ALLREDUCE         = 0,
-    COLL_FTBASIC_TWO_PHASE         = 1,
-    COLL_FTBASIC_LOG_TWO_PHASE     = 2,
-    */
-    COLL_FTBASIC_EARLY_TERMINATION = 3,
-    COLL_FTBASIC_EARLY_RETURNING   = 4
+    COLL_FTBASIC_EARLY_RETURNING   = 0,
+    COLL_FTBASIC_EARLY_TERMINATION = 1,
 };
 typedef enum mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_agreement_method_t;
 
 extern mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_cur_agreement_method;
-extern bool mca_coll_ftbasic_use_agreement_timer;
-extern bool mca_coll_ftbasic_agreement_use_progress;
-extern int mca_coll_ftbasic_agreement_log_max_len;
-extern int mca_coll_ftbasic_agreement_help_wait_cycles_inc;
 extern int mca_coll_ftbasic_era_rebuild;
 
 struct mca_coll_ftbasic_request_t;
@@ -95,21 +86,10 @@ struct mca_coll_ftbasic_agreement_t {
     /* Agreement Sequence Number */
     int agreement_seq_num;
 
-    /* Bitmap of the last globally agreed upon set of failures
-     * JJH TODO:
-     * This could be pulled from the logs (Last successful commit).
-     */
-    opal_bitmap_t *fail_bitmap;
-
-    /* Agreement list */
-    opal_list_t *agreement_log;
-
-    /* Remote Bitmap */
-    opal_list_t remote_bitmaps;
-    opal_list_item_t *last_used;
-
     /* Current non-blocking Agreement Request */
+#ifdef IAGREE
     struct mca_coll_ftbasic_request_t *cur_request;
+#endif
 };
 typedef struct mca_coll_ftbasic_agreement_t mca_coll_ftbasic_agreement_t;
 OBJ_CLASS_DECLARATION(mca_coll_ftbasic_agreement_t);
