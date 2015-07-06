@@ -64,6 +64,9 @@ all: hello_c ring_c connectivity_c
 	@ if ompi_info --parsable | grep bindings:java:yes >/dev/null; then \
 	    $(MAKE) Ring.class; \
 	fi
+	@ if ompi_info --all --parsable | grep mca:coll:ftbasic:param:coll_ftbasic_method:value:0 >/dev/null; then \
+	    $(MAKE) simpleagree; \
+	fi
 
 
 # The usual "clean" target
@@ -89,4 +92,5 @@ Hello.class: Hello.java
 Ring.class: Ring.java
 	$(JAVAC) Ring.java
 
-
+simpleagree: simpleagree.c
+	$(CC) simpleagree.c -o simpleagree
