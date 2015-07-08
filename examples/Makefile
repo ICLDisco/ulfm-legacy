@@ -67,6 +67,9 @@ all: hello_c ring_c connectivity_c
 	@ if ompi_info --all --parsable | grep mca:coll:ftbasic:param:coll_ftbasic_method:value:0 >/dev/null; then \
 	    $(MAKE) simpleagree; \
 	fi
+	@ if ompi_info --all --parsable | grep mca:coll:ftbasic:param:coll_ftbasic_method:value:0 >/dev/null; then \
+	    $(MAKE) agree4ever; \
+	fi
 
 
 # The usual "clean" target
@@ -94,3 +97,6 @@ Ring.class: Ring.java
 
 simpleagree: simpleagree.c
 	$(CC) simpleagree.c -o simpleagree
+
+agree4ever: agree4ever.c
+	$(CC) -g agree4ever.c -o agree4ever

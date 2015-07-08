@@ -11,6 +11,7 @@
  */
 
 #include "mpi.h"
+#include "mpi-ext.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -86,12 +87,12 @@ static void spawn_new_processes(MPI_Comm *comm, int *state)
                 fprintf(stderr, "%d/%d -- %s:%d: Merged communicator is of size %d.\n", rank, size, host, getpid(), size2);
                 fprintf(stderr, "%d/%d -- %s:%d: Checking agreement.\n", rank, size, host, getpid());
             }
-            ret = OMPI_Comm_agree(*comm, &rc);
+            ret = MPIX_Comm_agree(*comm, &rc);
         } else {
             if(state[VERBOSE]) {
                 fprintf(stderr, "%d/%d -- %s:%d: Participating to agreement.\n", rank, size, host, getpid());
             }
-            ret = OMPI_Comm_agree(*comm, &rc);
+            ret = MPIX_Comm_agree(*comm, &rc);
         }
         if(state[VERBOSE]) {
             fprintf(stderr, "%d/%d -- %s:%d: Agreement returned %d and %d.\n", rank, size, host, getpid(), rc, ret);
@@ -99,7 +100,7 @@ static void spawn_new_processes(MPI_Comm *comm, int *state)
 
         if( ret == MPI_ERR_PROC_FAILED ||
             rc  != MPI_SUCCESS) {
-            OMPI_Comm_shrink(*comm, &temp);
+            MPIX_Comm_shrink(*comm, &temp);
             MPI_Comm_free(comm);
             *comm = temp;
             continue;
@@ -188,7 +189,7 @@ int main(int argc, char *argv[])
 
     if( state[DEBUG] ) {
         int stop = 0;
-        fprintf(stderr, "ssh -t %s gdb -p %d\n", host, getpid());
+        fprintf(stderr, "ssh -t %s lldb -p %d\n", host, getpid());
         while( stop == 0 ) {
             sched_yield();
         }
@@ -255,7 +256,7 @@ int main(int argc, char *argv[])
             if( state[VERBOSE] ) {
                 printf("Rank %d/%d enters MPI_Comm_agree %d.%d with %08x\n", rank, size, state[AG_CID], state[AG_IDX], flag);
             }
-            ret = OMPI_Comm_agree(comm, &flag);
+            ret = MPIX_Comm_agree(comm, &flag);
             if( state[VERBOSE] ) {
                 printf("Rank %d/%d leaves MPI_Comm_agree %d.%d with %08x and %d\n", rank, size, state[AG_CID], state[AG_IDX], flag, ret);
             }
@@ -266,7 +267,7 @@ int main(int argc, char *argv[])
                 if(state[VERBOSE]) {
                     printf("Rank %d/%d after Agree %d.%d needs to shrink after a failure.\n", rank, size, state[AG_CID], state[AG_IDX]);
                 }
-                rc = OMPI_Comm_shrink(comm, &temp);
+                rc = MPIX_Comm_shrink(comm, &temp);
                 if( rc != MPI_SUCCESS ) {
                     fprintf(stderr, "MPI_Comm_shrink returned %d instead of MPI_SUCCESS on rank %d/%d!\n", rc, rank, size);
                 }
