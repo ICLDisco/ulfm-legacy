@@ -2745,26 +2745,19 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
     return OMPI_SUCCESS;
 }
 
-/*
- *	mca_coll_ftbasic_agreement_era_intra
- *
- *	Function:	- MPI_Comm_agree()
- *	Accepts:	- same as MPI_Comm_agree()
- *	Returns:	- MPI_SUCCESS or an MPI error code
- */
-
-int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
-                                         ompi_group_t **group,
-                                         ompi_op_t *op,
-                                         ompi_datatype_t *dt,
-                                         int dt_count,
-                                         void *contrib,
-                                         mca_coll_base_module_t *module)
+static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t* comm,
+                                                            ompi_group_t **group,
+                                                            ompi_op_t *op,
+                                                            ompi_datatype_t *dt,
+                                                            int dt_count,
+                                                            void *contrib,
+                                                            mca_coll_base_module_t *module,
+                                                            era_identifier_t *paid)
 {
     era_agreement_info_t *ci;
     era_identifier_t agreement_id;
     void *value;
-    era_value_t agreement_value, *av;
+    era_value_t agreement_value;
     era_value_t *pa;
     mca_coll_ftbasic_agreement_t *ag_info;
     int i, ret;
@@ -2851,11 +2844,25 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     /* And follow its logic */
     era_check_status(ci);
 
-    /* Wait for the agreement to be resolved */
-    while(ci->status != COMPLETED) {
-        opal_progress();
-    }
-    
+    *paid = agreement_id;
+    return OMPI_SUCCESS;
+}
+
+static int mca_coll_ftbasic_agreement_era_complete_agreement(era_identifier_t agreement_id,
+                                                             void *contrib,
+                                                             ompi_group_t **group)
+{
+    era_value_t *av;
+    int ret;
+    int i;
+    era_agreement_info_t *ci;
+    ompi_communicator_t *comm;
+    void *value;
+
+    ci = era_lookup_agreeement_info(agreement_id);
+
+    comm = ci->comm;
+
     OBJ_RELEASE(ci); /* This will take care of the content of ci too */
 
     ret = opal_hash_table_get_value_uint64(&era_passed_agreements,
@@ -2892,6 +2899,50 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
                          *(int*)contrib));
 
     return ret;
+}
+
+/*
+ *	mca_coll_ftbasic_agreement_era_intra
+ *
+ *	Function:	- MPI_Comm_agree()
+ *	Accepts:	- same as MPI_Comm_agree()
+ *	Returns:	- MPI_SUCCESS or an MPI error code
+ */
+
+int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
+                                         ompi_group_t **group,
+                                         ompi_op_t *op,
+                                         ompi_datatype_t *dt,
+                                         int dt_count,
+                                         void *contrib,
+                                         mca_coll_base_module_t *module)
+{
+    era_identifier_t agreement_id;
+    era_agreement_info_t *ci;
+    
+    mca_coll_ftbasic_agreement_era_prepare_agreement(comm, group, op, dt, dt_count, contrib, module,
+                                                     &agreement_id);
+
+    ci = era_lookup_agreeement_info(agreement_id);
+    
+    /* Wait for the agreement to be resolved */
+    while(ci->status != COMPLETED) {
+        opal_progress();
+    }
+
+    return mca_coll_ftbasic_agreement_era_complete_agreement(agreement_id, contrib, group);
+}
+
+int mca_coll_ftbasic_iagreement_era_intra(ompi_communicator_t* comm,
+                                          ompi_group_t **group,
+                                          ompi_op_t *op,
+                                          ompi_datatype_t *dt,
+                                          int dt_count,
+                                          void *contrib,
+                                          mca_coll_base_module_t *module,
+                                          ompi_request_t **request)
+{
+    return OMPI_SUCCESS;
 }
 
 int mca_coll_ftbasic_agreement_era_free_comm(ompi_communicator_t* comm,
