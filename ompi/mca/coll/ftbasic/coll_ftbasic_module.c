@@ -70,7 +70,7 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
 
     /*
      * Allocate the data that hangs off the communicator
-     * JJH: Intercommunicators not currently supported
+     * Intercommunicators not currently supported
      */
     if( ompi_ftmpi_enabled && !OMPI_COMM_IS_INTER(comm) ) {
         if (OMPI_COMM_IS_INTER(comm)) {
@@ -121,7 +121,7 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
 
     /*
      * Agreement operation setup
-     * JJH: Intercommunicators not currently supported
+     * Intercommunicators not currently supported
      */
     if( ompi_ftmpi_enabled && !OMPI_COMM_IS_INTER(comm) ) {
         /* Init the agreement function */
@@ -129,27 +129,13 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
 
         /* Choose the correct operations */
         switch( mca_coll_ftbasic_cur_agreement_method ) {
-            /** TODO
-        case COLL_FTBASIC_ALLREDUCE:
-            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_allreduce;
-            ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_allreduce;
-            break;
-        case COLL_FTBASIC_TWO_PHASE:
-            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_two_phase;
-            ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_two_phase;
-            break;
-        case COLL_FTBASIC_LOG_TWO_PHASE:
-            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_log_two_phase;
-            ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_log_two_phase;
-            break;
-            */
         case COLL_FTBASIC_EARLY_TERMINATION:
             ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_eta_intra;
             ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
             break;
         default: /* Manages the COLL_FTBASIC_EARLY_RETURNING as default case too */
             ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_intra;
-            ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
+            ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_era_intra;
             break;
         }
     } else {
