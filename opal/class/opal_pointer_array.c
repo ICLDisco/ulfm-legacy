@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -44,6 +44,7 @@ static void opal_pointer_array_construct(opal_pointer_array_t *array)
 {
     OBJ_CONSTRUCT(&array->lock, opal_mutex_t);
     array->lowest_free = 0;
+    array->highest_taken = -1;
     array->number_free = 0;
     array->size = 0;
     array->max_size = INT_MAX;
@@ -124,6 +125,7 @@ int opal_pointer_array_add(opal_pointer_array_t *table, void *ptr)
 
     assert( (table->addr != NULL) && (table->size > 0) );
     assert( (table->lowest_free >= 0) && (table->lowest_free < table->size) );
+    assert( (table->highest_taken >= -1) && (table->highest_taken < table->size) );
     assert( (table->number_free > 0) && (table->number_free <= table->size) );
 
     /*
@@ -133,6 +135,10 @@ int opal_pointer_array_add(opal_pointer_array_t *table, void *ptr)
     index = table->lowest_free;
     assert(table->addr[index] == NULL);
     table->addr[index] = ptr;
+
+    if( index > table->highest_taken )
+        table->highest_taken = index;
+
     table->number_free--;
     if (table->number_free > 0) {
         for (i = table->lowest_free + 1; i < table->size; i++) {
@@ -185,6 +191,12 @@ int opal_pointer_array_set_item(opal_pointer_array_t *table, int index,
         if( NULL != table->addr[index] ) {
             table->number_free++;
         }
+        /* Reset the highest_taken if required */
+        if (index == table->highest_taken) {
+            for(table->highest_taken--;
+                table->highest_taken > 0 && table->addr[table->highest_taken] == NULL;
+                table->highest_taken--) /* nothing */;
+        }
     } else {
         if (NULL == table->addr[index]) {
             table->number_free--;
@@ -201,6 +213,9 @@ int opal_pointer_array_set_item(opal_pointer_array_t *table, int index,
                 }                    
             }
         }
+        /* Reset the highest_taken if required */
+        if( index > table->highest_taken )
+            table->highest_taken = index;                
     }
     table->addr[index] = value;	
 
@@ -271,13 +286,21 @@ bool opal_pointer_array_test_and_set_item (opal_pointer_array_t *table,
     if ( index == table->lowest_free ) {
         int i;
 
-	table->lowest_free = table->size;
+	    table->lowest_free = table->size;
         for ( i=index; i<table->size; i++) {
             if ( NULL == table->addr[i] ){
                 table->lowest_free = i;
                 break;
             }                    
         }
+    }
+    /* Reset highest_taken if required */
+    if( (NULL == value) && (index == table->highest_taken ) ) {
+        for(table->highest_taken--;
+            table->highest_taken > 0 && table->addr[table->highest_taken] == NULL;
+            table->highest_taken--) /* nothing */;
+    } else if( (NULL != value) && (index > table->highest_taken) ) {
+        table->highest_taken = index;
     }
 
 #if 0
