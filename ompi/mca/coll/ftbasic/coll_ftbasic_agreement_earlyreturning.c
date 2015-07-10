@@ -25,6 +25,7 @@
 #include "ompi/mca/bml/bml.h"
 #include "ompi/op/op.h"
 #include "ompi/mca/bml/base/base.h"
+#include "ompi/class/ompi_free_list.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/ess/ess.h"
 
@@ -39,6 +40,7 @@ static opal_hash_table_t era_ongoing_agreements;
 static opal_hash_table_t era_incomplete_messages;
 static ompi_comm_rank_failure_callback_t *ompi_stacked_rank_failure_callback_fct = NULL;
 static uint64_t msg_seqnum = 1;
+static ompi_free_list_t era_iagree_requests = {{{0}}};
 
 extern int coll_ftbasic_debug_rank_may_fail;
 
@@ -234,6 +236,8 @@ OBJ_CLASS_INSTANCE(era_comm_agreement_specific_t,
 
 #define AGS(comm)  ( (era_comm_agreement_specific_t*)(comm)->agreement_specific )
 
+typedef struct era_iagree_request_s era_iagree_request_t;
+
 /**
  * Main structure to remember the current status of an agreement that
  *  was started.
@@ -246,6 +250,7 @@ typedef struct {
     uint16_t              min_passed_aid;    
     ompi_communicator_t  *comm;              /**< Communicator related to that agreement. Might be NULL
                                               *   if this process has not entered the agreement yet.*/
+    era_iagree_request_t *req;               /**< Request, if this is called through an iagree */
     era_comm_agreement_specific_t *ags;      /**< Communicator-specific agreement information, at
                                               *   the time this agreement was started (might be different
                                               *   from comm->ags during the agreement) */
@@ -276,6 +281,7 @@ static void  era_agreement_info_constructor (era_agreement_info_t *agreement_inf
     agreement_info->nb_acked = 0;
     agreement_info->current_value = NULL;
     agreement_info->acked = NULL;
+    agreement_info->req = NULL;
 
     OBJ_CONSTRUCT(&agreement_info->gathered_info, opal_list_t);
     OBJ_CONSTRUCT(&agreement_info->waiting_res_from, opal_list_t);
@@ -320,6 +326,19 @@ OBJ_CLASS_INSTANCE(era_agreement_info_t,
                    opal_object_t, 
                    era_agreement_info_constructor, 
                    era_agreement_info_destructor);
+
+struct era_iagree_request_s {
+    ompi_request_t        super;
+    era_identifier_t      agreement_id;
+    void                 *contrib;
+    ompi_group_t        **group;
+    era_agreement_info_t *ci;
+};
+
+OBJ_CLASS_INSTANCE(era_iagree_request_t,
+                   ompi_request_t, 
+                   NULL,
+                   NULL);
 
 #if OPAL_ENABLE_DEBUG
 static char *era_status_to_string(era_proc_status_t s) {
@@ -1524,7 +1543,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     ci->status = COMPLETED;
     opal_hash_table_set_value_uint64(&era_passed_agreements,
                                      ci->agreement_id.ERAID_KEY,
-                                     decided_value);
+                                     decided_value);    
 
     comm = ci->comm;
     assert( NULL != comm );
@@ -1630,6 +1649,10 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     }
     
     era_collect_passed_agreements(ci->agreement_id, decided_value->header.min_aid, decided_value->header.max_aid);
+
+    if( ci->req ) {
+        ompi_request_complete(&ci->req->super, true);
+    }
 }
 
 static void era_check_status(era_agreement_info_t *ci)
@@ -2624,6 +2647,17 @@ int mca_coll_ftbasic_agreement_era_init(void)
     
     mca_bml.bml_register(MCA_BTL_TAG_FT_AGREE, era_cb_fn, NULL);
 
+    OBJ_CONSTRUCT( &era_iagree_requests, ompi_free_list_t);
+    ompi_free_list_init_new( &era_iagree_requests,
+                             sizeof(era_iagree_request_t),
+                             opal_cache_line_size,
+                             OBJ_CLASS(era_iagree_request_t),
+                             0,opal_cache_line_size,
+                             /* initial number of elements to allocate */ 0,
+                             /* maximum number of elements */ INT_MAX,
+                             /* increment */ 1,
+                             NULL );
+    
     OBJ_CONSTRUCT( &era_passed_agreements, opal_hash_table_t);
     /* The garbage collection system relies on iterating over all
      * passed agreements at the beginning of each new. It should be fast,
@@ -2697,6 +2731,7 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
                                                      node, &node) == OPAL_SUCCESS );
     }
     OBJ_DESTRUCT( &era_passed_agreements );
+    OBJ_DESTRUCT( &era_iagree_requests );
 
     if( opal_hash_table_get_first_key_uint64(&era_ongoing_agreements,
                                              &key64,
@@ -2752,7 +2787,8 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
                                                             int dt_count,
                                                             void *contrib,
                                                             mca_coll_base_module_t *module,
-                                                            era_identifier_t *paid)
+                                                            era_identifier_t *paid,
+                                                            era_agreement_info_t **pci)
 {
     era_agreement_info_t *ci;
     era_identifier_t agreement_id;
@@ -2845,6 +2881,7 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
     era_check_status(ci);
 
     *paid = agreement_id;
+    *pci = ci;
     return OMPI_SUCCESS;
 }
 
@@ -2921,9 +2958,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_agreement_info_t *ci;
     
     mca_coll_ftbasic_agreement_era_prepare_agreement(comm, group, op, dt, dt_count, contrib, module,
-                                                     &agreement_id);
-
-    ci = era_lookup_agreeement_info(agreement_id);
+                                                     &agreement_id, &ci);
     
     /* Wait for the agreement to be resolved */
     while(ci->status != COMPLETED) {
@@ -2931,6 +2966,24 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     }
 
     return mca_coll_ftbasic_agreement_era_complete_agreement(agreement_id, contrib, group);
+}
+
+static int era_iagree_req_free(struct ompi_request_t** rptr)
+{
+    era_iagree_request_t *req = (era_iagree_request_t *)*rptr;
+    req->ci->req = NULL;
+    OMPI_FREE_LIST_RETURN( &era_iagree_requests,
+                           (ompi_free_list_item_t*)(req));
+    return OMPI_SUCCESS;
+}
+
+static int era_iagree_req_complete_cb(struct ompi_request_t* request)
+{
+    era_iagree_request_t *req = (era_iagree_request_t *)request;
+    int rc;
+    rc = mca_coll_ftbasic_agreement_era_complete_agreement(req->agreement_id, req->contrib, req->group);
+    req->super.req_status.MPI_ERROR = rc;
+    return rc;
 }
 
 int mca_coll_ftbasic_iagreement_era_intra(ompi_communicator_t* comm,
@@ -2942,6 +2995,47 @@ int mca_coll_ftbasic_iagreement_era_intra(ompi_communicator_t* comm,
                                           mca_coll_base_module_t *module,
                                           ompi_request_t **request)
 {
+    ompi_free_list_item_t* item;
+    era_iagree_request_t *req;
+    int rc;
+    era_identifier_t agreement_id;
+    era_agreement_info_t *ci;
+
+    rc = OMPI_SUCCESS;
+    OMPI_FREE_LIST_GET(&era_iagree_requests, item, rc);
+    req = (era_iagree_request_t*)item;
+
+    OMPI_REQUEST_INIT(&req->super, false);
+    assert(MPI_UNDEFINED == req->super.req_f_to_c_index);
+    
+    mca_coll_ftbasic_agreement_era_prepare_agreement(comm, group, op, dt, dt_count, contrib, module,
+                                                     &agreement_id, &ci);
+    req->super.req_state = OMPI_REQUEST_ACTIVE;
+    req->super.req_type = OMPI_REQUEST_IAGREE;
+    req->super.req_status.MPI_SOURCE = MPI_UNDEFINED;
+    req->super.req_status.MPI_TAG = MPI_UNDEFINED;
+    req->super.req_mpi_object.comm = comm;
+    req->super.req_complete_cb_data = NULL;
+
+    req->super.req_free = era_iagree_req_free;
+    req->super.req_cancel = NULL; /**< Don't know how to cancel an immediate agreement */
+    req->super.req_complete_cb = era_iagree_req_complete_cb;
+
+    req->agreement_id = agreement_id;
+    req->contrib = contrib;
+    req->group = group;
+    req->ci = ci;
+
+    ci->req = req;
+    
+    if( ci->status == COMPLETED ) {
+        /**< must call this now, since it won't have been called in prepare
+         *   as the request was not saved in ci at this time */
+        ompi_request_complete(&req->super, true);
+    }
+    
+    *request = &req->super;
+    
     return OMPI_SUCCESS;
 }
 
