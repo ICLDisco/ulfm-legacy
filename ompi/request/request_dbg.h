@@ -28,6 +28,7 @@ typedef enum {
     OMPI_REQUEST_COLL,     /**< MPI-3 collective request */
     OMPI_REQUEST_NULL,     /**< NULL request */
     OMPI_REQUEST_NOOP,     /**< A request that does nothing (e.g., to PROC_NULL) */
+    OMPI_REQUEST_IAGREE,   /**< MPIX Immediate Agreement */
     OMPI_REQUEST_MAX       /**< Maximum request type */
 } ompi_request_type_t;
 
