@@ -107,17 +107,9 @@ int ompi_btl_openib_ini_init(void)
     int ret = OMPI_ERR_NOT_FOUND;
     char *colon;
 
-#ifndef __WINDOWS__
-    char separator = ':';
-#else
-    /* ':' is part of the path on Windows,
-       so use ';' instead. */
-    char separator = ';';
-#endif
-
     OBJ_CONSTRUCT(&devices, opal_list_t);
 
-    colon = strchr(mca_btl_openib_component.device_params_file_names, separator);
+    colon = strchr(mca_btl_openib_component.device_params_file_names, ':');
     if (NULL == colon) {
         /* If we've only got 1 file (i.e., no colons found), parse it
            and be done */
@@ -419,6 +411,12 @@ static int parse_line(parsed_section_values_t *sv)
         sv->values.rdmacm_reject_causes_connect_error_set = true;
     }
 
+    else if (0 == strcasecmp(key_buffer, "ignore_device")) {
+        /* Single value */
+        sv->values.ignore_device = (bool) ompi_btl_openib_ini_intify(value);
+        sv->values.ignore_device_set = true;
+    }
+
     else {
         /* Have no idea what this parameter is.  Not an error -- just
            ignore it */
@@ -572,6 +570,11 @@ static int save_section(parsed_section_values_t *s)
                             s->values.rdmacm_reject_causes_connect_error;
                         h->values.rdmacm_reject_causes_connect_error_set =
                             true;
+                    }
+
+                    if (s->values.ignore_device_set) {
+                        h->values.ignore_device = s->values.ignore_device;
+                        h->values.ignore_device_set = true;
                     }
 
                     found = true;

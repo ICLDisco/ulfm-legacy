@@ -90,15 +90,6 @@ sources += \
 dist_pkgdata_DATA += connect/help-mpi-btl-openib-cpc-rdmacm.txt
 endif
 
-# If we have udcm support, build that CPC
-if MCA_btl_openib_have_udcm
-sources += \
-    connect/btl_openib_connect_udcm.c \
-    connect/btl_openib_connect_udcm.h
-
-# dist_pkgdata_DATA += connect/help-mpi-btl-openib-cpc-ud.txt
-endif
-
 # If we have dynamic SL support, build those files
 if MCA_btl_openib_have_dynamic_sl
 sources += \
@@ -127,10 +118,6 @@ mcacomponent_LTLIBRARIES = $(component)
 mca_btl_openib_la_SOURCES = $(component_sources)
 mca_btl_openib_la_LDFLAGS = -module -avoid-version $(btl_openib_LDFLAGS)
 mca_btl_openib_la_LIBADD = $(btl_openib_LIBS)
-if MCA_ompi_cuda_support
-mca_btl_openib_la_LIBADD += \
-    $(top_ompi_builddir)/ompi/mca/common/cuda/libmca_common_cuda.la
-endif
 
 noinst_LTLIBRARIES = $(lib)
 libmca_btl_openib_la_SOURCES = $(lib_sources)
