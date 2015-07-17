@@ -34,6 +34,9 @@ typedef struct ompi_btl_openib_ini_values_t {
 
     bool rdmacm_reject_causes_connect_error;
     bool rdmacm_reject_causes_connect_error_set;
+
+    bool ignore_device;
+    bool ignore_device_set;
 } ompi_btl_openib_ini_values_t;
 
 
