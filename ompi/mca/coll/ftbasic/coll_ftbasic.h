@@ -65,8 +65,8 @@ OMPI_DECLSPEC extern int coll_ftbasic_era_debug_rank_may_fail;
 #endif
 
 enum mca_coll_ftbasic_agreement_method_t {
-    COLL_FTBASIC_EARLY_RETURNING   = 0,
-    COLL_FTBASIC_EARLY_TERMINATION = 1,
+    COLL_FTBASIC_EARLY_TERMINATION = 0,
+    COLL_FTBASIC_EARLY_RETURNING   = 1,
 };
 typedef enum mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_agreement_method_t;
 
