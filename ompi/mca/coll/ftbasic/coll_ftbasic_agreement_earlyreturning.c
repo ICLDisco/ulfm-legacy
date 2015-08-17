@@ -338,7 +338,6 @@ struct era_iagree_request_s {
     ompi_request_t        super;
     era_identifier_t      agreement_id;
     void                 *contrib;
-    ompi_group_t        **group;
     era_agreement_info_t *ci;
 };
 
@@ -2926,12 +2925,13 @@ static int mca_coll_ftbasic_agreement_era_complete_agreement(era_identifier_t ag
         ompi_proc_t *proc = ompi_group_get_proc_ptr(comm->c_local_group, AGS(comm)->agreed_failed_ranks[i]);
         ompi_errmgr_mark_failed_peer(proc, ORTE_PROC_STATE_TERMINATED);
     }
+    
     /* User wants the group of new failures */
     if(NULL != group) {
         ompi_group_incl(comm->c_local_group, AGS(comm)->afr_size,
                         AGS(comm)->agreed_failed_ranks, group);
+        era_debug_print_group(1, *group, comm, "After Agreement");
     }
-    era_debug_print_group(1, *group, comm, "After Agreement");
 
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Leaving Agreement ID = (%d.%d).%d with ret = %d, 4 first bytes of flag = 0x%08x\n",
@@ -2988,7 +2988,9 @@ static int era_iagree_req_complete_cb(struct ompi_request_t* request)
 {
     era_iagree_request_t *req = (era_iagree_request_t *)request;
     int rc;
-    rc = mca_coll_ftbasic_agreement_era_complete_agreement(req->agreement_id, req->contrib, req->group);
+
+    /**< iagree is never used internally, so the group is not needed for output */
+    rc = mca_coll_ftbasic_agreement_era_complete_agreement(req->agreement_id, req->contrib, NULL);
     req->super.req_status.MPI_ERROR = rc;
     return rc;
 }
@@ -3030,7 +3032,6 @@ int mca_coll_ftbasic_iagreement_era_intra(ompi_communicator_t* comm,
 
     req->agreement_id = agreement_id;
     req->contrib = contrib;
-    req->group = group;
     req->ci = ci;
 
     ci->req = req;
