@@ -1534,10 +1534,10 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                          ci->agreement_id.ERAID_FIELDS.epoch,                         
                          ci->agreement_id.ERAID_FIELDS.agreementid));
 
-    /** We don't release the element we remove from the ongoing agreements table,
-     *  since we continue working with it
-     */
-    opal_hash_table_remove_value_uint64(&era_ongoing_agreements, ci->agreement_id.ERAID_KEY);
+    /** We must leave ci in the era_ongoing_agreements, because either the
+     *  iagree request or the blocking loop above need to find it for
+     *  cleanup.*/
+
     assert( opal_hash_table_get_value_uint64(&era_passed_agreements, 
                                              ci->agreement_id.ERAID_KEY, &value) != OMPI_SUCCESS );
     ci->status = COMPLETED;
@@ -2897,6 +2897,9 @@ static int mca_coll_ftbasic_agreement_era_complete_agreement(era_identifier_t ag
     void *value;
 
     ci = era_lookup_agreeement_info(agreement_id);
+
+    /** Now, it's time to remove that guy from the ongoing agreements */
+    opal_hash_table_remove_value_uint64(&era_ongoing_agreements, agreement_id.ERAID_KEY);
 
     comm = ci->comm;
 
