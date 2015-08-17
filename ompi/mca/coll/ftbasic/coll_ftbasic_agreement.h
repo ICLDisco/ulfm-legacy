@@ -21,33 +21,6 @@ BEGIN_C_DECLS
 int mca_coll_ftbasic_agreement_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module);
 int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module);
 
-int mca_coll_ftbasic_agreement_base_setup_blocking(ompi_communicator_t* comm,
-                                                   ompi_group_t **group,
-                                                   int *flag,
-                                                   opal_bitmap_t *local_bitmap,
-                                                   mca_coll_ftbasic_module_t *ftbasic_module);
-int mca_coll_ftbasic_agreement_base_setup_nonblocking(ompi_communicator_t* comm,
-                                                      ompi_group_t **group,
-                                                      int *flag,
-                                                      opal_bitmap_t *local_bitmap,
-                                                      mca_coll_ftbasic_module_t *ftbasic_module,
-                                                      ompi_request_t **request);
-
-int mca_coll_ftbasic_agreement_base_finish_blocking(ompi_communicator_t* comm,
-                                                    ompi_group_t **group,
-                                                    int *flag,
-                                                    opal_bitmap_t *local_bitmap,
-                                                    mca_coll_ftbasic_module_t *ftbasic_module);
-
-int mca_coll_ftbasic_agreement_base_finish_nonblocking(ompi_communicator_t* comm,
-                                                       ompi_group_t **group,
-                                                       int *flag,
-                                                       opal_bitmap_t *local_bitmap,
-                                                       mca_coll_ftbasic_module_t *ftbasic_module);
-
-int mca_coll_ftbasic_agreement_base_term_request_help(ompi_communicator_t* comm,
-                                                      mca_coll_ftbasic_module_t *ftbasic_module);
-
 /*
  * Early Returning Specific
  */
