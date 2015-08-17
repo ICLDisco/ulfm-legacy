@@ -1,5 +1,8 @@
 #
 # Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
+# Copyright (c) 2012-2015 The University of Tennessee and The University
+#                         of Tennessee Research Foundation.  All rights
+#                         reserved.
 #
 # $COPYRIGHT$
 # 
@@ -42,5 +45,11 @@ errmgr_rts_app_priority=5000
 #   - 'basic' is the only tested other collective set
 #
 ompi_ftmpi_enable=1
-btl=tcp,sm,self
-coll=basic,ftbasic
+# UGNI, OpenIB, TCP, SM have been tested to work well and support most failures gracefully.
+#   if you want perfectly safe, the following restriction can be set, but we believe its' unecessary.
+#   XPMEM is broken and it's build is disabled in this fork.
+#btl=tcp,sm,self
+# Tuned has been tested and works well in many cases; however, it does have some
+#   corner cases. The safer setup "basic,ftbasic" imparts a huge performance 
+#   penalty, we encourage you to try "tuned,basic,ftbasic" and see if it works for you, in most cases, it will.
+coll=tuned,basic,ftbasic
