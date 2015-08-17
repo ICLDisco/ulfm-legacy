@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
     }
 
     stat_init(&sbefore, 0);
-    stat_init(&sstab, 0);
+    stat_init(&sstab, 2);
     stat_init(&safter, keep);
 
     srand(1);
@@ -170,11 +170,11 @@ int main(int argc, char *argv[])
         }
         raise(SIGKILL); do { pause(); } while(1);
     }
-    //sleep(1);
+    /* Eliminate failure detection time from measurements */
+    //sleep(2);
     MPI_Barrier(MPI_COMM_WORLD);
 
     flag = rand() | common;
-
     start = MPI_Wtime();
     ret = MPIX_Comm_agree(MPI_COMM_WORLD, &flag);
     dfailure = MPI_Wtime() - start;
@@ -193,10 +193,12 @@ int main(int argc, char *argv[])
     }
     
     printf("FIRST_AGREEMENT_AFTER_FAILURE %g s to do that agreement on rank %d\n", dfailure, rank);
-    printf("STABILIZE_AGREEMENT %g s (stdev %g ) per agreements in %d agreements to stabilize to SUCCESS on rank %d\n",
-           stat_get_mean(&sstab), stat_get_stdev(&sstab), stat_get_nbsamples(&sstab), rank);
+    printf("STABILIZE_AGREEMENT %g s (stdev %g ) per agreements in %d agreements to stabilize to SUCCESS on rank %d (%g %g)\n",
+           stat_get_mean(&sstab), stat_get_stdev(&sstab), stat_get_nbsamples(&sstab), rank, sstab.samples[0], sstab.samples[1]);
 
+    sleep(1);
     MPIX_Comm_agree(MPI_COMM_WORLD,&flag);
+    
     for(i = 0; i < after; i++) {
         flag = rand() | common;
 
