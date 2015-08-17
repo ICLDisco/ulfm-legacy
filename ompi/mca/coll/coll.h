@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -243,6 +243,21 @@ typedef int (*mca_coll_base_module_scatterv_fn_t)
 
 #if OPAL_ENABLE_FT_MPI
 /* Fault Tolerant Agreement - Consensus Protocol */
+
+/**
+ * @param comm: communicator on which to run the agreement
+ * @param group: as input: group of locally acknowledged dead processes
+ *               as output: group of globally acknowledged dead processes
+ *               NOTE: iagreement does not need to update group
+ *                     as only the blocking agreement function is used
+ *                     in shrink, and only in that case we need the group
+ *                     to be global at output.
+ * @param op: the operand to apply on contrib
+ * @param dt: the datatype of contrib
+ * @param dt_count: the number of dt in contrib
+ * @param contrib: a pointer to the contribution / output
+ * @param module: the MCA module that defines this agreement.
+ */
 typedef int (*mca_coll_base_module_agreement_fn_t)
     (struct ompi_communicator_t* comm,
      struct ompi_group_t **group,
