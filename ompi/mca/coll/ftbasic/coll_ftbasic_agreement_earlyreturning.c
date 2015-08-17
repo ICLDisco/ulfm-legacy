@@ -86,7 +86,7 @@ typedef struct {
 #define ERAID_FIELDS u.fields
 
 #if OPAL_ENABLE_DEBUG
-#define PROGRESS_FAILURE_PROB 0.1
+#define PROGRESS_FAILURE_PROB 0.05
 #endif
 
 typedef struct {
@@ -207,6 +207,8 @@ typedef struct era_comm_agreement_specific_s {
     int           afr_size;
     era_tree_t   *tree;
     int           tree_size;
+    int           acked_ra_size;
+    int          *acked_ra;
     int           ags_status;
 } era_comm_agreement_specific_t;
 
@@ -216,6 +218,8 @@ static void  era_agreement_comm_specific_constructor(era_comm_agreement_specific
     comm_specific->afr_size            = 0;
     comm_specific->tree                = NULL;
     comm_specific->tree_size           = 0;
+    comm_specific->acked_ra            = NULL;
+    comm_specific->acked_ra_size       = 0;
     comm_specific->ags_status          = AGS_TREE_DIRTY | AGS_AFR_DIRTY; /**< the AGS does not exist, so it needs to be created */
 }
 
@@ -226,6 +230,9 @@ static void  era_agreement_comm_specific_destructor(era_comm_agreement_specific_
     }
     if( NULL != comm_specific->tree ) {
         free(comm_specific->tree);
+    }
+    if( NULL != comm_specific->acked_ra ) {
+        free(comm_specific->acked_ra);
     }
 }
 
@@ -817,7 +824,6 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
 {
     ompi_group_t *tmp_grp1, *tmp_grp2;
     int *src_ra;
-    int *dst_ra;
     int r, s, t, grp_size;
 
     assert( comm->c_contextid == ci->agreement_id.ERAID_FIELDS.contextid );
@@ -842,20 +848,19 @@ static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communica
     /* Update the return value based on local knowledge of 'acknowleged' ranks */
     grp_size = ompi_group_size(acked_group);
     if( grp_size > 0 ) {
-        dst_ra = (int*)malloc(grp_size * sizeof(int));
-        src_ra = (int*)malloc(grp_size * sizeof(int));
-        for(r = 0; r < grp_size; r++)
-            src_ra[r] = r;
-        ompi_group_translate_ranks(acked_group, grp_size, src_ra, comm->c_local_group, dst_ra);
-        free(src_ra);
-        /** dst_ra must be sorted */
-        qsort(dst_ra, grp_size, sizeof(int), compare_ints);
-    } else {
-        dst_ra = NULL;
-    }
-    era_update_return_value(ci, grp_size, dst_ra);
-    if( grp_size > 0 )
-        free(dst_ra);
+        if( grp_size != AGS(comm)->acked_ra_size ) {
+            AGS(comm)->acked_ra      = (int*)realloc(AGS(comm)->acked_ra, grp_size * sizeof(int));
+            AGS(comm)->acked_ra_size = grp_size;
+            src_ra = (int*)malloc(grp_size * sizeof(int));
+            for(r = 0; r < grp_size; r++)
+                src_ra[r] = r;
+            ompi_group_translate_ranks(acked_group, grp_size, src_ra, comm->c_local_group, AGS(comm)->acked_ra);
+            free(src_ra);
+            /** acked_ra must be sorted */
+            qsort(AGS(comm)->acked_ra, grp_size, sizeof(int), compare_ints);
+        }
+    } 
+    era_update_return_value(ci, grp_size, AGS(comm)->acked_ra);
 
     era_ci_get_clean_ags_copy(ci);
 }
