@@ -1507,9 +1507,8 @@ static void era_collect_passed_agreements(era_identifier_t agreement_id, uint16_
                                      pid.ERAID_FIELDS.contextid,
                                      pid.ERAID_FIELDS.epoch,
                                      pid.ERAID_FIELDS.agreementid));
-            } else {
-                assert(0);
             }
+            /* It is possible that this agreement was freed already, if multiple are in flight */
         }
     }
 }
