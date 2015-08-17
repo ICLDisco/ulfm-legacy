@@ -377,6 +377,7 @@ static void show_stackframe (int signo, siginfo_t * info, void * p)
         write(fileno(stderr), unable_to_print_msg, strlen(unable_to_print_msg));
     }
     fflush(stderr);
+    raise(signo);
 }
 
 #endif /* OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) */

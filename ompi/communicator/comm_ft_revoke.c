@@ -146,7 +146,7 @@ static int ompi_comm_revoke_internal_local(ompi_revoke_message_t* msg) {
     }
     if( msg->cid != comm->c_contextid ) {
         OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle,
-                             "%s ompi: comm_revoke: Info: received a stall revoke message with CID %3d:%d while a COMM_DUP is willing to reuse that CID",
+                             "%s ompi: comm_revoke: Info: received a stall revoke message with CID %3d:%d while a COMM_DUP is ongoing and trying to reuse that CID",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), msg->cid, msg->epoch ));
         return false;
     }
