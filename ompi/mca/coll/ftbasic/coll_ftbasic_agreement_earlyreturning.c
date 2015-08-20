@@ -2982,8 +2982,10 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
 static int era_iagree_req_free(struct ompi_request_t** rptr)
 {
     era_iagree_request_t *req = (era_iagree_request_t *)*rptr;
+
     if( NULL != req->ci )
         req->ci->req = NULL;
+    req->ci = NULL;
     OMPI_FREE_LIST_RETURN( &era_iagree_requests,
                            (ompi_free_list_item_t*)(req));
     *rptr = MPI_REQUEST_NULL;
@@ -2995,6 +2997,9 @@ static int era_iagree_req_complete_cb(struct ompi_request_t* request)
     era_iagree_request_t *req = (era_iagree_request_t *)request;
     int rc;
 
+    assert( req->ci != NULL );
+    assert( req->ci->status == COMPLETED );
+            
     /**< iagree is never used internally, so the group is not needed for output */
     rc = mca_coll_ftbasic_agreement_era_complete_agreement(req->agreement_id, req->contrib, NULL);
     req->ci = NULL;
@@ -3028,8 +3033,11 @@ int mca_coll_ftbasic_iagreement_era_intra(ompi_communicator_t* comm,
                                                      &agreement_id, &ci);
     req->super.req_state = OMPI_REQUEST_ACTIVE;
     req->super.req_type = OMPI_REQUEST_IAGREE;
-    req->super.req_status.MPI_SOURCE = MPI_UNDEFINED;
-    req->super.req_status.MPI_TAG = MPI_UNDEFINED;
+    req->super.req_status.MPI_SOURCE = MPI_ANY_SOURCE;
+    req->super.req_status.MPI_ERROR = MPI_SUCCESS;
+    req->super.req_status.MPI_TAG = MPI_ANY_TAG;
+    req->super.req_status._ucount = 0;
+    req->super.req_status._cancelled = 0;
     req->super.req_mpi_object.comm = comm;
     req->super.req_complete_cb_data = NULL;
 
