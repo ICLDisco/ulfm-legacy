@@ -326,7 +326,7 @@ static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info
         OBJ_RELEASE( agreement_info->current_value );
         agreement_info->current_value = NULL;
     }
-
+    agreement_info->req = NULL;
 }
 
 OBJ_CLASS_INSTANCE(era_agreement_info_t,
@@ -676,6 +676,7 @@ static void era_agreement_value_set_gcrange(era_identifier_t eid, era_value_t *e
         do {
             era_identifier_t pid;
             pid.ERAID_KEY = key64;
+            assert(0 != pid.ERAID_FIELDS.agreementid);
 
             if( pid.ERAID_FIELDS.contextid == eid.ERAID_FIELDS.contextid &&
                 pid.ERAID_FIELDS.epoch     == eid.ERAID_FIELDS.epoch ) {
@@ -1541,6 +1542,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
      *  iagree request or the blocking loop above need to find it for
      *  cleanup.*/
 
+    assert( 0 != ci->agreement_id.ERAID_FIELDS.agreementid );
     assert( opal_hash_table_get_value_uint64(&era_passed_agreements, 
                                              ci->agreement_id.ERAID_KEY, &value) != OMPI_SUCCESS );
     ci->status = COMPLETED;
@@ -2721,6 +2723,7 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
 #if OPAL_ENABLE_DEBUG
             era_identifier_t pid;
             pid.ERAID_KEY = key64;
+            assert(0!=pid.ERAID_FIELDS.agreementid);
             OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
                                  "%s ftbasic:agreement (ERA) GC: agreement (%d.%d).%d belongs to the passed agreements hash table\n",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -2784,7 +2787,7 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
 }
 
 static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t* comm,
-                                                            ompi_group_t **group,
+                                                            ompi_group_t *group,
                                                             ompi_op_t *op,
                                                             ompi_datatype_t *dt,
                                                             int dt_count,
@@ -2822,7 +2825,7 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
                          agreement_id.ERAID_FIELDS.contextid,
                          agreement_id.ERAID_FIELDS.epoch,
                          agreement_id.ERAID_FIELDS.agreementid));
-    era_debug_print_group(1, *group, comm, "Before Agreement");
+    era_debug_print_group(1, group, comm, "Before Agreement");
 
 #if defined(PROGRESS_FAILURE_PROB)
 #pragma message("Hard coded probability of failure inside the agreement")
@@ -2853,16 +2856,16 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
     }
 
     assert( NULL == ci->comm );
-    assert( NULL != group && NULL != *group );
-    era_agreement_info_set_comm(ci, comm, *group);
+    assert( NULL != group );
+    era_agreement_info_set_comm(ci, comm, group);
 
     if( opal_hash_table_get_value_uint64(&era_passed_agreements, agreement_id.ERAID_KEY, &value) == OMPI_SUCCESS ) {
-        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) removing old agreement (%d.%d).%d from history, due to cycling of identifiers\n",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             agreement_id.ERAID_FIELDS.contextid,
-                             agreement_id.ERAID_FIELDS.epoch,                         
-                             agreement_id.ERAID_FIELDS.agreementid));
+        opal_output(0, "*** WARNING *** %s ftbasic:agreement (ERA) removing old agreement (%d.%d).%d from history, due to cycling of identifiers\n",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                    agreement_id.ERAID_FIELDS.contextid,
+                    agreement_id.ERAID_FIELDS.epoch,                         
+                    agreement_id.ERAID_FIELDS.agreementid);
+        assert(0 != agreement_id.ERAID_FIELDS.agreementid);
         pa = (era_value_t*)value;
         opal_hash_table_remove_value_uint64(&era_passed_agreements, agreement_id.ERAID_KEY);
         OBJ_RELEASE(pa);
@@ -2899,6 +2902,7 @@ static int mca_coll_ftbasic_agreement_era_complete_agreement(era_identifier_t ag
     ompi_communicator_t *comm;
     void *value;
 
+    assert(0 != agreement_id.ERAID_FIELDS.agreementid);
     ci = era_lookup_agreeement_info(agreement_id);
 
     /** Now, it's time to remove that guy from the ongoing agreements */
@@ -2964,7 +2968,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_identifier_t agreement_id;
     era_agreement_info_t *ci;
     
-    mca_coll_ftbasic_agreement_era_prepare_agreement(comm, group, op, dt, dt_count, contrib, module,
+    mca_coll_ftbasic_agreement_era_prepare_agreement(comm, *group, op, dt, dt_count, contrib, module,
                                                      &agreement_id, &ci);
     
     /* Wait for the agreement to be resolved */
@@ -2978,7 +2982,8 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
 static int era_iagree_req_free(struct ompi_request_t** rptr)
 {
     era_iagree_request_t *req = (era_iagree_request_t *)*rptr;
-    req->ci->req = NULL;
+    if( NULL != req->ci )
+        req->ci->req = NULL;
     OMPI_FREE_LIST_RETURN( &era_iagree_requests,
                            (ompi_free_list_item_t*)(req));
     return OMPI_SUCCESS;
@@ -2991,12 +2996,13 @@ static int era_iagree_req_complete_cb(struct ompi_request_t* request)
 
     /**< iagree is never used internally, so the group is not needed for output */
     rc = mca_coll_ftbasic_agreement_era_complete_agreement(req->agreement_id, req->contrib, NULL);
+    req->ci = NULL;
     req->super.req_status.MPI_ERROR = rc;
     return rc;
 }
 
 int mca_coll_ftbasic_iagreement_era_intra(ompi_communicator_t* comm,
-                                          ompi_group_t **group,
+                                          ompi_group_t *group,
                                           ompi_op_t *op,
                                           ompi_datatype_t *dt,
                                           int dt_count,
