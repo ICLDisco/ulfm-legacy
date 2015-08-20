@@ -326,7 +326,7 @@ static void  era_agreement_info_destructor (era_agreement_info_t *agreement_info
         OBJ_RELEASE( agreement_info->current_value );
         agreement_info->current_value = NULL;
     }
-
+    agreement_info->req = NULL;
 }
 
 OBJ_CLASS_INSTANCE(era_agreement_info_t,
@@ -2982,7 +2982,8 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
 static int era_iagree_req_free(struct ompi_request_t** rptr)
 {
     era_iagree_request_t *req = (era_iagree_request_t *)*rptr;
-    req->ci->req = NULL;
+    if( NULL != req->ci )
+        req->ci->req = NULL;
     OMPI_FREE_LIST_RETURN( &era_iagree_requests,
                            (ompi_free_list_item_t*)(req));
     return OMPI_SUCCESS;
@@ -2995,6 +2996,7 @@ static int era_iagree_req_complete_cb(struct ompi_request_t* request)
 
     /**< iagree is never used internally, so the group is not needed for output */
     rc = mca_coll_ftbasic_agreement_era_complete_agreement(req->agreement_id, req->contrib, NULL);
+    req->ci = NULL;
     req->super.req_status.MPI_ERROR = rc;
     return rc;
 }
