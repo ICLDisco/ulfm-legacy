@@ -46,7 +46,7 @@ int MPIX_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *request)
 
     ompi_comm_failure_get_acked_internal( comm, &acked );
     rc = comm->c_coll.coll_iagreement( (ompi_communicator_t*)comm,
-                                       &acked,
+                                       acked,
                                        &ompi_mpi_op_band.op,
                                        &ompi_mpi_int.dt,
                                        1,
