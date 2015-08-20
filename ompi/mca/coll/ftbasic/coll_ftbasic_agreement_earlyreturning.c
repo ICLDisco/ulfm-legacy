@@ -2784,7 +2784,7 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
 }
 
 static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t* comm,
-                                                            ompi_group_t **group,
+                                                            ompi_group_t *group,
                                                             ompi_op_t *op,
                                                             ompi_datatype_t *dt,
                                                             int dt_count,
@@ -2822,7 +2822,7 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
                          agreement_id.ERAID_FIELDS.contextid,
                          agreement_id.ERAID_FIELDS.epoch,
                          agreement_id.ERAID_FIELDS.agreementid));
-    era_debug_print_group(1, *group, comm, "Before Agreement");
+    era_debug_print_group(1, group, comm, "Before Agreement");
 
 #if defined(PROGRESS_FAILURE_PROB)
 #pragma message("Hard coded probability of failure inside the agreement")
@@ -2853,8 +2853,8 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
     }
 
     assert( NULL == ci->comm );
-    assert( NULL != group && NULL != *group );
-    era_agreement_info_set_comm(ci, comm, *group);
+    assert( NULL != group );
+    era_agreement_info_set_comm(ci, comm, group);
 
     if( opal_hash_table_get_value_uint64(&era_passed_agreements, agreement_id.ERAID_KEY, &value) == OMPI_SUCCESS ) {
         OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
@@ -2964,7 +2964,7 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     era_identifier_t agreement_id;
     era_agreement_info_t *ci;
     
-    mca_coll_ftbasic_agreement_era_prepare_agreement(comm, group, op, dt, dt_count, contrib, module,
+    mca_coll_ftbasic_agreement_era_prepare_agreement(comm, *group, op, dt, dt_count, contrib, module,
                                                      &agreement_id, &ci);
     
     /* Wait for the agreement to be resolved */
@@ -2996,7 +2996,7 @@ static int era_iagree_req_complete_cb(struct ompi_request_t* request)
 }
 
 int mca_coll_ftbasic_iagreement_era_intra(ompi_communicator_t* comm,
-                                          ompi_group_t **group,
+                                          ompi_group_t *group,
                                           ompi_op_t *op,
                                           ompi_datatype_t *dt,
                                           int dt_count,
