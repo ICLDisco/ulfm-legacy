@@ -676,6 +676,7 @@ static void era_agreement_value_set_gcrange(era_identifier_t eid, era_value_t *e
         do {
             era_identifier_t pid;
             pid.ERAID_KEY = key64;
+            assert(0 != pid.ERAID_FIELDS.agreementid);
 
             if( pid.ERAID_FIELDS.contextid == eid.ERAID_FIELDS.contextid &&
                 pid.ERAID_FIELDS.epoch     == eid.ERAID_FIELDS.epoch ) {
@@ -1541,6 +1542,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
      *  iagree request or the blocking loop above need to find it for
      *  cleanup.*/
 
+    assert( 0 != ci->agreement_id.ERAID_FIELDS.agreementid );
     assert( opal_hash_table_get_value_uint64(&era_passed_agreements, 
                                              ci->agreement_id.ERAID_KEY, &value) != OMPI_SUCCESS );
     ci->status = COMPLETED;
@@ -2721,6 +2723,7 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
 #if OPAL_ENABLE_DEBUG
             era_identifier_t pid;
             pid.ERAID_KEY = key64;
+            assert(0!=pid.ERAID_FIELDS.agreementid);
             OPAL_OUTPUT_VERBOSE((7, ompi_ftmpi_output_handle,
                                  "%s ftbasic:agreement (ERA) GC: agreement (%d.%d).%d belongs to the passed agreements hash table\n",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -2863,6 +2866,7 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
                              agreement_id.ERAID_FIELDS.contextid,
                              agreement_id.ERAID_FIELDS.epoch,                         
                              agreement_id.ERAID_FIELDS.agreementid));
+        assert(0 != agreement_id.ERAID_FIELDS.agreementid);
         pa = (era_value_t*)value;
         opal_hash_table_remove_value_uint64(&era_passed_agreements, agreement_id.ERAID_KEY);
         OBJ_RELEASE(pa);
@@ -2899,6 +2903,7 @@ static int mca_coll_ftbasic_agreement_era_complete_agreement(era_identifier_t ag
     ompi_communicator_t *comm;
     void *value;
 
+    assert(0 != agreement_id.ERAID_FIELDS.agreementid);
     ci = era_lookup_agreeement_info(agreement_id);
 
     /** Now, it's time to remove that guy from the ongoing agreements */
