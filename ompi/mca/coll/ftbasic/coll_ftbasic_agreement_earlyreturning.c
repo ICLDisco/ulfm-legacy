@@ -2860,12 +2860,11 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
     era_agreement_info_set_comm(ci, comm, group);
 
     if( opal_hash_table_get_value_uint64(&era_passed_agreements, agreement_id.ERAID_KEY, &value) == OMPI_SUCCESS ) {
-        OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
-                             "%s ftbasic:agreement (ERA) removing old agreement (%d.%d).%d from history, due to cycling of identifiers\n",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             agreement_id.ERAID_FIELDS.contextid,
-                             agreement_id.ERAID_FIELDS.epoch,                         
-                             agreement_id.ERAID_FIELDS.agreementid));
+        opal_output(0, "*** WARNING *** %s ftbasic:agreement (ERA) removing old agreement (%d.%d).%d from history, due to cycling of identifiers\n",
+                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                    agreement_id.ERAID_FIELDS.contextid,
+                    agreement_id.ERAID_FIELDS.epoch,                         
+                    agreement_id.ERAID_FIELDS.agreementid);
         assert(0 != agreement_id.ERAID_FIELDS.agreementid);
         pa = (era_value_t*)value;
         opal_hash_table_remove_value_uint64(&era_passed_agreements, agreement_id.ERAID_KEY);
