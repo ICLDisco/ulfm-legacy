@@ -96,7 +96,7 @@ int mca_coll_base_agreement(struct ompi_communicator_t* comm,
 }
 
 int mca_coll_base_iagreement(struct ompi_communicator_t* comm,
-                             struct ompi_group_t **group,
+                             struct ompi_group_t *group,
                              ompi_op_t *op,
                              ompi_datatype_t *dt,
                              int dt_count,
