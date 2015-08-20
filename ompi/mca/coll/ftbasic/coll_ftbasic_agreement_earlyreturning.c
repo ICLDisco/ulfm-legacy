@@ -2986,6 +2986,7 @@ static int era_iagree_req_free(struct ompi_request_t** rptr)
         req->ci->req = NULL;
     OMPI_FREE_LIST_RETURN( &era_iagree_requests,
                            (ompi_free_list_item_t*)(req));
+    *rptr = MPI_REQUEST_NULL;
     return OMPI_SUCCESS;
 }
 
