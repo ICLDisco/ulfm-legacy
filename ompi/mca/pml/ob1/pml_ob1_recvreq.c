@@ -123,7 +123,8 @@ static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, 
         * As now the PML is done with this request we have to force the pml_complete
         * to true. Otherwise, the request will never be freed.
         */
-       request->req_recv.req_base.req_pml_complete = true;
+       recv_request_pml_complete(request);
+       //request->req_recv.req_base.req_pml_complete = true;
     }
     OPAL_THREAD_UNLOCK(&comm->matching_lock);
     
