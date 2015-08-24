@@ -132,18 +132,21 @@ static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int c
     if( true == request->req_complete ) { /* way to late to cancel this one */
         return OMPI_SUCCESS;
     }
-    /* If FT is enabled then we allow canceling requests with a dead process.
+    /* If FT is enabled then we allow canceling requests with a dead process or
+     * on a revoked communicator.
      * However, we should not release the request as we don't know if there are
      * no pending fragments. This generates a memory leak as the send requests
      * will never be recovered. */
     if( !ompi_comm_is_proc_active(request->req_mpi_object.comm, request->req_peer,
-                                  OMPI_COMM_IS_INTRA(request->req_mpi_object.comm)) ) {
+                                  OMPI_COMM_IS_INTRA(request->req_mpi_object.comm)) || 
+        ompi_comm_is_revoked(request->req_mpi_object.comm)) {
         mca_pml_ob1_send_request_t* pml_req = (mca_pml_ob1_send_request_t*)request;
         /**
          * As now the PML is done with this request we have to force the pml_complete
          * to true. Otherwise, the request will never be freed.
          */
-        pml_req->req_send.req_base.req_pml_complete = true;
+        send_request_pml_complete(pml_req);
+        //pml_req->req_send.req_base.req_pml_complete = true;
 
         OPAL_THREAD_LOCK(&ompi_request_lock);
         request->req_status._cancelled = true;
