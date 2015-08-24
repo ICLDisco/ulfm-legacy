@@ -165,6 +165,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
         mca_pml.pml_dump(req->req_mpi_object.comm, ompi_ftmpi_output_handle);
 #endif
         ompi_request_cancel(req);
+        req->req_status._cancelled = false; /* This request is not cancelled, it is completed in error */
     }
     return (MPI_SUCCESS == req->req_status.MPI_ERROR);
 }
