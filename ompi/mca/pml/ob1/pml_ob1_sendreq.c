@@ -145,9 +145,11 @@ static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int c
          * As now the PML is done with this request we have to force the pml_complete
          * to true. Otherwise, the request will never be freed.
          */
-        send_request_pml_complete(pml_req);
-        //pml_req->req_send.req_base.req_pml_complete = true;
-
+        if( true == send_request_pml_complete_check(pml_req) ) return OMPI_SUCCESS;
+        /* We can't know if the remote end will ever send the FIN, clear the
+         * registrations and hope for the best, it may leak a request
+         * occasionally */
+        mca_pml_ob1_free_rdma_resources(pml_req);
         OPAL_THREAD_LOCK(&ompi_request_lock);
         request->req_status._cancelled = true;
         /* This macro will set the req_complete to true so the MPI Test/Wait* functions
