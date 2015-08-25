@@ -93,7 +93,7 @@ static int mca_pml_ob1_recv_request_free(struct ompi_request_t** request)
 static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, int complete)
 {
     mca_pml_ob1_recv_request_t* request = (mca_pml_ob1_recv_request_t*)ompi_request;
-    mca_pml_ob1_comm_t* comm = request->req_recv.req_base.req_comm->c_pml_comm;
+    ompi_communicator_t* comm = request->req_recv.req_base.req_comm;
 
     if( true == ompi_request->req_complete ) { /* way to late to cancel this one */
         /*
@@ -109,33 +109,65 @@ static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, 
     }
 
     /* The rest should be protected behind the match logic lock */
-    OPAL_THREAD_LOCK(&comm->matching_lock);
+    OPAL_THREAD_LOCK(&comm->c_pml_comm->matching_lock);
     if( OMPI_ANY_TAG == ompi_request->req_status.MPI_TAG ) { /* the match has not been already done */
        if( request->req_recv.req_base.req_peer == OMPI_ANY_SOURCE ) {
-          opal_list_remove_item( &comm->wild_receives, (opal_list_item_t*)request );
+          opal_list_remove_item( &comm->c_pml_comm->wild_receives, (opal_list_item_t*)request );
        } else {
-          mca_pml_ob1_comm_proc_t* proc = comm->procs + request->req_recv.req_base.req_peer;
+          mca_pml_ob1_comm_proc_t* proc = comm->c_pml_comm->procs + request->req_recv.req_base.req_peer;
           opal_list_remove_item(&proc->specific_receives, (opal_list_item_t*)request);
        }
        PERUSE_TRACE_COMM_EVENT( PERUSE_COMM_REQ_REMOVE_FROM_POSTED_Q,
                                 &(request->req_recv.req_base), PERUSE_RECV );
-       /**
-        * As now the PML is done with this request we have to force the pml_complete
-        * to true. Otherwise, the request will never be freed.
-        */
-       recv_request_pml_complete(request);
-       //request->req_recv.req_base.req_pml_complete = true;
     }
-    OPAL_THREAD_UNLOCK(&comm->matching_lock);
-    
+    else {
+        /* cannot be cancelled anymore, it has matched */
+        OPAL_THREAD_UNLOCK(&comm->c_pml_comm->matching_lock);
+#if OPAL_ENABLE_FT_MPI
+        if( !ompi_comm_is_proc_active( comm, request->req_recv.req_base.req_peer, 
+                                              OMPI_COMM_IS_INTRA(comm) ) ) {
+            /* This process is dead, therefore this request is complete */
+            opal_output_verbose(10, ompi_ftmpi_output_handle,
+                                "Recv_request_cancel: cancel granted for request %p because peer %d is dead\n",
+                                request, request->req_recv.req_base.req_peer);
+            OPAL_THREAD_LOCK(&ompi_request_lock);
+            ompi_request->req_status._cancelled = true;
+            OPAL_THREAD_UNLOCK(&ompi_request_lock);
+            recv_request_pml_complete(request);
+            return OMPI_SUCCESS;
+        }
+#if 0
+        else if( ompi_comm_is_revoked(comm) ) {
+            if( 0 == request->req_recv.req_state ) {
+                /* This request is in a quiet state, it can be cancelled */
+                opal_output_verbose(10, ompi_ftmpi_output_handle,
+                                    "Recv_request_cancel: cancel granded for request %p because comm cid %d is revoked\n",
+                                    request, comm->c_contextid);
+                OPAL_THREAD_LOCK(&ompi_request_lock);
+                ompi_request->req_status._cancelled = true;
+                OPAL_THREAD_UNLOCK(&ompi_request_lock);
+                recv_request_pml_complete(request);
+            }
+        }
+#endif
+#endif
+        opal_output_verbose(10, ompi_ftmpi_output_handle,
+                            "Recv_request_cancel: cancel denied for request %p because it has matched peer %d\n",
+                            request, request->req_recv.req_base.req_peer);
+        return OMPI_SUCCESS;
+    }
+    OPAL_THREAD_UNLOCK(&comm->c_pml_comm->matching_lock);
+    opal_output_verbose(10, ompi_ftmpi_output_handle,
+                        "Recv_request_cancel: cancel granted for request %p because it has not matched\n",
+                        request);
+    /**
+     * As now the PML is done with this request we have to force the pml_complete
+     * to true. Otherwise, the request will never be freed.
+     */
     OPAL_THREAD_LOCK(&ompi_request_lock);
     ompi_request->req_status._cancelled = true;
-    /* This macro will set the req_complete to true so the MPI Test/Wait* functions
-     * on this request will be able to complete. As the status is marked as
-     * cancelled the cancel state will be detected.
-     */
-    MCA_PML_OB1_RECV_REQUEST_MPI_COMPLETE(request);
     OPAL_THREAD_UNLOCK(&ompi_request_lock);
+    recv_request_pml_complete(request);
     /*
      * Receive request cancelled, make user buffer accessable.
      */
