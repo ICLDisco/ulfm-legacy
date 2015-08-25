@@ -164,8 +164,14 @@ bool ompi_request_state_ok(ompi_request_t *req)
         }
         mca_pml.pml_dump(req->req_mpi_object.comm, ompi_ftmpi_output_handle);
 #endif
+        /* Cancel and force completion immmediately, in particular for Revoked
+         * requests we can't return with an error before the buffer is unpinned
+         */
         ompi_request_cancel(req);
+        int tag = req->req_tag;
+        req->req_tag = MCA_COLL_BASE_TAG_AGREEMENT; /* make it an FT request so it is not checked for errors */
         ompi_request_wait_completion(req);
+        req->req_tag = tag;
         req->req_status._cancelled = false; /* This request is not cancelled, it is completed in error */
     }
     return (MPI_SUCCESS == req->req_status.MPI_ERROR);
