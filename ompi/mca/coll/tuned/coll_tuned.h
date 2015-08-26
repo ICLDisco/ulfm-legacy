@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2009 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -326,8 +326,12 @@ int mca_coll_tuned_ft_event(int state);
 static inline void ompi_coll_tuned_free_reqs(ompi_request_t **reqs, int count)
 {
 	int i;
-	for (i = 0; i < count; ++i)
-	    ompi_request_free(&reqs[i]);
+	for (i = 0; i < count; ++i) {
+        if (MPI_REQUEST_NULL != reqs[i]) {
+            ompi_request_cancel(reqs[i]);
+            ompi_request_wait(&reqs[i], MPI_STATUS_IGNORE);
+        }
+    }
 }
 
 struct mca_coll_tuned_component_t {
