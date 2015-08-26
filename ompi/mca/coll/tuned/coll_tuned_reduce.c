@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -53,6 +53,7 @@ int ompi_coll_tuned_reduce_generic( void* sendbuf, void* recvbuf, int original_c
     ptrdiff_t extent, lower_bound, segment_increment;
     size_t typelng;
     ompi_request_t* reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
+    ompi_request_t** sreq = NULL;
     int num_segments, line, ret, segindex, i, rank;
     int recvcount, prevcount, inbi;
 
@@ -274,7 +275,6 @@ int ompi_coll_tuned_reduce_generic( void* sendbuf, void* recvbuf, int original_c
         else {
 
             int creq = 0;
-            ompi_request_t **sreq = NULL;
 
             sreq = (ompi_request_t**) calloc( max_outstanding_reqs,
                                               sizeof(ompi_request_t*) );
@@ -331,6 +331,11 @@ int ompi_coll_tuned_reduce_generic( void* sendbuf, void* recvbuf, int original_c
     OPAL_OUTPUT (( ompi_coll_tuned_stream, 
                    "ERROR_HNDL: node %d file %s line %d error %d\n", 
                    rank, __FILE__, line, ret ));
+    ompi_coll_tuned_free_reqs(reqs, 2);
+    if( NULL != sreq ) {
+        ompi_coll_tuned_free_reqs(sreq, max_outstanding_reqs);
+        free(sreq);
+    }
     if( inbuf_free[0] != NULL ) free(inbuf_free[0]);
     if( inbuf_free[1] != NULL ) free(inbuf_free[1]);
     if( accumbuf_free != NULL ) free(accumbuf);

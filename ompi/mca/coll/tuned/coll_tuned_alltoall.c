@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -391,7 +391,10 @@ int ompi_coll_tuned_alltoall_intra_linear_sync(void *sbuf, int scount,
     OPAL_OUTPUT((ompi_coll_tuned_stream,
                  "%s:%4d\tError occurred %d, rank %2d", __FILE__, line, error, 
                  rank));
-    if (NULL != reqs) free(reqs);
+    if (NULL != reqs) {
+        ompi_coll_tuned_free_reqs(reqs, nreqs);
+        free(reqs);
+    }
     return error;
 }
 

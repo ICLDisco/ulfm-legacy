@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -223,6 +223,7 @@ ompi_coll_tuned_gather_intra_linear_sync(void *sbuf, int scount,
     size_t typelng;
     MPI_Aint extent;
     MPI_Aint lb;
+    ompi_request_t **reqs = NULL, *first_segment_req;
 
     size = ompi_comm_size(comm);
     rank = ompi_comm_rank(comm);
@@ -272,7 +273,6 @@ ompi_coll_tuned_gather_intra_linear_sync(void *sbuf, int scount,
            - Waitall for all the second segments to complete.
 	*/
         char *ptmp;
-        ompi_request_t **reqs = NULL, *first_segment_req;
         reqs = (ompi_request_t**) calloc(size, sizeof(ompi_request_t*));
         if (NULL == reqs) { ret = -1; line = __LINE__; goto error_hndl; }
         
@@ -337,6 +337,10 @@ ompi_coll_tuned_gather_intra_linear_sync(void *sbuf, int scount,
     OPAL_OUTPUT (( ompi_coll_tuned_stream, 
                    "ERROR_HNDL: node %d file %s line %d error %d\n", 
                    rank, __FILE__, line, ret ));
+    if( NULL != reqs ) {
+        ompi_coll_tuned_free_reqs(reqs, size);
+        free(reqs);
+    }
     return ret;
 }
 

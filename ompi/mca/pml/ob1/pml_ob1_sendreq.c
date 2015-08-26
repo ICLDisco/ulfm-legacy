@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2013 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -129,31 +129,49 @@ static int mca_pml_ob1_send_request_free(struct ompi_request_t** request)
 static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int complete)
 {
 #if OPAL_ENABLE_FT_MPI
+    ompi_communicator_t* comm = request->req_mpi_object.comm;
+
     if( true == request->req_complete ) { /* way to late to cancel this one */
         return OMPI_SUCCESS;
     }
-    /* If FT is enabled then we allow canceling requests with a dead process.
+    /* If FT is enabled then we allow canceling requests with a dead process or
+     * on a revoked communicator.
      * However, we should not release the request as we don't know if there are
      * no pending fragments. This generates a memory leak as the send requests
      * will never be recovered. */
-    if( !ompi_comm_is_proc_active(request->req_mpi_object.comm, request->req_peer,
-                                  OMPI_COMM_IS_INTRA(request->req_mpi_object.comm)) ) {
+    if( !ompi_comm_is_proc_active(comm, request->req_peer,
+                                  OMPI_COMM_IS_INTRA(comm)) ) {
         mca_pml_ob1_send_request_t* pml_req = (mca_pml_ob1_send_request_t*)request;
         /**
          * As now the PML is done with this request we have to force the pml_complete
          * to true. Otherwise, the request will never be freed.
          */
-        pml_req->req_send.req_base.req_pml_complete = true;
-
+        opal_output_verbose(10, ompi_ftmpi_output_handle,
+                                "Send_request_cancel: cancel granted for request %p because peer %d is dead\n",
+                                request, request->req_peer);
         OPAL_THREAD_LOCK(&ompi_request_lock);
         request->req_status._cancelled = true;
-        /* This macro will set the req_complete to true so the MPI Test/Wait* functions
-         * on this request will be able to complete. As the status is marked as
-         * cancelled the cancel state will be detected.
-         */
-        MCA_PML_OB1_SEND_REQUEST_MPI_COMPLETE(pml_req, 0);
         OPAL_THREAD_UNLOCK(&ompi_request_lock);
+        send_request_pml_complete(pml_req);
         return OMPI_SUCCESS;
+    }
+    if( ompi_comm_is_revoked(comm) ) {
+        mca_pml_ob1_send_request_t* pml_req = (mca_pml_ob1_send_request_t*)request;
+        if( 0 == pml_req->req_state ) {
+            /* This request is in a quiet state it can be cancelled here */
+            opal_output_verbose(10, ompi_ftmpi_output_handle,
+                                "Send_request_cancel: cancel granded for request %p because comm cid %d is revoked\n",
+                                request, comm->c_contextid);
+            OPAL_THREAD_LOCK(&ompi_request_lock);
+            request->req_status._cancelled = true;
+            OPAL_THREAD_UNLOCK(&ompi_request_lock);
+            send_request_pml_complete(pml_req);
+            //mca_pml_ob1_free_rdma_resources(pml_req);
+        } else {
+            opal_output_verbose(10, ompi_ftmpi_output_handle, 
+                                "Send_request_cancel: cancel denied for request %p, comm cid %d is revoked, but request state is ongoing\n",
+                                request, comm->c_contextid);
+        }
     }
 #endif  /* OPAL_ENABLE_FT_MPI */
     /* we dont cancel send requests by now */
