@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2010 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -155,7 +155,24 @@ bool ompi_request_state_ok(ompi_request_t *req)
 
  return_with_error:
     if( MPI_ERR_PENDING != req->req_status.MPI_ERROR ) {
+        opal_output_verbose(10, ompi_ftmpi_output_handle,
+                            "%s ompi_request_state_ok: Request %p cancelled due to completion with error %d\n", 
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), req, req->req_status.MPI_ERROR);
+#if 0
+        { int btsize=32; void*bt[32]={NULL}; btsize=backtrace(bt,btsize);
+          backtrace_symbols_fd(bt,btsize, ompi_ftmpi_output_handle);
+        }
+        mca_pml.pml_dump(req->req_mpi_object.comm, ompi_ftmpi_output_handle);
+#endif
+        /* Cancel and force completion immmediately, in particular for Revoked
+         * requests we can't return with an error before the buffer is unpinned
+         */
         ompi_request_cancel(req);
+        int tag = req->req_tag;
+        req->req_tag = MCA_COLL_BASE_TAG_AGREEMENT; /* make it an FT request so it is not checked for errors */
+        ompi_request_wait_completion(req);
+        req->req_tag = tag;
+        req->req_status._cancelled = false; /* This request is not cancelled, it is completed in error */
     }
     return (MPI_SUCCESS == req->req_status.MPI_ERROR);
 }

@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -248,7 +248,10 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
     OPAL_OUTPUT( (ompi_coll_tuned_stream,"%s:%4d\tError occurred %d, rank %2d",
                   __FILE__, line, err, rank) );
 #if !defined(COLL_TUNED_BCAST_USE_BLOCKING)
-    if( NULL != send_reqs ) free(send_reqs);
+    if( NULL != send_reqs ) {
+        ompi_coll_tuned_free_reqs(send_reqs, tree->tree_nextsize);
+        free(send_reqs);
+    }
 #endif
     return (err);
 }

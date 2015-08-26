@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -133,7 +133,7 @@ ompi_coll_tuned_allreduce_intra_recursivedoubling(void *sbuf, void *rbuf,
    int newrank, newremote, extra_ranks;
    char *tmpsend = NULL, *tmprecv = NULL, *tmpswap = NULL, *inplacebuf = NULL;
    ptrdiff_t true_lb, true_extent, lb, extent;
-   ompi_request_t *reqs[2] = {NULL, NULL};
+   ompi_request_t *reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
 
    size = ompi_comm_size(comm);
    rank = ompi_comm_rank(comm);
@@ -270,6 +270,7 @@ ompi_coll_tuned_allreduce_intra_recursivedoubling(void *sbuf, void *rbuf,
  error_hndl:
    OPAL_OUTPUT((ompi_coll_tuned_stream, "%s:%4d\tRank %d Error occurred %d\n",
                 __FILE__, line, rank, ret));
+   ompi_coll_tuned_free_reqs(reqs, 2);
    if (NULL != inplacebuf) free(inplacebuf);
    return ret;
 }
@@ -354,7 +355,7 @@ ompi_coll_tuned_allreduce_intra_ring(void *sbuf, void *rbuf, int count,
    char *inbuf[2] = {NULL, NULL};
    ptrdiff_t true_lb, true_extent, lb, extent;
    ptrdiff_t block_offset, max_real_segsize;
-   ompi_request_t *reqs[2] = {NULL, NULL};
+   ompi_request_t *reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
 
    size = ompi_comm_size(comm);
    rank = ompi_comm_rank(comm);
@@ -532,6 +533,7 @@ ompi_coll_tuned_allreduce_intra_ring(void *sbuf, void *rbuf, int count,
  error_hndl:
    OPAL_OUTPUT((ompi_coll_tuned_stream, "%s:%4d\tRank %d Error occurred %d\n",
                 __FILE__, line, rank, ret));
+   ompi_coll_tuned_free_reqs(reqs, 2);
    if (NULL != inbuf[0]) free(inbuf[0]);
    if (NULL != inbuf[1]) free(inbuf[1]);
    return ret;
@@ -635,7 +637,7 @@ ompi_coll_tuned_allreduce_intra_ring_segmented(void *sbuf, void *rbuf, int count
    char *inbuf[2] = {NULL, NULL};
    ptrdiff_t true_lb, true_extent, lb, extent;
    ptrdiff_t block_offset, max_real_segsize;
-   ompi_request_t *reqs[2] = {NULL, NULL};
+   ompi_request_t *reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
 
    size = ompi_comm_size(comm);
    rank = ompi_comm_rank(comm);
@@ -855,6 +857,7 @@ ompi_coll_tuned_allreduce_intra_ring_segmented(void *sbuf, void *rbuf, int count
  error_hndl:
    OPAL_OUTPUT((ompi_coll_tuned_stream, "%s:%4d\tRank %d Error occurred %d\n",
                 __FILE__, line, rank, ret));
+   ompi_coll_tuned_free_reqs(reqs, 2);
    if (NULL != inbuf[0]) free(inbuf[0]);
    if (NULL != inbuf[1]) free(inbuf[1]);
    return ret;

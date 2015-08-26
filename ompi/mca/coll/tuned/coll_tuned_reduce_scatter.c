@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -468,7 +468,7 @@ ompi_coll_tuned_reduce_scatter_intra_ring(void *sbuf, void *rbuf, int *rcounts,
     char *inbuf[2] = {NULL, NULL};
     char *accumbuf = NULL, *accumbuf_free = NULL;
     ptrdiff_t true_lb, true_extent, lb, extent, max_real_segsize;
-    ompi_request_t *reqs[2] = {NULL, NULL};
+    ompi_request_t *reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
 
     size = ompi_comm_size(comm);
     rank = ompi_comm_rank(comm);

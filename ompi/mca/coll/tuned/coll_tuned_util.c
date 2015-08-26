@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2009 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -38,7 +38,7 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, size_t scount,
 
 { /* post receive first, then send, then waitall... should be fast (I hope) */
     int err, line = 0;
-    ompi_request_t* reqs[2];
+    ompi_request_t* reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
     ompi_status_public_t statuses[2];
 
     /* post new irecv */
@@ -87,6 +87,7 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, size_t scount,
             status->MPI_ERROR = err;
         }
     }
+    ompi_coll_tuned_free_reqs(reqs, 2);
     return (err);
 }
 
@@ -107,7 +108,7 @@ int ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, size_t scount
 
 { /* post receive first, then [local] sync send, then wait... should be fast (I hope) */
     int err, line = 0;
-    ompi_request_t* req[2];
+    ompi_request_t* req[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
     ompi_status_public_t statuses[2];
 
     /* post new irecv */
@@ -156,7 +157,7 @@ int ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, size_t scount
             status->MPI_ERROR = err;
         }
     }
-
+    ompi_coll_tuned_free_reqs(req, 2);
     return (err);
 }
 
