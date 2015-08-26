@@ -1526,6 +1526,31 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     int r, s, dead_size;
     void *value;
 
+    assert( 0 != ci->agreement_id.ERAID_FIELDS.agreementid );
+
+#if OPAL_ENABLE_DEBUG
+    if( opal_hash_table_get_value_uint64(&era_passed_agreements, 
+                                         ci->agreement_id.ERAID_KEY, &value) == OMPI_SUCCESS ) {
+        /**
+         * If the value was already decided, then this DOWN message
+         * *must* provide the same decision: it can only be a dupplicate.
+         */
+        era_value_t *old_agreement_value;
+        old_agreement_value = (era_value_t*)value;
+        assert( old_agreement_value->header.ret == decided_value->header.ret &&
+                old_agreement_value->header.nb_new_dead == decided_value->header.nb_new_dead );
+    }
+#endif
+    
+    /** We must leave ci in the era_ongoing_agreements, because either the
+     *  iagree request or the blocking loop above need to find it for
+     *  cleanup. Thus, we may enter era_decide with the agreement_info
+     *  already completed. In that case, we return silently to avoid
+     *  flooding the network with more DOWN messages.
+     */
+    if( ci->status == COMPLETED )
+        return;
+
     OBJ_RETAIN(decided_value);
 
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
@@ -1537,14 +1562,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
                          ci->agreement_id.ERAID_FIELDS.contextid,
                          ci->agreement_id.ERAID_FIELDS.epoch,                         
                          ci->agreement_id.ERAID_FIELDS.agreementid));
-
-    /** We must leave ci in the era_ongoing_agreements, because either the
-     *  iagree request or the blocking loop above need to find it for
-     *  cleanup.*/
-
-    assert( 0 != ci->agreement_id.ERAID_FIELDS.agreementid );
-    assert( opal_hash_table_get_value_uint64(&era_passed_agreements, 
-                                             ci->agreement_id.ERAID_KEY, &value) != OMPI_SUCCESS );
+    
     ci->status = COMPLETED;
     opal_hash_table_set_value_uint64(&era_passed_agreements,
                                      ci->agreement_id.ERAID_KEY,
