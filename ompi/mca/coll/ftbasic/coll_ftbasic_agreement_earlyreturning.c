@@ -88,6 +88,7 @@ typedef struct {
 #if OPAL_ENABLE_DEBUG
 #define PROGRESS_FAILURE_PROB 0.05
 #endif
+#undef PROGRESS_FAILURE_PROB
 
 typedef struct {
     int32_t  ret;                            /**< Return code */
