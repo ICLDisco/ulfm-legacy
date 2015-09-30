@@ -43,7 +43,7 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                  MPI_Comm comm,  MPI_Status *status)
 {
     ompi_request_t* req;
-    int rc = MPI_SUCCESS, rc1 = MPI_SUCCESS;
+    int rc = MPI_SUCCESS, rcs = MPI_SUCCESS;
 
     MEMCHECKER(
         memchecker_datatype(sendtype);
@@ -82,7 +82,7 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
         if( !ompi_comm_iface_p2p_check_proc(comm, dest, &rc) ) {
             if( MPI_STATUS_IGNORE != status ) {
                 status->MPI_SOURCE = dest;
-                status->MPI_TAG    = recvtag;
+                status->MPI_TAG    = sendtag;
                 status->MPI_ERROR  = rc;
             }
             OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
@@ -113,20 +113,27 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
         /* If ULFM is enabled we need to wait for the posted receive to complete */
 #if !OPAL_ENABLE_FT_MPI
         OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
+#else
+        rcs = rc;
 #endif  /* OPAL_ENABLE_FT_MPI */
     }
 
     if (source != MPI_PROC_NULL) { /* wait for recv */
-        rc1 = ompi_request_wait(&req, status);
+        rc = ompi_request_wait(&req, status);
     } else {
         if (MPI_STATUS_IGNORE != status) {
             *status = ompi_request_empty.req_status;
         }
-        rc1 = MPI_SUCCESS;
+        rc = MPI_SUCCESS;
     }
-    if( MPI_SUCCESS == rc ) {
-        if( MPI_SUCCESS != rc1 )
-            rc = rc1;
-    }
+    if( OPAL_UNLIKELY(MPI_SUCCESS != rcs) ) {
+        rc = rcs;
+        if (MPI_STATUS_IGNORE != status) {
+            status->MPI_SOURCE = dest;
+            status->MPI_TAG    = sendtag;
+            status->MPI_ERROR  = rc;
+        }
+    } 
+
     OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }
