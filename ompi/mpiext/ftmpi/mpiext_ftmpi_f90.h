@@ -14,15 +14,6 @@
 ! include '../mpiext/ftmpi/mpiext_ftmpi_f77.h'
 
 !
-! Error codes
-!
-integer MPIX_ERR_PROC_FAILED
-integer MPIX_ERR_REVOKED
-
-parameter (MPIX_ERR_PROC_FAILED = MPI_ERR_PROC_FAILED)
-parameter (MPIX_ERR_REVOKED = MPI_ERR_REVOKED)
-
-!
 ! Communicators
 !
 interface MPIX_Comm_revoke
