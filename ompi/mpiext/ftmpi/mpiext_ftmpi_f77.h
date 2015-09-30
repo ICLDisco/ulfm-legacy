@@ -9,13 +9,12 @@
 ! $HEADER$
 !
 
-include 'mpif.h'
 !
 ! Error codes
 !
        integer MPIX_ERR_PROC_FAILED
        integer MPIX_ERR_REVOKED
-
-       parameter (MPIX_ERR_PROC_FAILED = MPI_ERR_PROC_FAILED)
-       parameter (MPIX_ERR_REVOKED = MPI_ERR_REVOKED)
+! These values must match the same define in mpif-common.h
+       parameter (MPIX_ERR_PROC_FAILED = 54)
+       parameter (MPIX_ERR_REVOKED     = 55)
 

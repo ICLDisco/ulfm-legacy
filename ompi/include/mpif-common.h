@@ -336,6 +336,8 @@
       parameter( MPI_ERR_UNSUPPORTED_DATAREP  = 51)
       parameter( MPI_ERR_UNSUPPORTED_OPERATION= 52)
       parameter( MPI_ERR_WIN                  = 53)
+!     The 2 following values must match the same define in 
+!       mpiext/ftmpi/mpiext_ftmpi_f77.h 
       parameter( MPI_ERR_PROC_FAILED          = 54)
       parameter( MPI_ERR_REVOKED              = 55)
 
