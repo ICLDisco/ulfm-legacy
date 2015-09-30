@@ -44,6 +44,7 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 {
     ompi_request_t* req;
     int rc = MPI_SUCCESS, rcs = MPI_SUCCESS;
+    int zero = 0;
 
     MEMCHECKER(
         memchecker_datatype(sendtype);
@@ -80,18 +81,25 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
          * call in the PML.
          */
         if( !ompi_comm_iface_p2p_check_proc(comm, dest, &rc) ) {
+            /* Do *NOT* set status->MPI_ERROR here!  See MPI-1.1 doc,
+               sec 3.2.5, p.22 */
             if( MPI_STATUS_IGNORE != status ) {
-                *status = ompi_request_empty.req_status;
-                status->MPI_ERROR  = rc;
+                status->MPI_SOURCE = source;
+                status->MPI_TAG    = recvtag;
+                OMPI_STATUS_SET_COUNT(&status->_ucount, &zero);
+                status->_cancelled = false;
             }
             OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
         }
 
         if( !ompi_comm_iface_p2p_check_proc(comm, source, &rc) ) {
+            /* Do *NOT* set status->MPI_ERROR here!  See MPI-1.1 doc,
+               sec 3.2.5, p.22 */
             if( MPI_STATUS_IGNORE != status ) {
                 status->MPI_SOURCE = source;
                 status->MPI_TAG    = recvtag;
-                status->MPI_ERROR  = rc;
+                OMPI_STATUS_SET_COUNT(&status->_ucount, &zero);
+                status->_cancelled = false;
             }
             OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
         }
@@ -125,13 +133,9 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
         }
         rc = MPI_SUCCESS;
     }
-    if( OPAL_UNLIKELY(MPI_SUCCESS != rcs) ) {
+    if( OPAL_UNLIKELY(MPI_SUCCESS != rcs && MPI_SUCCESS == rc) ) {
         rc = rcs;
-        if( MPI_STATUS_IGNORE != status ) {
-            *status = ompi_request_empty.req_status;
-            status->MPI_ERROR  = rc;
-        }
-    } 
+    }
 
     OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }
