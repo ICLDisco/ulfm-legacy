@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -43,7 +43,7 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                  MPI_Comm comm,  MPI_Status *status)
 {
     ompi_request_t* req;
-    int rc = MPI_SUCCESS;
+    int rc = MPI_SUCCESS, rc1 = MPI_SUCCESS;
 
     MEMCHECKER(
         memchecker_datatype(sendtype);
@@ -58,7 +58,7 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
         OMPI_CHECK_DATATYPE_FOR_RECV(rc, recvtype, recvcount);
         OMPI_CHECK_USER_BUFFER(rc, sendbuf, sendtype, sendcount);
         OMPI_CHECK_USER_BUFFER(rc, recvbuf, recvtype, recvcount);
-        
+
         if (ompi_comm_invalid(comm)) {
             return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_COMM, FUNC_NAME);
         } else if (dest != MPI_PROC_NULL && ompi_comm_peer_invalid(comm, dest)) {
@@ -110,16 +110,23 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     if (dest != MPI_PROC_NULL) { /* send */
         rc = MCA_PML_CALL(send(sendbuf, sendcount, sendtype, dest,
                                sendtag, MCA_PML_BASE_SEND_STANDARD, comm));
-        OMPI_ERRHANDLER_CHECK(rc, comm, rc, FUNC_NAME);
+        /* If ULFM is enabled we need to wait for the posted receive to complete */
+#if !OPAL_ENABLE_FT_MPI
+        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
+#endif  /* OPAL_ENABLE_FT_MPI */
     }
 
     if (source != MPI_PROC_NULL) { /* wait for recv */
-        rc = ompi_request_wait(&req, status);
+        rc1 = ompi_request_wait(&req, status);
     } else {
         if (MPI_STATUS_IGNORE != status) {
             *status = ompi_request_empty.req_status;
         }
-        rc = MPI_SUCCESS;
+        rc1 = MPI_SUCCESS;
+    }
+    if( MPI_SUCCESS == rc ) {
+        if( MPI_SUCCESS != rc1 )
+            rc = rc1;
     }
     OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 }
