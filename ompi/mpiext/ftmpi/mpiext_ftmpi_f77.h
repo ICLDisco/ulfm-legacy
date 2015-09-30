@@ -9,6 +9,7 @@
 ! $HEADER$
 !
 
+include 'mpif.h'
 !
 ! Error codes
 !
