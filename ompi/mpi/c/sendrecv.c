@@ -81,8 +81,7 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
          */
         if( !ompi_comm_iface_p2p_check_proc(comm, dest, &rc) ) {
             if( MPI_STATUS_IGNORE != status ) {
-                status->MPI_SOURCE = dest;
-                status->MPI_TAG    = sendtag;
+                *status = ompi_request_empty.req_status;
                 status->MPI_ERROR  = rc;
             }
             OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
@@ -128,9 +127,8 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     }
     if( OPAL_UNLIKELY(MPI_SUCCESS != rcs) ) {
         rc = rcs;
-        if (MPI_STATUS_IGNORE != status) {
-            status->MPI_SOURCE = dest;
-            status->MPI_TAG    = sendtag;
+        if( MPI_STATUS_IGNORE != status ) {
+            *status = ompi_request_empty.req_status;
             status->MPI_ERROR  = rc;
         }
     } 
