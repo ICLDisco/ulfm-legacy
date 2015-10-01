@@ -129,7 +129,7 @@ static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, 
             /* This process is dead, therefore this request is complete */
             opal_output_verbose(10, ompi_ftmpi_output_handle,
                                 "Recv_request_cancel: cancel granted for request %p because peer %d is dead\n",
-                                request, request->req_recv.req_base.req_peer);
+                                (void*)request, request->req_recv.req_base.req_peer);
             OPAL_THREAD_LOCK(&ompi_request_lock);
             ompi_request->req_status._cancelled = true;
             OPAL_THREAD_UNLOCK(&ompi_request_lock);
@@ -153,13 +153,13 @@ static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, 
 #endif
         opal_output_verbose(10, ompi_ftmpi_output_handle,
                             "Recv_request_cancel: cancel denied for request %p because it has matched peer %d\n",
-                            request, request->req_recv.req_base.req_peer);
+                            (void*)request, request->req_recv.req_base.req_peer);
         return OMPI_SUCCESS;
     }
     OPAL_THREAD_UNLOCK(&comm->c_pml_comm->matching_lock);
     opal_output_verbose(10, ompi_ftmpi_output_handle,
                         "Recv_request_cancel: cancel granted for request %p because it has not matched\n",
-                        request);
+                        (void*)request);
     /**
      * As now the PML is done with this request we have to force the pml_complete
      * to true. Otherwise, the request will never be freed.

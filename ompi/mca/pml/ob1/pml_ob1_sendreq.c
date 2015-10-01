@@ -148,7 +148,7 @@ static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int c
          */
         opal_output_verbose(10, ompi_ftmpi_output_handle,
                                 "Send_request_cancel: cancel granted for request %p because peer %d is dead\n",
-                                request, request->req_peer);
+                                (void*)request, request->req_peer);
         OPAL_THREAD_LOCK(&ompi_request_lock);
         request->req_status._cancelled = true;
         OPAL_THREAD_UNLOCK(&ompi_request_lock);
@@ -161,16 +161,16 @@ static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int c
             /* This request is in a quiet state it can be cancelled here */
             opal_output_verbose(10, ompi_ftmpi_output_handle,
                                 "Send_request_cancel: cancel granded for request %p because comm cid %d is revoked\n",
-                                request, comm->c_contextid);
+                                (void*)request, comm->c_contextid);
             OPAL_THREAD_LOCK(&ompi_request_lock);
             request->req_status._cancelled = true;
             OPAL_THREAD_UNLOCK(&ompi_request_lock);
             send_request_pml_complete(pml_req);
-            //mca_pml_ob1_free_rdma_resources(pml_req);
+            /*mca_pml_ob1_free_rdma_resources(pml_req);*/
         } else {
             opal_output_verbose(10, ompi_ftmpi_output_handle, 
                                 "Send_request_cancel: cancel denied for request %p, comm cid %d is revoked, but request state is ongoing\n",
-                                request, comm->c_contextid);
+                                (void*)request, comm->c_contextid);
         }
     }
 #endif  /* OPAL_ENABLE_FT_MPI */
