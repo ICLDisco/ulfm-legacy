@@ -155,24 +155,6 @@ static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int c
         send_request_pml_complete(pml_req);
         return OMPI_SUCCESS;
     }
-    if( ompi_comm_is_revoked(comm) ) {
-        mca_pml_ob1_send_request_t* pml_req = (mca_pml_ob1_send_request_t*)request;
-        if( 0 == pml_req->req_state ) {
-            /* This request is in a quiet state it can be cancelled here */
-            opal_output_verbose(10, ompi_ftmpi_output_handle,
-                                "Send_request_cancel: cancel granded for request %p because comm cid %d is revoked\n",
-                                (void*)request, comm->c_contextid);
-            OPAL_THREAD_LOCK(&ompi_request_lock);
-            request->req_status._cancelled = true;
-            OPAL_THREAD_UNLOCK(&ompi_request_lock);
-            send_request_pml_complete(pml_req);
-            /*mca_pml_ob1_free_rdma_resources(pml_req);*/
-        } else {
-            opal_output_verbose(10, ompi_ftmpi_output_handle, 
-                                "Send_request_cancel: cancel denied for request %p, comm cid %d is revoked, but request state is ongoing\n",
-                                (void*)request, comm->c_contextid);
-        }
-    }
 #endif  /* OPAL_ENABLE_FT_MPI */
     /* we dont cancel send requests by now */
     return OMPI_SUCCESS;

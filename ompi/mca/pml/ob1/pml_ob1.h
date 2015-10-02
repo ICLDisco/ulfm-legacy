@@ -97,6 +97,12 @@ extern int mca_pml_ob1_del_comm(
     struct ompi_communicator_t* comm
 );
 
+#if OPAL_ENABLE_FT_MPI
+extern int mca_pml_ob1_revoke_comm(
+    struct ompi_communicator_t* comm
+);
+#endif
+
 extern int mca_pml_ob1_add_procs(
     struct ompi_proc_t **procs,
     size_t nprocs

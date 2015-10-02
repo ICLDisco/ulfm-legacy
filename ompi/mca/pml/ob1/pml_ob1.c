@@ -58,6 +58,9 @@ mca_pml_ob1_t mca_pml_ob1 = {
         mca_pml_ob1_progress,
         mca_pml_ob1_add_comm,
         mca_pml_ob1_del_comm,
+#if OPAL_ENABLE_FT_MPI
+        mca_pml_ob1_revoke_comm,
+#endif
         mca_pml_ob1_irecv_init,
         mca_pml_ob1_irecv,
         mca_pml_ob1_recv,
