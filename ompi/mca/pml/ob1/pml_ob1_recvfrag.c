@@ -135,9 +135,17 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
         return;
     }
     comm = (mca_pml_ob1_comm_t *)comm_ptr->c_pml_comm;
-    
+
     /* source sequence number */
     proc = &comm->procs[hdr->hdr_src];
+
+#if OPAL_ENABLE_FT_MPI
+    if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm_ptr)) ) {
+        /* if it's a TYPE_MATCH, the sender is not expecting anything from use
+         * so we are done. */
+        return;
+    }
+#endif
  
     /* We generate the MSG_ARRIVED event as soon as the PML is aware
      * of a matching fragment arrival. Independing if it is received
@@ -299,7 +307,18 @@ void mca_pml_ob1_recv_frag_callback_ack(mca_btl_base_module_t* btl,
     ob1_hdr_ntoh(hdr, MCA_PML_OB1_HDR_TYPE_ACK);
     sendreq = (mca_pml_ob1_send_request_t*)hdr->hdr_ack.hdr_src_req.pval;
     sendreq->req_recv = hdr->hdr_ack.hdr_dst_req;
-    
+
+#if OPAL_ENABLE_FT_MPI
+    /* if the req_recv is NULL, the comm has been revoked at the receiver */
+    if( OPAL_UNLIKELY(NULL == sendreq->req_recv.pval) ) {
+        sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_REVOKED;
+        send_request_pml_complete( sendreq );
+        /* TODO: we could revoke comm localy here too, maybe, it will happen
+         * anyway, but maybe it's faster? */
+        return;
+    }
+#endif /*OPAL_ENABLE_FT_MPI*/
+
     /* if the request should be delivered entirely by copy in/out
      * then throttle sends */
     if(hdr->hdr_common.hdr_flags & MCA_PML_OB1_HDR_FLAGS_NORDMA)
@@ -607,6 +626,19 @@ static int mca_pml_ob1_recv_frag_match( mca_btl_base_module_t *btl,
     /* source sequence number */
     frag_msg_seq = hdr->hdr_seq;
     proc = &comm->procs[hdr->hdr_src];
+
+#if OPAL_ENABLE_FT_MPI
+    if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm_ptr)) ) {
+        if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
+            assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type || 
+                    MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
+            /* Send a ACK with a NULL request to signify revocation */
+            mca_pml_ob1_rendezvous_hdr_t* hdr_rndv = (mca_pml_ob1_rendezvous_hdr_t*) hdr;
+            mca_pml_ob1_recv_request_ack_send(proc->ompi_proc, hdr_rndv->hdr_src_req.lval, NULL, 0, false);
+        }
+        return;
+    }
+#endif
 
     /**
      * We generate the MSG_ARRIVED event as soon as the PML is aware of a matching

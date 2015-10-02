@@ -175,6 +175,8 @@ static int ompi_comm_revoke_internal_local(ompi_revoke_message_t* msg) {
     comm->comm_revoked              = true;
     comm->collectives_force_error   = true;
     comm->any_source_enabled        = false;
+    /* purge the communicator unexpected fragments and matching logic */
+    MCA_PML_CALL(revoke_comm(comm));
     /* Signal the point-to-point stack to recheck requests */
     OPAL_THREAD_LOCK(&ompi_request_lock);
     opal_condition_signal(&ompi_request_cond);
