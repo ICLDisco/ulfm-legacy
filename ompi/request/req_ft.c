@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -83,7 +84,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
 
         opal_output_verbose(10, ompi_ftmpi_output_handle,
                             "%s ompi_request_state_ok: %p Communicator %s(%d) has been revoked!",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), req,
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), (void*)req,
                             req->req_mpi_object.comm->c_name, req->req_mpi_object.comm->c_contextid);
         goto return_with_error;
     }
@@ -108,7 +109,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
         if( MPI_SUCCESS != req->req_status.MPI_ERROR ) {
             opal_output_verbose(10, ompi_ftmpi_output_handle,
                                 "%s ompi_request_state_ok: Request %p in comm %s(%d) peer ANY_SOURCE %s!",
-                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), req,
+                                ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), (void*)req,
                                 req->req_mpi_object.comm->c_name, req->req_mpi_object.comm->c_contextid,
                                 ompi_mpi_errnum_get_string(req->req_status.MPI_ERROR));
             goto return_with_error;
@@ -125,7 +126,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
 
         opal_output_verbose(10, ompi_ftmpi_output_handle,
                             "%s ompi_request_state_ok: Request %p in comm %s(%d) peer %3d failed - Ret %s",
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), req,
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), (void*)req,
                             req->req_mpi_object.comm->c_name, req->req_mpi_object.comm->c_contextid,
                             req->req_status.MPI_SOURCE,
                             ompi_mpi_errnum_get_string(req->req_status.MPI_ERROR));
@@ -155,9 +156,10 @@ bool ompi_request_state_ok(ompi_request_t *req)
 
  return_with_error:
     if( MPI_ERR_PENDING != req->req_status.MPI_ERROR ) {
+        int tag = req->req_tag;
         opal_output_verbose(10, ompi_ftmpi_output_handle,
                             "%s ompi_request_state_ok: Request %p cancelled due to completion with error %d\n", 
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), req, req->req_status.MPI_ERROR);
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), (void*)req, req->req_status.MPI_ERROR);
 #if 0
         { int btsize=32; void*bt[32]={NULL}; btsize=backtrace(bt,btsize);
           backtrace_symbols_fd(bt,btsize, ompi_ftmpi_output_handle);
@@ -168,7 +170,6 @@ bool ompi_request_state_ok(ompi_request_t *req)
          * requests we can't return with an error before the buffer is unpinned
          */
         ompi_request_cancel(req);
-        int tag = req->req_tag;
         req->req_tag = MCA_COLL_BASE_TAG_AGREEMENT; /* make it an FT request so it is not checked for errors */
         ompi_request_wait_completion(req);
         req->req_tag = tag;
