@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2014-2015 The University of Tennessee and The University
@@ -39,27 +40,6 @@ int coll_ftbasic_debug_rank_may_fail = 0;
 /*************************************
  * Local Functions
  *************************************/
-static int coll_ftbasic_agreement_base_setup_common(ompi_communicator_t* comm,
-                                                    opal_bitmap_t *local_bitmap,
-                                                    int *flag,
-                                                    mca_coll_ftbasic_module_t *ftbasic_module);
-static int coll_ftbasic_agreement_base_finish_common(ompi_communicator_t* comm,
-                                                     opal_bitmap_t *local_bitmap,
-                                                     ompi_group_t **group,
-                                                     int *flag,
-                                                     mca_coll_ftbasic_module_t *ftbasic_module);
-
-#if OPAL_ENABLE_DEBUG
-static char * get_local_bitmap_str(ompi_communicator_t* comm);
-#endif
-
-
-static bool comm_help_listener_started = false;
-static void comm_help_notice_recv(int status,
-                                  orte_process_name_t* sender,
-                                  opal_buffer_t* buffer,
-                                  orte_rml_tag_t tag,
-                                  void* cbdata);
 
 /*************************************
  * Agreement Object Support
@@ -71,8 +51,6 @@ static void mca_coll_ftbasic_agreement_construct(mca_coll_ftbasic_agreement_t *v
 
 static void mca_coll_ftbasic_agreement_destruct(mca_coll_ftbasic_agreement_t *v_info)
 {
-    opal_list_item_t* item = NULL;
-
 #ifdef IAGREE
     if( NULL != v_info->cur_request ) {
         OBJ_RELEASE(v_info->cur_request);
@@ -92,8 +70,6 @@ OBJ_CLASS_INSTANCE(mca_coll_ftbasic_agreement_t,
  *************************************/
 int mca_coll_ftbasic_agreement_init(ompi_communicator_t *comm, mca_coll_ftbasic_module_t *module)
 {
-    int ret;
-
     switch( mca_coll_ftbasic_cur_agreement_method ) {
     case COLL_FTBASIC_EARLY_RETURNING:
         mca_coll_ftbasic_agreement_era_comm_init(comm, module);
@@ -107,8 +83,6 @@ int mca_coll_ftbasic_agreement_init(ompi_communicator_t *comm, mca_coll_ftbasic_
 
 int mca_coll_ftbasic_agreement_finalize(mca_coll_ftbasic_module_t *module)
 {
-    int ret;
-
     switch( mca_coll_ftbasic_cur_agreement_method ) {
     case COLL_FTBASIC_EARLY_RETURNING:
         mca_coll_ftbasic_agreement_era_comm_finalize(module);

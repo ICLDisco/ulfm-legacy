@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2014-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
@@ -463,8 +464,6 @@ static void era_debug_print_group(int lvl, ompi_group_t *group, ompi_communicato
 #define era_debug_print_group(g, c, i, h) do {} while(0)
 #endif
 
-static int era_comm_to_alive(era_agreement_info_t *ci, int r_in_comm);
-
 static void era_update_return_value(era_agreement_info_t *ci, int nb_acked, int *acked) {
     ompi_group_t *ack_after_agreement_group, *tmp_sub_group;
     int r, abag_array[3];
@@ -823,9 +822,8 @@ static void era_ci_get_clean_ags_copy(era_agreement_info_t *ci)
 
 static void era_agreement_info_set_comm(era_agreement_info_t *ci, ompi_communicator_t *comm, ompi_group_t *acked_group)
 {
-    ompi_group_t *tmp_grp1, *tmp_grp2;
     int *src_ra;
-    int r, s, t, grp_size;
+    int r, grp_size;
 
     assert( comm->c_contextid == ci->agreement_id.ERAID_FIELDS.contextid );
     assert( comm->c_epoch     == ci->agreement_id.ERAID_FIELDS.epoch     );
@@ -942,7 +940,7 @@ static int __tree_errors;
 
 static int era_tree_check_node(era_tree_t *tree, int tree_size, int r, int display)
 {
-    int c, nb = 0, p, f, i;
+    int c, nb = 0, p, f;
 
     if(display) {
         fprintf(stderr, "TC %s -- %d/%d (%d) -- Parent: %d\n",
@@ -1428,7 +1426,7 @@ static int era_parent(era_agreement_info_t *ci)
 {
     int r_in_comm = ompi_comm_rank(ci->comm);
     int r_in_tree = era_tree_rank_from_comm_rank(ci, r_in_comm);
-    int p_in_comm, p_in_tree, s_in_tree, c_in_tree;
+    int p_in_comm, p_in_tree;
 
     while(1) {
         p_in_tree = ci->ags->tree[r_in_tree].parent;
@@ -1445,8 +1443,8 @@ static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm)
 {
     ompi_communicator_t *comm = ci->comm;
     int prev_child_in_tree;
-    int r_in_tree, c_in_tree, cc_in_tree, c_in_comm;
-    int s_in_tree, s_in_comm, sc_in_tree;
+    int r_in_tree, c_in_tree, c_in_comm;
+    int s_in_tree, s_in_comm;
 
     assert(NULL != comm);
 
@@ -1482,7 +1480,6 @@ static int era_next_child(era_agreement_info_t *ci, int prev_child_in_comm)
 static void era_collect_passed_agreements(era_identifier_t agreement_id, uint16_t min_aid, uint16_t max_aid)
 {
     void *value;
-    uint64_t key;
     int r;
 
     /* Garbage collect agreements that have been decided by all */
@@ -1522,7 +1519,6 @@ static void era_collect_passed_agreements(era_identifier_t agreement_id, uint16_
 static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
 {
     ompi_communicator_t *comm;
-    int *new_agreed;
     era_rank_item_t *rl;
     int r, s, dead_size;
     void *value;
@@ -2738,7 +2734,6 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
                                              &key64,
                                              &value, &node) == OPAL_SUCCESS ) {
         do {
-            av = (era_value_t *)value;
 #if OPAL_ENABLE_DEBUG
             era_identifier_t pid;
             pid.ERAID_KEY = key64;
@@ -2750,6 +2745,7 @@ int mca_coll_ftbasic_agreement_era_finalize(void)
                                  pid.ERAID_FIELDS.epoch,
                                  pid.ERAID_FIELDS.agreementid));
 #endif
+            av = (era_value_t *)value;
             OBJ_RELEASE(av);
         } while( opal_hash_table_get_next_key_uint64(&era_passed_agreements,
                                                      &key64, &value, 
@@ -2821,7 +2817,6 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
     era_value_t agreement_value;
     era_value_t *pa;
     mca_coll_ftbasic_agreement_t *ag_info;
-    int i, ret;
 
     ag_info = ( (mca_coll_ftbasic_module_t *)module )->agreement_info;
     assert( NULL != ag_info );
