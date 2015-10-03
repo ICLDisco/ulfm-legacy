@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2013-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
@@ -25,7 +26,7 @@
 #include MCA_timer_IMPLEMENTATION_HEADER
 #include "coll_ftbasic.h"
 
-#if OPAL_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG && 0
 #define PROGRESS_FAILURE_PROB 0.05
 extern int coll_ftbasic_debug_rank_may_fail;
 #endif
