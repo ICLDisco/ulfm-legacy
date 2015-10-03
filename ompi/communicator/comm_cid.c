@@ -659,7 +659,7 @@ static int ompi_comm_allreduce_inter ( int *inbuf, int *outbuf,
                                        int send_first )
 {
     int local_rank, rsize;
-    int i, rc;
+    int rc;
     int *sbuf;
     int *tmpbuf=NULL;
     int *rcounts=NULL, scount=0;
@@ -758,7 +758,6 @@ static int ompi_comm_allreduce_intra_bridge (int *inbuf, int *outbuf,
 {
     int *tmpbuf=NULL;
     int local_rank;
-    int i;
     int rc;
     int local_leader, remote_leader;
 
@@ -848,7 +847,6 @@ static int ompi_comm_allreduce_intra_oob (int *inbuf, int *outbuf,
                                           int send_first )
 {
     int *tmpbuf=NULL;
-    int i;
     int rc;
     int local_leader, local_rank;
     orte_process_name_t *remote_leader=NULL;
