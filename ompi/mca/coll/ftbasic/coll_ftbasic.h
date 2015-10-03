@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -66,7 +67,7 @@ OMPI_DECLSPEC extern int coll_ftbasic_era_debug_rank_may_fail;
 
 enum mca_coll_ftbasic_agreement_method_t {
     COLL_FTBASIC_EARLY_TERMINATION = 0,
-    COLL_FTBASIC_EARLY_RETURNING   = 1,
+    COLL_FTBASIC_EARLY_RETURNING   = 1
 };
 typedef enum mca_coll_ftbasic_agreement_method_t mca_coll_ftbasic_agreement_method_t;
 
