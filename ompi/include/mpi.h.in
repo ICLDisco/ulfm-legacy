@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2010 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
@@ -565,8 +565,9 @@ enum {
 #define MPI_ERR_UNSUPPORTED_OPERATION 52
 #define MPI_ERR_WIN                   53
 #define MPI_ERR_PROC_FAILED           54
-#define MPI_ERR_REVOKED               55
-#define MPI_ERR_LASTCODE              56
+#define MPI_ERR_PROC_FAILED_PENDING   55
+#define MPI_ERR_REVOKED               56
+#define MPI_ERR_LASTCODE              57
 
 #define MPI_ERR_SYSRESOURCE          -2
 

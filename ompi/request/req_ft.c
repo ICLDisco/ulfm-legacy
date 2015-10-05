@@ -61,7 +61,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
     }
 
     /*
-     * Toggle 'off' the MPI_ANY_SOURCE MPI_ERR_PENDING flag
+     * Toggle 'off' the MPI_ANY_SOURCE MPI_ERR_PROC_FAILED_PENDING flag
      */
     req->req_any_source_pending = false;
 
@@ -98,7 +98,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
     /* If any_source but not FT related then the request is always marked for return */
     if( MPI_ANY_SOURCE == req->req_peer && !ompi_comm_is_any_source_enabled(req->req_mpi_object.comm)) {
         if( !REQUEST_IS_FT_RELATED(req) )
-            req->req_status.MPI_ERROR  = MPI_ERR_PENDING;
+            req->req_status.MPI_ERROR  = MPI_ERR_PROC_FAILED_PENDING;
         /* If blocking request escalate the error */
         if( (MCA_PML_REQUEST_MPROBE == ((mca_pml_base_request_t*)req)->req_type) ||
             (MCA_PML_REQUEST_RECV == ((mca_pml_base_request_t*)req)->req_type)   ||
@@ -155,7 +155,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
     return true;
 
  return_with_error:
-    if( MPI_ERR_PENDING != req->req_status.MPI_ERROR ) {
+    if( MPI_ERR_PROC_FAILED_PENDING != req->req_status.MPI_ERROR ) {
         int tag = req->req_tag;
         opal_output_verbose(10, ompi_ftmpi_output_handle,
                             "%s ompi_request_state_ok: Request %p cancelled due to completion with error %d\n", 

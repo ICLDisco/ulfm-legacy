@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart,
@@ -53,7 +53,7 @@ int ompi_request_default_test( ompi_request_t ** rptr,
         if( !ompi_request_state_ok(request) &&
             request->req_any_source_pending ) {
             *completed = false;
-            return MPI_ERR_PENDING;
+            return MPI_ERR_PROC_FAILED_PENDING;
         }
     }
 #endif
@@ -137,7 +137,7 @@ int ompi_request_default_test_any(
                 request->req_any_source_pending ) {
                 *index = i;
                 *completed = false;
-                return MPI_ERR_PENDING;
+                return MPI_ERR_PROC_FAILED_PENDING;
             }
         }
 #endif /* OPAL_ENABLE_FT_MPI */
@@ -225,7 +225,7 @@ int ompi_request_default_test_all(
                 request->req_any_source_pending ) {
                 if (MPI_STATUSES_IGNORE != statuses) {
                     OMPI_STATUS_SET(&statuses[i], &request->req_status);
-                    statuses[i].MPI_ERROR = MPI_ERR_PENDING;
+                    statuses[i].MPI_ERROR = MPI_ERR_PROC_FAILED_PENDING;
                 }
                 *completed = false;
                 return MPI_ERR_IN_STATUS;
@@ -381,7 +381,7 @@ int ompi_request_default_test_some(
         if( request->req_any_source_pending ) {
             if (MPI_STATUSES_IGNORE != statuses) {
                 OMPI_STATUS_SET(&statuses[i], &request->req_status);
-                statuses[i].MPI_ERROR = MPI_ERR_PENDING;
+                statuses[i].MPI_ERROR = MPI_ERR_PROC_FAILED_PENDING;
             }
             rc = MPI_ERR_IN_STATUS;
             continue;

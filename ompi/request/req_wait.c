@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2010 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -51,7 +51,7 @@ int ompi_request_default_wait(
             OMPI_STATUS_SET_COUNT(&status->_ucount, &req->req_status._ucount);
             status->_cancelled = req->req_status._cancelled;
         }
-        return MPI_ERR_PENDING;
+        return MPI_ERR_PROC_FAILED_PENDING;
     }
 #endif /* OPAL_ENABLE_FT_MPI */
         
@@ -175,7 +175,7 @@ int ompi_request_default_wait_any(
                             OMPI_STATUS_SET(status, &request->req_status);
                             status->MPI_ERROR = old_error;
                         }
-                        return MPI_ERR_PENDING;
+                        return MPI_ERR_PROC_FAILED_PENDING;
                     }
                     completed = i;
                     break;
@@ -406,6 +406,12 @@ int ompi_request_default_wait_all( size_t count,
             if( OPAL_UNLIKELY(0 < failed) ) {
                 if( !request->req_complete ) {
                     statuses[i].MPI_ERROR = MPI_ERR_PENDING;
+#if OPAL_ENABLE_FT_MPI
+                    /* PROC_FAILED_PENDING errors are also not completed yet */
+                    if( MPI_ERR_PROC_FAILED_PENDING == requests[i]->req_status.MPI_ERROR ) {
+                        statuses[i].MPI_ERROR = MPI_ERR_PROC_FAILED_PENDING;
+                    }
+#endif
                     mpi_error = MPI_ERR_IN_STATUS;
                     continue;
                 }
@@ -626,7 +632,7 @@ finished:
                 rc = MPI_ERR_IN_STATUS;
                 if (MPI_STATUSES_IGNORE != statuses) {
                     OMPI_STATUS_SET(&statuses[i], &request->req_status);
-                    statuses[i].MPI_ERROR = MPI_ERR_PENDING;
+                    statuses[i].MPI_ERROR = MPI_ERR_PROC_FAILED_PENDING;
                 } else {
                     if( (MPI_ERR_PROC_FAILED == request->req_status.MPI_ERROR) ||
                         (MPI_ERR_REVOKED == request->req_status.MPI_ERROR) ) {
