@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -94,6 +94,7 @@ ompi_mpi_errcode_t ompi_err_unsupported_operation;
 ompi_mpi_errcode_t ompi_err_win;
 #if OPAL_ENABLE_FT_MPI
 ompi_mpi_errcode_t ompi_err_proc_fail_stop;
+ompi_mpi_errcode_t ompi_err_proc_fail_pending;
 ompi_mpi_errcode_t ompi_err_revoked;
 #endif
 
@@ -179,6 +180,7 @@ int ompi_mpi_errcode_init (void)
     CONSTRUCT_ERRCODE( ompi_err_win, MPI_ERR_WIN, "MPI_ERR_WIN: invalid window" );
 #if OPAL_ENABLE_FT_MPI
     CONSTRUCT_ERRCODE( ompi_err_proc_fail_stop,  MPI_ERR_PROC_FAILED,  "MPI_ERR_PROC_FAILED: Process Failure" );
+    CONSTRUCT_ERRCODE( ompi_err_proc_fail_pending,  MPI_ERR_PROC_FAILED_PENDING,  "MPI_ERR_PROC_FAILED_PENDING: Process Failure during an MPI_ANY_SOURCE non-blocking receive, request is still active" );
     CONSTRUCT_ERRCODE( ompi_err_revoked,  MPI_ERR_REVOKED,  "MPI_ERR_REVOKED: Communication Object Revoked" );
 #endif
 
