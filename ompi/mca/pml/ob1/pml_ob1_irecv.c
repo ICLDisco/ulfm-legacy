@@ -108,10 +108,15 @@ int mca_pml_ob1_recv(void *addr,
     MCA_PML_OB1_RECV_REQUEST_START(recvreq);
     ompi_request_wait_completion(&recvreq->req_recv.req_base.req_ompi);
 
+    rc = recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR;
+#if OPAL_ENABLE_FT_MPI
+    if( OPAL_UNLIKELY( MPI_ERR_PROC_FAILED_PENDING == rc )) {
+        rc = recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_PROC_FAILED;
+    }
+#endif
     if (NULL != status) {  /* return status */
         OMPI_STATUS_SET(status, &recvreq->req_recv.req_base.req_ompi.req_status);
     }
-    rc = recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR;
     ompi_request_free( (ompi_request_t**)&recvreq );
     return rc;
 }
