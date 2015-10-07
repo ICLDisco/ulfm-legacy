@@ -1016,24 +1016,28 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm ) {
     OPAL_THREAD_LOCK(&comm->matching_lock);
     /* loop over all procs in that comm */
     for (i = 0; i < comm->num_procs; i++) {
-        /* loop over unexpected frags for this proc */
-        opal_list_t* unexpected_frags = &proc[i].unexpected_frags;
+        opal_list_t* frags_list;
         opal_list_item_t *it;
-        
-        while( NULL != (it = opal_list_remove_first( unexpected_frags )) ) {
-            mca_pml_ob1_recv_frag_t* frag = (mca_pml_ob1_recv_frag_t*)it;
-            mca_pml_ob1_hdr_t* hdr = (mca_pml_ob1_hdr_t*)frag->segments->seg_addr.pval;
+        /* loop over unexpected/cantmatch frags for this proc */
+        for ( frags_list = &proc[i].unexpected_frags; 
+              frags_list != &proc[i].frags_cant_match;
+              frags_list = &proc[i].frags_cant_match ) {
+            /* remove the frag from the list, ack if needed to remote cancel the send */
+            while( NULL != (it = opal_list_remove_first( frags_list )) ) {
+                mca_pml_ob1_recv_frag_t* frag = (mca_pml_ob1_recv_frag_t*)it;
+                mca_pml_ob1_hdr_t* hdr = (mca_pml_ob1_hdr_t*)frag->segments->seg_addr.pval;
             
-            if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
-                assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type ||
-                        MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
-                /* Send a ACK with a NULL request to signify revocation */
-                mca_pml_ob1_recv_request_ack_send(proc[i].ompi_proc, hdr->hdr_rndv.hdr_src_req.lval, NULL, 0, false);
-            }
-            else {
-                /* if it's a TYPE_MATCH, the sender is not expecting anything
-                 * from us. So we are done. */
-                continue;
+                if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
+                    assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type ||
+                            MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
+                    /* Send a ACK with a NULL request to signify revocation */
+                    mca_pml_ob1_recv_request_ack_send(proc[i].ompi_proc, hdr->hdr_rndv.hdr_src_req.lval, NULL, 0, false);
+                }
+                else {
+                    /* if it's a TYPE_MATCH, the sender is not expecting anything
+                     * from us. So we are done. */
+                    continue;
+                }
             }
         }
     }
