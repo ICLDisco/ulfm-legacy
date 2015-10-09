@@ -13,9 +13,10 @@
 ! Error codes
 !
        integer MPIX_ERR_PROC_FAILED
+       integer MPIX_ERR_PROC_FAILED_PENDING
        integer MPIX_ERR_REVOKED
 ! These values must match the same define in mpif-common.h
-       parameter (MPIX_ERR_PROC_FAILED = 54)
-       parameter (MPIX_ERR_PROC_FAILED = 55)
-       parameter (MPIX_ERR_REVOKED     = 56)
+       parameter (MPIX_ERR_PROC_FAILED         = 54)
+       parameter (MPIX_ERR_PROC_FAILED_PENDING = 55)
+       parameter (MPIX_ERR_REVOKED             = 56)
 
