@@ -631,6 +631,8 @@ static void era_merge_new_dead_list(era_agreement_info_t *ci, int nb_src, int *s
     d = 0;
     s = 0;
     while(d < nb_dst && s < nb_src) {
+        assert( (NULL == ci->comm) || (dst[d] != ci->comm->c_local_group->grp_my_rank) );
+        assert( (NULL == ci->comm) || (src[s] != ci->comm->c_local_group->grp_my_rank) );
         if( dst[d] == src[s] ) {
             merge[nb_merge++] = dst[d];
             d++;
@@ -647,10 +649,14 @@ static void era_merge_new_dead_list(era_agreement_info_t *ci, int nb_src, int *s
             continue;
         }
     }
-    while( d < nb_dst )
+    while( d < nb_dst ) {
+        assert( (ci->comm == NULL) || (dst[d] != ci->comm->c_local_group->grp_my_rank) );
         merge[nb_merge++] = dst[d++];
-    while( s < nb_src )
+    }
+    while( s < nb_src ) {
+        assert( (ci->comm == NULL) || (src[s] != ci->comm->c_local_group->grp_my_rank) );
         merge[nb_merge++] = src[s++];
+    }
 
     if( nb_merge > nb_dst ) {
         ci->current_value->new_dead_array = (int*)realloc(ci->current_value->new_dead_array, nb_merge*sizeof(int));
@@ -752,6 +758,10 @@ static void era_update_new_dead_list(era_agreement_info_t *ci)
         for(_i = 0; _i < ags->afr_size; _i++)
             for(_j = 0; _j < r; _j++)
                 assert(ra[_j] != ags->agreed_failed_ranks[_i]);
+        for(_i = 0; _i < ags->afr_size; _i++)
+            assert( ags->agreed_failed_ranks[_i] != comm->c_local_group->grp_my_rank );
+        for(_i = 0; _i < r; _i++)
+            assert( ra[_i] != comm->c_local_group->grp_my_rank );
     }
 #endif
 
@@ -789,6 +799,7 @@ static void era_ci_get_clean_ags_copy(era_agreement_info_t *ci)
                 new->tree = (era_tree_t*)malloc(new->tree_size * sizeof(era_tree_t));
                 memcpy(new->tree, old->tree, new->tree_size * sizeof(era_tree_t));
             }
+
             ci->comm->agreement_specific = &new->parent;
 
             old->ags_status = 0; /**< The old is clean w.r.t. the tree, and it does not need the AFR */
@@ -1810,6 +1821,8 @@ static void era_mark_process_failed(era_agreement_info_t *ci, int rank)
     era_rank_item_t *rl;
     era_identifier_t era_id;
 
+    assert( ci->comm == NULL || (ci->comm->c_local_group->grp_my_rank != rank) );
+    
     if( ci->status > NOT_CONTRIBUTED ) {
         /* I may not have sent up yet (or I'm going to re-send up because of failures), 
          * and since I already contributed, this failure is not acknowledged yet
