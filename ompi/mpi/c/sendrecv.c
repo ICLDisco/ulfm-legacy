@@ -117,8 +117,9 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     if (dest != MPI_PROC_NULL) { /* send */
         rc = MCA_PML_CALL(send(sendbuf, sendcount, sendtype, dest,
                                sendtag, MCA_PML_BASE_SEND_STANDARD, comm));
-        /* If ULFM is enabled we need to wait for the posted receive to complete */
 #if !OPAL_ENABLE_FT_MPI
+        /* If ULFM is enabled we need to wait for the posted receive to 
+         * complete, hence we cannot return here */
         OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
 #else
         rcs = rc;
@@ -127,6 +128,16 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     if (source != MPI_PROC_NULL) { /* wait for recv */
         rc = ompi_request_wait(&req, status);
+#if OPAL_ENABLE_FT_MPI
+        /* Sendrecv never returns ERR_PROC_FAILED_PENDING because it is
+         * blocking. Lets complete now that irecv and promote the error 
+         * to ERR_PROC_FAILED */
+        if( OPAL_UNLIKELY(MPI_ERR_PROC_FAILED_PENDING == rc) ) {
+            ompi_request_cancel(req);
+            ompi_request_wait(&req, MPI_STATUS_IGNORE);
+            rc = MPI_ERR_PROC_FAILED;
+        }
+#endif
     } else {
         if (MPI_STATUS_IGNORE != status) {
             *status = ompi_request_empty.req_status;
