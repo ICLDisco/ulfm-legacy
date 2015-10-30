@@ -165,6 +165,14 @@ int mca_coll_ftbasic_iagreement_era_intra(ompi_communicator_t* comm,
                                           void *contrib,
                                           mca_coll_base_module_t *module,
                                           ompi_request_t **request);
+int
+mca_coll_ftbasic_agreement_era_inter(ompi_communicator_t* comm,
+                                     ompi_group_t **group,
+                                     ompi_op_t *op,
+                                     ompi_datatype_t *dt,
+                                     int dt_count,
+                                     void *contrib,
+                                     mca_coll_base_module_t *module);
 
 /*
  * Utility functions
