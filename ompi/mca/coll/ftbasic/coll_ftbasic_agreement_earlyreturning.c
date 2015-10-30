@@ -3038,26 +3038,34 @@ int mca_coll_ftbasic_agreement_era_inter(ompi_communicator_t* comm,
                    || dt_count != 1) )
         return  MPI_ERR_INTERN;
 
-    shadowcomm = OBJ_NEW(ompi_communicator_t);
-    *shadowcomm = *comm;
-    shadowcomm->c_flags &= ~OMPI_COMM_INTER;
     high = ompi_comm_determine_first(comm, 0);
     if( high ) {
         ompi_group_union( comm->c_remote_group, comm->c_local_group, &uniongrp );
-        contriblh[0] = -1;
+        contriblh[0] = ~0;
         contriblh[1] = *(int*)contrib;
     }
     else {
         ompi_group_union( comm->c_local_group, comm->c_remote_group, &uniongrp );
         contriblh[0] = *(int*)contrib;
-        contriblh[1] = -1;
+        contriblh[1] = ~0;
     }
-    shadowcomm->c_local_group = shadowcomm->c_remote_group = uniongrp;
-    OBJ_RETAIN(uniongrp); OBJ_RETAIN(uniongrp);
-    shadowcomm->c_my_rank = ompi_group_rank(uniongrp);
-    rc = mca_coll_ftbasic_agreement_era_intra(shadowcomm, group, op, dt, dt_count*2, contriblh, module);
+    ompi_comm_set(&shadowcomm, comm,
+                  ompi_group_size(uniongrp), NULL, 0, NULL,
+                  NULL, comm->error_handler, NULL,
+                  uniongrp, NULL);
     ompi_group_free(&uniongrp);
+    shadowcomm->c_contextid = comm->c_contextid;
+    shadowcomm->c_epoch = comm->c_epoch;
+    snprintf(shadowcomm->c_name, MPI_MAX_OBJECT_NAME, "SHADOW OF %s", &comm->c_name[0]);
+    shadowcomm->any_source_offset = comm->any_source_offset;
+    shadowcomm->agreement_specific = comm->agreement_specific;
+
+    rc = mca_coll_ftbasic_agreement_era_intra(shadowcomm, group, op, dt, dt_count*2, contriblh, module);
+
+    comm->agreement_specific = shadowcomm->agreement_specific;
+    if( NULL != comm->agreement_specific ) OBJ_RETAIN(comm->agreement_specific);
     OBJ_RELEASE(shadowcomm);
+
     *(int*)contrib = high? contriblh[0]: contriblh[1];
     return rc;
 }
