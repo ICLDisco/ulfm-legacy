@@ -2653,7 +2653,20 @@ static void era_on_comm_rank_failure(ompi_communicator_t *comm, int rank, bool r
                                      ci->agreement_id.ERAID_FIELDS.epoch,
                                      ci->agreement_id.ERAID_FIELDS.agreementid,
                                      rank));
-                era_mark_process_failed(ci, rank);
+                if( OMPI_COMM_IS_INTRA(comm) ) {
+                    era_mark_process_failed(ci, rank);
+                }
+                else {
+                    int shadowrank;
+                    if( ompi_comm_determine_first(comm, 0) ) {
+                        shadowrank = remote? rank+ompi_group_size(comm->c_local_group): rank;
+                    }
+                    else {
+                        shadowrank = remote? rank: rank+ompi_group_size(comm->c_remote_group);
+                    }
+                    if( NULL != ci->comm && AGS(comm) != AGS(ci->comm) ) AGS(ci->comm)->ags_status |= AGS_AFR_DIRTY;
+                    era_mark_process_failed(ci, shadowrank);
+                }
             }
 
             value = next_value;
@@ -3031,23 +3044,23 @@ int mca_coll_ftbasic_agreement_era_inter(ompi_communicator_t* comm,
     ompi_group_t* uniongrp;
     int contriblh[2];
     int rc;
-    int high;
+    int first;
 
     if( OPAL_UNLIKELY(op != &ompi_mpi_op_band.op
                    || dt != &ompi_mpi_int.dt
                    || dt_count != 1) )
         return  MPI_ERR_INTERN;
 
-    high = ompi_comm_determine_first(comm, 0);
-    if( high ) {
-        ompi_group_union( comm->c_remote_group, comm->c_local_group, &uniongrp );
-        contriblh[0] = ~0;
-        contriblh[1] = *(int*)contrib;
-    }
-    else {
+    first = ompi_comm_determine_first(comm, 0);
+    if( first ) {
         ompi_group_union( comm->c_local_group, comm->c_remote_group, &uniongrp );
         contriblh[0] = *(int*)contrib;
         contriblh[1] = ~0;
+    }
+    else {
+        ompi_group_union( comm->c_remote_group, comm->c_local_group, &uniongrp );
+        contriblh[0] = ~0;
+        contriblh[1] = *(int*)contrib;
     }
     ompi_comm_set(&shadowcomm, comm,
                   ompi_group_size(uniongrp), NULL, 0, NULL,
@@ -3066,7 +3079,7 @@ int mca_coll_ftbasic_agreement_era_inter(ompi_communicator_t* comm,
     if( NULL != comm->agreement_specific ) OBJ_RETAIN(comm->agreement_specific);
     OBJ_RELEASE(shadowcomm);
 
-    *(int*)contrib = high? contriblh[0]: contriblh[1];
+    *(int*)contrib = first? contriblh[1]: contriblh[0];
     return rc;
 }
 
