@@ -1448,8 +1448,6 @@ int ompi_comm_determine_first ( ompi_communicator_t *intercomm, int high )
     int *rdisps;
     int scount=0;
     int rc;
-    ompi_proc_t *ourproc, *theirproc;
-    orte_ns_cmp_bitmask_t mask;
 
     rank = ompi_comm_rank        (intercomm);
     rsize= ompi_comm_remote_size (intercomm);
@@ -1488,19 +1486,28 @@ int ompi_comm_determine_first ( ompi_communicator_t *intercomm, int high )
         flag = true;
     }
     else {
-        ourproc   = ompi_group_peer_lookup(intercomm->c_local_group,0);
-        theirproc = ompi_group_peer_lookup(intercomm->c_remote_group,0);
-
-        mask = ORTE_NS_CMP_JOBID | ORTE_NS_CMP_VPID;
-        rc = orte_util_compare_name_fields(mask, &(ourproc->proc_name), &(theirproc->proc_name));
-        if ( 0 > rc ) {
-            flag = true;
-        }
-        else {
-            flag = false;
-        }
+        flag = ompi_comm_determine_first_auto(intercomm);
     }
 
+    return flag;
+}
+int ompi_comm_determine_first_auto ( ompi_communicator_t* intercomm )
+{
+    ompi_proc_t *ourproc, *theirproc;
+    orte_ns_cmp_bitmask_t mask;
+    int rc, flag;
+
+    ourproc   = ompi_group_peer_lookup(intercomm->c_local_group,0);
+    theirproc = ompi_group_peer_lookup(intercomm->c_remote_group,0);
+
+    mask = ORTE_NS_CMP_JOBID | ORTE_NS_CMP_VPID;
+    rc = orte_util_compare_name_fields(mask, &(ourproc->proc_name), &(theirproc->proc_name));
+    if ( 0 > rc ) {
+        flag = true;
+    }
+    else {
+        flag = false;
+    }
     return flag;
 }
 /********************************************************************************/

@@ -2658,7 +2658,7 @@ static void era_on_comm_rank_failure(ompi_communicator_t *comm, int rank, bool r
                 }
                 else {
                     int shadowrank;
-                    if( ompi_comm_determine_first(comm, 0) ) {
+                    if( ompi_comm_determine_first_auto(comm) ) {
                         shadowrank = remote? rank+ompi_group_size(comm->c_local_group): rank;
                     }
                     else {
@@ -3051,7 +3051,7 @@ int mca_coll_ftbasic_agreement_era_inter(ompi_communicator_t* comm,
                    || dt_count != 1) )
         return  MPI_ERR_INTERN;
 
-    first = ompi_comm_determine_first(comm, 0);
+    first = ompi_comm_determine_first_auto(comm);
     if( first ) {
         ompi_group_union( comm->c_local_group, comm->c_remote_group, &uniongrp );
         contriblh[0] = *(int*)contrib;
