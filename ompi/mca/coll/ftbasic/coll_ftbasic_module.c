@@ -5,15 +5,15 @@
  * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -55,7 +55,7 @@ mca_coll_ftbasic_init_query(bool enable_progress_threads,
  * priority we want to return.
  */
 mca_coll_base_module_t *
-mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm, 
+mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
                             int *priority)
 {
     int size;
@@ -79,7 +79,7 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
             size = ompi_comm_size(comm);
         }
         ftbasic_module->mccb_num_reqs = size * 2;
-        ftbasic_module->mccb_reqs = (ompi_request_t**) 
+        ftbasic_module->mccb_reqs = (ompi_request_t**)
             malloc(sizeof(ompi_request_t *) * ftbasic_module->mccb_num_reqs);
 
         ftbasic_module->mccb_num_statuses = size * 2; /* x2 for alltoall */
@@ -123,19 +123,29 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
      * Agreement operation setup
      * Intercommunicators not currently supported
      */
-    if( ompi_ftmpi_enabled && !OMPI_COMM_IS_INTER(comm) ) {
+    if( ompi_ftmpi_enabled ) {
         /* Init the agreement function */
         mca_coll_ftbasic_agreement_init(comm, ftbasic_module);
 
         /* Choose the correct operations */
         switch( mca_coll_ftbasic_cur_agreement_method ) {
         case COLL_FTBASIC_EARLY_TERMINATION:
-            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_eta_intra;
-            ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
+            if( OMPI_COMM_IS_INTER(comm) ) {
+                ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
+                ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
+            } else {
+                ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_eta_intra;
+                ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
+            }
             break;
         default: /* Manages the COLL_FTBASIC_EARLY_RETURNING as default case too */
-            ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_intra;
-            ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_era_intra;
+            if( OMPI_COMM_IS_INTER(comm) ) {
+                ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_inter;
+                ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement; /* TODO */
+            } else {
+                ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_intra;
+                ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_era_intra;
+            }
             break;
         }
     } else {

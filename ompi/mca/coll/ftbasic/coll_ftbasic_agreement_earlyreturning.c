@@ -107,7 +107,7 @@ typedef struct {
     int      datatype;                       /**< Fortran index of predefined basic datatype in bytes */
     int      nb_new_dead;                    /**< Number of newly discovered dead */
 } era_value_header_t;
-#define ERA_VALUE_BYTES_COUNT(_h) (ompi_datatype_basicDatatypes[(_h)->datatype]->super.size * (_h)->dt_count)
+#define ERA_VALUE_BYTES_COUNT(_h) (((ompi_datatype_t*)opal_pointer_array_get_item(&ompi_datatype_f_to_c_table, (_h)->datatype))->super.size * (_h)->dt_count)
 
 /* This is the non-linearized version of the era_value_t */
 typedef struct {
@@ -383,7 +383,7 @@ static char *era_msg_type_to_string(int type) {
 }
 #endif /* OPAL_ENABLE_DEBUG */
 
-static era_agreement_info_t *era_lookup_agreeement_info(era_identifier_t agreement_id)
+static era_agreement_info_t *era_lookup_agreement_info(era_identifier_t agreement_id)
 {
     void *value;
 
@@ -929,10 +929,9 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
         assert(NULL != op);
         dt = opal_pointer_array_get_item(&ompi_datatype_f_to_c_table,
                                          ni->current_value->header.datatype);
-        assert(NULL != dt);
+        assert(NULL != dt); assert(dt->d_f_to_c_index == ni->current_value->header.datatype);
         ompi_op_reduce( op, value->bytes, ni->current_value->bytes,
                         ni->current_value->header.dt_count, dt);
-
         if( value->header.ret > ni->current_value->header.ret )
             ni->current_value->header.ret = value->header.ret;
 
@@ -2238,7 +2237,7 @@ static void result_request(era_msg_header_t *msg_header)
          *  So, the caller is the current root (or it is dead now and a new root was selected)
          *  Two cases: */
 
-        ci = era_lookup_agreeement_info(msg_header->agreement_id);
+        ci = era_lookup_agreement_info(msg_header->agreement_id);
         if( NULL != ci &&
             ci->status == BROADCASTING ) {
             /** if I am in this agreement, in the BROADCASTING state, then I need
@@ -2263,7 +2262,7 @@ static void result_request(era_msg_header_t *msg_header)
             success_value.header.ret = MPI_SUCCESS;
             success_value.header.dt_count = 0;
             success_value.header.operand  = ompi_mpi_op_band.op.o_f_to_c_index;
-            success_value.header.datatype = ompi_mpi_int.dt.id;
+            success_value.header.datatype = ompi_mpi_int.dt.d_f_to_c_index;
             success_value.header.nb_new_dead = 0;
             success_value.bytes = NULL;
             success_value.new_dead_array = NULL;
@@ -2337,7 +2336,7 @@ static void msg_up(era_msg_header_t *msg_header, uint8_t *bytes, int *new_dead, 
         return;
     }
 
-    ci = era_lookup_agreeement_info( msg_header->agreement_id );
+    ci = era_lookup_agreement_info( msg_header->agreement_id );
 
     OPAL_OUTPUT_VERBOSE((20, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Managing UP Message, agreement is %s\n",
@@ -2450,7 +2449,7 @@ static void msg_down(era_msg_header_t *msg_header, uint8_t *bytes, int *new_dead
                          msg_header->agreement_value_header.ret,
                          msg_header->agreement_value_header.nb_new_dead));
 
-    ci = era_lookup_agreeement_info( msg_header->agreement_id );
+    ci = era_lookup_agreement_info( msg_header->agreement_id );
     if( NULL == ci ) {
         /** This can happen, if this DOWN is the result of a REQUEST, and
          *  we received another DOWN from another sent REQUEST, and we
@@ -2880,11 +2879,11 @@ static int mca_coll_ftbasic_agreement_era_prepare_agreement(ompi_communicator_t*
     agreement_value.header.ret         = 0;
     agreement_value.header.operand     = op->o_f_to_c_index;
     agreement_value.header.dt_count    = dt_count;
-    agreement_value.header.datatype    = dt->id;
+    agreement_value.header.datatype    = dt->d_f_to_c_index;
     agreement_value.header.nb_new_dead = 0;
 
     /* Let's create or find the current value */
-    ci = era_lookup_agreeement_info(agreement_id);
+    ci = era_lookup_agreement_info(agreement_id);
     if( NULL == ci ) {
         ci = era_create_agreement_info(agreement_id, &agreement_value.header);
     }
@@ -2937,7 +2936,7 @@ static int mca_coll_ftbasic_agreement_era_complete_agreement(era_identifier_t ag
     void *value;
 
     assert(0 != agreement_id.ERAID_FIELDS.agreementid);
-    ci = era_lookup_agreeement_info(agreement_id);
+    ci = era_lookup_agreement_info(agreement_id);
 
     /** Now, it's time to remove that guy from the ongoing agreements */
     opal_hash_table_remove_value_uint64(&era_ongoing_agreements, agreement_id.ERAID_KEY);
@@ -2984,11 +2983,11 @@ static int mca_coll_ftbasic_agreement_era_complete_agreement(era_identifier_t ag
 }
 
 /*
- *	mca_coll_ftbasic_agreement_era_intra
+ * mca_coll_ftbasic_agreement_era_intra
  *
- *	Function:	- MPI_Comm_agree()
- *	Accepts:	- same as MPI_Comm_agree()
- *	Returns:	- MPI_SUCCESS or an MPI error code
+ * Function:	- MPI_Comm_agree()
+ * Accepts:	- same as MPI_Comm_agree()
+ * Returns:	- MPI_SUCCESS or an MPI error code
  */
 
 int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
@@ -3011,6 +3010,56 @@ int mca_coll_ftbasic_agreement_era_intra(ompi_communicator_t* comm,
     }
 
     return mca_coll_ftbasic_agreement_era_complete_agreement(agreement_id, contrib, group);
+}
+
+/*
+ * mca_coll_ftbasic_agreement_era_inter
+ *
+ * Function:	- MPI_Comm_agree()
+ * Accepts:	- same as MPI_Comm_agree()
+ * Returns:	- MPI_SUCCESS or an MPI error code
+ */
+int mca_coll_ftbasic_agreement_era_inter(ompi_communicator_t* comm,
+                                         ompi_group_t **group,
+                                         ompi_op_t *op,
+                                         ompi_datatype_t *dt,
+                                         int dt_count,
+                                         void *contrib,
+                                         mca_coll_base_module_t *module)
+{
+    ompi_communicator_t* shadowcomm;
+    ompi_group_t* uniongrp;
+    int contriblh[2];
+    int rc;
+    int high;
+
+    if( OPAL_UNLIKELY(op != &ompi_mpi_op_band.op
+                   || dt != &ompi_mpi_int.dt
+                   || dt_count != 1) )
+        return  MPI_ERR_INTERN;
+
+    shadowcomm = OBJ_NEW(ompi_communicator_t);
+    *shadowcomm = *comm;
+    shadowcomm->c_flags &= ~OMPI_COMM_INTER;
+    high = ompi_comm_determine_first(comm, 0);
+    if( high ) {
+        ompi_group_union( comm->c_remote_group, comm->c_local_group, &uniongrp );
+        contriblh[0] = -1;
+        contriblh[1] = *(int*)contrib;
+    }
+    else {
+        ompi_group_union( comm->c_local_group, comm->c_remote_group, &uniongrp );
+        contriblh[0] = *(int*)contrib;
+        contriblh[1] = -1;
+    }
+    shadowcomm->c_local_group = shadowcomm->c_remote_group = uniongrp;
+    OBJ_RETAIN(uniongrp); OBJ_RETAIN(uniongrp);
+    shadowcomm->c_my_rank = ompi_group_rank(uniongrp);
+    rc = mca_coll_ftbasic_agreement_era_intra(shadowcomm, group, op, dt, dt_count*2, contriblh, module);
+    ompi_group_free(&uniongrp);
+    OBJ_RELEASE(shadowcomm);
+    *(int*)contrib = high? contriblh[0]: contriblh[1];
+    return rc;
 }
 
 static int era_iagree_req_free(struct ompi_request_t** rptr)
