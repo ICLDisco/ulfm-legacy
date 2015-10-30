@@ -733,6 +733,12 @@ int ompi_comm_overlapping_groups (int size, struct ompi_proc_t ** lprocs,
  */
 int ompi_comm_determine_first ( ompi_communicator_t *intercomm,
                                 int high );
+/**
+ * This is a routine determining wether the local or the
+ * remote group will be first in the new intra-comm.
+ * It does not communicate to exchange the "high" values; used in Agree
+ */
+int ompi_comm_determine_first_auto ( ompi_communicator_t* intercomm );
 
 
 OMPI_DECLSPEC int ompi_comm_activate ( ompi_communicator_t** newcomm, 
