@@ -91,7 +91,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
 
     /* Corner-cases: two processes that can't fail (NULL and myself) */
     if((req->req_peer == MPI_PROC_NULL) ||
-       (req->req_peer == req->req_mpi_object.comm->c_local_group->grp_my_rank)) {
+       (OMPI_COMM_IS_INTRA(req->req_mpi_object.comm) && req->req_peer == req->req_mpi_object.comm->c_local_group->grp_my_rank)) {
         return true;
     }
 
