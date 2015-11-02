@@ -151,8 +151,18 @@ static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int c
                                 (void*)request, request->req_peer);
         OPAL_THREAD_LOCK(&ompi_request_lock);
         request->req_status._cancelled = true;
+        MCA_PML_OB1_SEND_REQUEST_MPI_COMPLETE(pml_req, true);
         OPAL_THREAD_UNLOCK(&ompi_request_lock);
-        send_request_pml_complete(pml_req);
+#if 0
+        /* as said above, in theory we should descedule pending frags and make
+         * it PML complete, but that's not easy. Normally, the frags will
+         * fail to deliver and the error handling should happen then to 
+         * call pml_complete when all frags have triggered
+         * In the meantime, just mark it MPI complete and hope the BTL does the
+         * right thing
+         */
+         send_request_pml_complete(pml_req);
+#endif
         return OMPI_SUCCESS;
     }
 #endif  /* OPAL_ENABLE_FT_MPI */
