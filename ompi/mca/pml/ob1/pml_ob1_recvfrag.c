@@ -141,7 +141,7 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
 
 #if OPAL_ENABLE_FT_MPI
     if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm_ptr)) ) {
-        /* if it's a TYPE_MATCH, the sender is not expecting anything from use
+        /* if it's a TYPE_MATCH, the sender is not expecting anything from us
          * so we are done. */
         return;
     }
@@ -311,9 +311,10 @@ void mca_pml_ob1_recv_frag_callback_ack(mca_btl_base_module_t* btl,
 #if OPAL_ENABLE_FT_MPI
     /* if the req_recv is NULL, the comm has been revoked at the receiver */
     if( OPAL_UNLIKELY(NULL == sendreq->req_recv.pval) ) {
+        OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle, "Recvfrag: Received a NACK to the RDV/RGET match to %d on comm %d\n", sendreq->req_send.req_base.req_peer, sendreq->req_send.req_base.req_comm->c_contextid));
         sendreq->req_send.req_base.req_ompi.req_status.MPI_ERROR = MPI_ERR_REVOKED;
         send_request_pml_complete( sendreq );
-        /* TODO: we could revoke comm localy here too, maybe, it will happen
+        /* TODO: we could revoke comm localy here too, maybe. It will happen
          * anyway, but maybe it's faster? */
         return;
     }
@@ -635,6 +636,7 @@ static int mca_pml_ob1_recv_frag_match( mca_btl_base_module_t *btl,
             /* Send a ACK with a NULL request to signify revocation */
             mca_pml_ob1_rendezvous_hdr_t* hdr_rndv = (mca_pml_ob1_rendezvous_hdr_t*) hdr;
             mca_pml_ob1_recv_request_ack_send(proc->ompi_proc, hdr_rndv->hdr_src_req.lval, NULL, 0, false);
+            OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle, "Recvfrag: comm %d is revoked, sending a NACK to the RDV/RGET match from %d\n", hdr->hdr_ctx, hdr->hdr_src));
         }
         return;
     }
