@@ -125,7 +125,7 @@ static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, 
         OPAL_THREAD_UNLOCK(&comm->c_pml_comm->matching_lock);
 #if OPAL_ENABLE_FT_MPI
         if( !ompi_comm_is_proc_active( comm, request->req_recv.req_base.req_peer, 
-                                              OMPI_COMM_IS_INTRA(comm) ) ) {
+                                              OMPI_COMM_IS_INTER(comm) ) ) {
             /* This process is dead, therefore this request is complete */
             opal_output_verbose(10, ompi_ftmpi_output_handle,
                                 "Recv_request_cancel: cancel granted for request %p because peer %d is dead\n",

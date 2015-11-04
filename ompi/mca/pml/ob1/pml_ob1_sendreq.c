@@ -140,7 +140,7 @@ static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int c
      * no pending fragments. This generates a memory leak as the send requests
      * will never be recovered. */
     if( !ompi_comm_is_proc_active(comm, request->req_peer,
-                                  OMPI_COMM_IS_INTRA(comm)) ) {
+                                  OMPI_COMM_IS_INTER(comm)) ) {
         mca_pml_ob1_send_request_t* pml_req = (mca_pml_ob1_send_request_t*)request;
         /**
          * As now the PML is done with this request we have to force the pml_complete

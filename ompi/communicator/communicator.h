@@ -491,7 +491,7 @@ static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int
         *err = MPI_ERR_REVOKED;
         return false;
     }
-    if( !ompi_comm_is_proc_active(comm, peer_id, !OMPI_COMM_IS_INTRA(comm)) ) {
+    if( !ompi_comm_is_proc_active(comm, peer_id, OMPI_COMM_IS_INTER(comm)) ) {
         *err = MPI_ERR_PROC_FAILED;
         return false;
     }
