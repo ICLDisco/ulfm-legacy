@@ -50,24 +50,40 @@ included in the vX.Y.Z section and be denoted as:
    (** also appeared: A.B.C)  -- indicating that this item was previously
                                  included in release version vA.B.C.
 
+Release 1.1
+-----------
+Focus has been toward improving stability, feature coverage for intercomms, and following
+the updated specification for MPI_ERR_PROC_FAILED_PENDING.
+- Addition of the MPI_ERR_PROC_FAILED_PENDING error code, as per newer specification revision. Properly returned from point-to-point, non-blocking ANY_SOURCE operations.
+- Alias MPI_ERR_PROC_FAILED, MPI_ERR_PROC_FAILED_PENDING and MPI_ERR_REVOKED to the corresponding standard blessed -extension- names MPIX_ERR_xxx.
+- Support for Intercommunicators:
+ - Support for the blocking version of the agreement, MPI_COMM_AGREE on Intercommunicators.
+ - MPI_COMM_REVOKE tested on intercommunicators.
+- Disabled completely (.ompi_ignore) many untested components.
+- Bugfixes:
+ - SendRecv would not always report MPI_ERR_PROC_FAILED correctly.
+ - SendRecv could incorrectly update the status with errors pertaining to the Send portion of the Sendrecv.
+ - Revoked send operations are now always completed or remote cancelled and may not deadlock anymore.
+ - Cancelled send operations to a dead peer will not trigger an assert when the BTL reports that same failure.
+ - Repeat calls to operations returning MPI_ERR_PROC_FAILED will eventually return MPI_ERR_REVOKED when another process revokes the communicator.
 
 Release 1.0
 -----------
 
-Focused have been toward improving performance, both before and after the occurence of failures. The list of new features includes:
+Focus has been toward improving performance, both before and after the occurence of failures. The list of new features includes:
 - Support for the non-blocking version of the agreement, MPI_COMM_IAGREE.
 - Compliance with the latest ULFM specification draft. In particular, the MPI_COMM_(I)AGREE semantic has changed.
 - New algorithm to perform agreements, with a truly logarithmic complexity in number of ranks, which translates into huge performance boosts in MPI_COMM_(I)AGREE and MPI_COMM_SHRINK.
 - New algorithm to perform communicator revocation. MPI_COMM_REVOKE performs a reliable broadcast with a fixed maximum output degree, which scales logarithmically with the number of ranks.
 - Improved support for our traditional network layer:
- - TCP: fully tested</li>
- - SM: fully tested (with the exception of XPMEM, which remains unsupported)</li>
+ - TCP: fully tested
+ - SM: fully tested (with the exception of XPMEM, which remains unsupported)
 - Added support for High Performance networks
- - Open IB: reasonably tested</li>
- - uGNI: reasonably tested</li>
+ - Open IB: reasonably tested
+ - uGNI: reasonably tested
 - The tuned collective module is now enabled by default (reasonably tested), expect a huge performance boost compared to the former basic default setting<
  - Back-ported PBS/ALPS fixes from Open MPI
  - Back-ported OpenIB bug/performance fixes from Open MPI
- - Improve Context ID allocation algorithm to reduce overheads of Shrink<
+ - Improve Context ID allocation algorithm to reduce overheads of Shrink
  - Miscellaneous bug fixes
 
