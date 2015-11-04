@@ -492,6 +492,8 @@ static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int
         return false;
     }
     if( !ompi_comm_is_proc_active(comm, peer_id, OMPI_COMM_IS_INTER(comm)) ) {
+        /* make sure to progress the revoke engine */
+        opal_progress();
         *err = MPI_ERR_PROC_FAILED;
         return false;
     }
@@ -508,6 +510,8 @@ static inline bool ompi_comm_iface_coll_check(ompi_communicator_t *comm, int *er
         return false;
     }
     if( ompi_comm_force_error_on_collectives(comm) ) {
+        /* make sure to progress the revoke engine */
+        opal_progress();
         *err = MPI_ERR_PROC_FAILED;
         return false;
     }

@@ -117,7 +117,7 @@ int ompi_comm_revoke_internal(ompi_communicator_t* comm)
     msg.cid = comm->c_contextid;
     msg.epoch = comm->c_epoch;
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
-                         "%s %s: API call to revoke communicator %3d:%d",
+                         "%s %s: Initiate a revoke on communicator %3d:%d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __func__, comm->c_contextid, comm->c_epoch ));
     ret = ompi_comm_revoke_rbcast(comm, &msg);
     /* Mark locally revoked */
