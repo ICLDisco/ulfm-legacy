@@ -89,10 +89,10 @@ static int rts_hnp_open(void)
     }
 
     mca_base_param_reg_int(c, "proc_fail_xcast_delay",
-                           "Number of seconds to wait after the first failure before broadcasting out the list of failed procs"
-                           " [Default: 1 sec]",
+                           "Number of microseconds to wait after the first failure before broadcasting out the list of failed procs"
+                           " [Default: 25 ms]",
                            false, false,
-                           1, &val);
+                           25000, &val);
     errmgr_rts_hnp_proc_fail_xcast_delay = val;
     if( errmgr_rts_hnp_proc_fail_xcast_delay < 0 ) {
         errmgr_rts_hnp_proc_fail_xcast_delay = 0;
