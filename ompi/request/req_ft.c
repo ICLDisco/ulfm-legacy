@@ -34,10 +34,6 @@
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/base/pml_base_request.h"
 
-#define REQUEST_IS_FT_RELATED(req) (((req)->req_tag > MCA_COLL_BASE_TAG_MAX_POST_AGREEMENT) && \
-                                    ((req)->req_tag < MCA_COLL_BASE_TAG_MAX_PRE_AGREEMENT))
-#define REQUEST_IS_COLLECTIVE(req) (((req)->req_tag >= MCA_COLL_BASE_TAG_MAX_PRE_AGREEMENT) && \
-                                    ((req)->req_tag <= MCA_COLL_BASE_TAG_MIN))
 
 /**************************
  * Support Routines
@@ -78,7 +74,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
      * If so unless we are in the FT part (propagate revoke, agreement or
      * shrink) this should fail.
      */
-    if( OPAL_UNLIKELY(ompi_comm_is_revoked(req->req_mpi_object.comm) && !REQUEST_IS_FT_RELATED(req)) ) {
+    if( OPAL_UNLIKELY(ompi_comm_is_revoked(req->req_mpi_object.comm) && !ompi_request_tag_is_ft(req->req_tag)) ) {
         /* Do not set req->req_status.MPI_SOURCE */
         req->req_status.MPI_ERROR  = MPI_ERR_REVOKED;
 
@@ -97,7 +93,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
 
     /* If any_source but not FT related then the request is always marked for return */
     if( OPAL_UNLIKELY(MPI_ANY_SOURCE == req->req_peer && !ompi_comm_is_any_source_enabled(req->req_mpi_object.comm)) ) {
-        if( !REQUEST_IS_FT_RELATED(req) ) {
+        if( !ompi_request_tag_is_ft(req->req_tag) ) {
             req->req_status.MPI_ERROR  = MPI_ERR_PROC_FAILED_PENDING;
             /* If it is a probe/mprobe, escalate the error */
             if( (MCA_PML_REQUEST_MPROBE == ((mca_pml_base_request_t*)req)->req_type) ||
@@ -137,7 +133,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
      * must be ok to continue. If not then return first failed process
      */
     if( OPAL_UNLIKELY(ompi_comm_force_error_on_collectives(req->req_mpi_object.comm) &&
-        REQUEST_IS_COLLECTIVE(req)) ) {
+                      ompi_request_tag_is_collective(req->req_tag)) ) {
         /* Return the last process known to have failed, may not have been the
          * first to cause the collectives to be disabled.
          */
