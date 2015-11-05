@@ -140,7 +140,7 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
     proc = &comm->procs[hdr->hdr_src];
 
 #if OPAL_ENABLE_FT_MPI
-    if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm_ptr)) ) {
+    if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm_ptr) && !ompi_request_tag_is_ft(hdr->hdr_tag) ) ) {
         /* if it's a TYPE_MATCH, the sender is not expecting anything from us
          * so we are done. */
         return;
@@ -629,7 +629,7 @@ static int mca_pml_ob1_recv_frag_match( mca_btl_base_module_t *btl,
     proc = &comm->procs[hdr->hdr_src];
 
 #if OPAL_ENABLE_FT_MPI
-    if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm_ptr)) ) {
+    if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm_ptr) && !ompi_request_tag_is_ft(hdr->hdr_tag) ) ) {
         if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
             assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type || 
                     MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );

@@ -49,9 +49,6 @@ OMPI_DECLSPEC int OMPI_Comm_iagree(MPI_Comm comm, int *flag, MPI_Request *reques
  ********************************/
 OMPI_DECLSPEC int MPIX_Win_revoke(MPI_Win win);
 OMPI_DECLSPEC int MPIX_Win_get_failed(MPI_Win win, MPI_Group *failedgrp);
-
-OMPI_DECLSPEC int OMPI_Win_revoke(MPI_Win win) __mpi_interface_deprecated__("OMPI_Win_revoke is deprecated, use MPIX_Win_revoke");
-OMPI_DECLSPEC int OMPI_Win_get_failed(MPI_Win win, MPI_Group *failedgrp) __mpi_interface_deprecated__("OMPI_Win_get_failed is deprecated, use MPIX_Win_get_failed");
 #endif
 
 #if 0
@@ -59,7 +56,5 @@ OMPI_DECLSPEC int OMPI_Win_get_failed(MPI_Win win, MPI_Group *failedgrp) __mpi_i
  * I/O
  ********************************/
 OMPI_DECLSPEC int MPIX_File_revoke(MPI_File fh);
-
-OMPI_DECLSPEC int OMPI_File_revoke(MPI_File fh) __mpi_interface_deprecated__("OMPI_File_revoke is deprecated, use MPIX_File_revoke");
 #endif
 
