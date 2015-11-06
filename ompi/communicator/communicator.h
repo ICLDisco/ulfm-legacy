@@ -442,12 +442,6 @@ OMPI_DECLSPEC int ompi_comm_failure_ack_internal(ompi_communicator_t* comm);
 OMPI_DECLSPEC int ompi_comm_failure_get_acked_internal(ompi_communicator_t* comm, ompi_group_t **group );
 
 /*
- * Setup/Shutdown 'revoke' handler
- */
-OMPI_DECLSPEC int ompi_comm_init_revoke(void);
-OMPI_DECLSPEC int ompi_comm_finalize_revoke(void);
-
-/*
  * Revoke the communicator
  */
 OMPI_DECLSPEC int ompi_comm_revoke_internal(ompi_communicator_t* comm);
@@ -533,32 +527,58 @@ static inline bool ompi_comm_iface_create_check(ompi_communicator_t *comm, int *
  * Communicator creation support collectives
  * - Agreement style allreduce
  */
-int ompi_comm_allreduce_intra_ft( int *inbuf, int *outbuf, 
-                                  int count, struct ompi_op_t *op, 
+int ompi_comm_allreduce_intra_ft( int *inbuf, int *outbuf,
+                                  int count, struct ompi_op_t *op,
                                   ompi_communicator_t *comm,
-                                  ompi_communicator_t *bridgecomm, 
-                                  void* local_leader, 
-                                  void* remote_leader, 
+                                  ompi_communicator_t *bridgecomm,
+                                  void* local_leader,
+                                  void* remote_leader,
                                   int send_first );
-int ompi_comm_allreduce_inter_ft( int *inbuf, int *outbuf, 
-                                  int count, struct ompi_op_t *op, 
+int ompi_comm_allreduce_inter_ft( int *inbuf, int *outbuf,
+                                  int count, struct ompi_op_t *op,
                                   ompi_communicator_t *intercomm,
-                                  ompi_communicator_t *bridgecomm, 
-                                  void* local_leader, 
-                                  void* remote_leader, 
+                                  ompi_communicator_t *bridgecomm,
+                                  void* local_leader,
+                                  void* remote_leader,
                                   int send_first );
-int ompi_comm_allreduce_intra_bridge_ft(int *inbuf, int *outbuf, 
-                                        int count, struct ompi_op_t *op, 
+int ompi_comm_allreduce_intra_bridge_ft(int *inbuf, int *outbuf,
+                                        int count, struct ompi_op_t *op,
                                         ompi_communicator_t *comm,
-                                        ompi_communicator_t *bcomm, 
+                                        ompi_communicator_t *bcomm,
                                         void* lleader, void* rleader,
                                         int send_first );
-int ompi_comm_allreduce_intra_oob_ft(int *inbuf, int *outbuf, 
-                                     int count, struct ompi_op_t *op, 
+int ompi_comm_allreduce_intra_oob_ft(int *inbuf, int *outbuf,
+                                     int count, struct ompi_op_t *op,
                                      ompi_communicator_t *comm,
-                                     ompi_communicator_t *bridgecomm, 
+                                     ompi_communicator_t *bridgecomm,
                                      void* lleader, void* rleader,
                                      int send_first );
+
+/*
+ * Reliable Bcast infrastructure
+ */
+OMPI_DECLSPEC int ompi_comm_init_rbcast(void);
+OMPI_DECLSPEC int ompi_comm_finalize_rbcast(void);
+
+typedef struct ompi_comm_rbcast_message_t {
+    uint32_t cid;
+    uint32_t epoch;
+    uint8_t  type;
+} ompi_comm_rbcast_message_t;
+
+typedef int (*ompi_comm_rbcast_cb_t)(ompi_communicator_t* comm, ompi_comm_rbcast_message_t* msg);
+
+OMPI_DECLSPEC int ompi_comm_rbcast_register_cb_type(ompi_comm_rbcast_cb_t callback);
+OMPI_DECLSPEC int ompi_comm_rbcast_unregister_cb_type(int type);
+
+extern int (*ompi_comm_rbcast)(ompi_communicator_t* comm, ompi_comm_rbcast_message_t* msg, size_t size);
+
+/*
+ * Setup/Shutdown 'revoke' handler
+ */
+OMPI_DECLSPEC int ompi_comm_init_revoke(void);
+OMPI_DECLSPEC int ompi_comm_finalize_revoke(void);
+
 #else
 #define OMPI_COMM_SET_FT(COMM, NPROCS, EPOCH)
 #endif /* OPAL_ENABLE_FT_MPI */
