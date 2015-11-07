@@ -408,7 +408,8 @@ static inline bool ompi_errhandler_is_intrinsic(ompi_errhandler_t *errhandler)
  */
 int ompi_errhandler_internal_rte_init(void);
 int ompi_errhandler_internal_rte_finalize(void);
-OMPI_DECLSPEC int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state);
+OMPI_DECLSPEC int ompi_errmgr_mark_failed_peer_fw(ompi_proc_t *ompi_proc, orte_proc_state_t state, int forward);
+#define ompi_errmgr_mark_failed_peer(ompi_proc, state) ompi_errmgr_mark_failed_peer_fw(ompi_proc, state, true)
 
 #endif /* OPAL_ENABLE_FT_MPI */
 

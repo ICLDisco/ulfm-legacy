@@ -31,5 +31,5 @@ libmpi_la_SOURCES += \
 
 if WANT_FT_MPI
 libmpi_la_SOURCES += \
-	communicator/comm_ft.c communicator/comm_ft_reliable_bcast.c communicator/comm_ft_revoke.c
+	communicator/comm_ft.c communicator/comm_ft_reliable_bcast.c communicator/comm_ft_propagate.c communicator/comm_ft_revoke.c
 endif # WANT_FT_MPI

@@ -30,7 +30,7 @@ int ompi_comm_init_revoke(void) {
     if( ret != OMPI_SUCCESS ) return ret;
 
     ret = ompi_comm_rbcast_register_cb_type(ompi_comm_revoke_local);
-    if( 0 >= ret ) {
+    if( 0 <= ret ) {
         comm_revoke_cb_type = ret;
         return OMPI_SUCCESS;
     }
