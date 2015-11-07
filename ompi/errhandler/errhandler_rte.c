@@ -5,9 +5,9 @@
  *                          reserved.
  *
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -23,6 +23,7 @@
 #include "orte/util/error_strings.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/errmgr/base/base.h"
+#include "orte/mca/plm/plm_types.h"
 
 #include "ompi/communicator/communicator.h"
 #include "ompi/request/request.h"
@@ -36,7 +37,7 @@
 /*
  * Local variables and functions
  */
-static int ompi_errmgr_callback(orte_process_name_t proc, orte_proc_state_t state);
+static int ompi_errmgr_rte_callback(orte_process_name_t proc, orte_proc_state_t state);
 
 /*
  * Interface Functions
@@ -48,7 +49,13 @@ int ompi_errhandler_internal_rte_init(void)
     /*
      * Register to get a callback when a process fails
      */
-    if( OMPI_SUCCESS != (ret = orte_errmgr_base_app_reg_notify_callback(ompi_errmgr_callback, NULL)) ) {
+    if( OMPI_SUCCESS != (ret = orte_errmgr_base_app_reg_notify_callback(ompi_errmgr_rte_callback, NULL)) ) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
+    if( OMPI_SUCCESS != (ret = ompi_comm_init_failure_propagate()) ) {
         ORTE_ERROR_LOG(ret);
         exit_status = ret;
         goto cleanup;
@@ -71,11 +78,17 @@ int ompi_errhandler_internal_rte_finalize(void)
         goto cleanup;
     }
 
+    if( OMPI_SUCCESS != (ret = ompi_comm_finalize_failure_propagate()) ) {
+        ORTE_ERROR_LOG(ret);
+        exit_status = ret;
+        goto cleanup;
+    }
+
  cleanup:
     return exit_status;
 }
 
-int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state)
+int ompi_errmgr_mark_failed_peer_fw(ompi_proc_t *ompi_proc, orte_proc_state_t state, int forward)
 {
     int exit_status = OMPI_SUCCESS, max_num_comm = 0, i, proc_rank;
     ompi_communicator_t *comm = NULL;
@@ -170,6 +183,10 @@ int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state
     opal_condition_signal(&ompi_request_cond);
     OPAL_THREAD_UNLOCK(&ompi_request_lock);
 
+    if( forward ) {
+        ompi_comm_failure_propagate(&ompi_mpi_comm_world.comm, ompi_proc, state);
+    }
+
     /*
      * Flush modex information?
      */
@@ -186,7 +203,7 @@ int ompi_errmgr_mark_failed_peer(ompi_proc_t *ompi_proc, orte_proc_state_t state
 /*
  * Local Functions
  */
-static int ompi_errmgr_callback(orte_process_name_t proc, orte_proc_state_t state)
+static int ompi_errmgr_rte_callback(orte_process_name_t proc, orte_proc_state_t state)
 {
     int ret;
     ompi_proc_t *ompi_proc = NULL;

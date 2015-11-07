@@ -576,6 +576,13 @@ extern int (*ompi_comm_rbcast)(ompi_communicator_t* comm, ompi_comm_rbcast_messa
 /*
  * Setup/Shutdown 'revoke' handler
  */
+OMPI_DECLSPEC int ompi_comm_init_failure_propagate(void);
+OMPI_DECLSPEC int ompi_comm_finalize_failure_propagate(void);
+OMPI_DECLSPEC int ompi_comm_failure_propagate(ompi_communicator_t* comm, ompi_proc_t* proc, orte_proc_state_t state);
+
+/*
+ * Setup/Shutdown 'revoke' handler
+ */
 OMPI_DECLSPEC int ompi_comm_init_revoke(void);
 OMPI_DECLSPEC int ompi_comm_finalize_revoke(void);
 
