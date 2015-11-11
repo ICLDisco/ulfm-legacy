@@ -260,7 +260,7 @@ static bool comm_rbcast_listener_started = false;
 int ompi_comm_init_rbcast(void) {
     int ret, id, rbcast;
 
-    id = mca_base_param_register_int("ompi", "ft", "reliable_bcast", NULL, 1);
+    id = mca_base_param_register_int("ompi", "ft", "reliable_bcast", "Reliable Broadcast algorithm\n  1: Binomial Graph Diffusion (default)\n  2: N^2 full graph diffusion", 1);
     mca_base_param_lookup_int(id, &rbcast);
     switch( rbcast ) {
         case 0:
