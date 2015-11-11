@@ -279,6 +279,9 @@ int ompi_coll_tuned_reduce_generic( void* sendbuf, void* recvbuf, int original_c
             sreq = (ompi_request_t**) calloc( max_outstanding_reqs,
                                               sizeof(ompi_request_t*) );
             if (NULL == sreq) { line = __LINE__; ret = -1; goto error_hndl; }
+            for (i = 0; i < max_outstanding_reqs; i++ ) {
+                sreq[i] = MPI_REQUEST_NULL;
+            }
 
             /* post first group of requests */
             for (segindex = 0; segindex < max_outstanding_reqs; segindex++) {
