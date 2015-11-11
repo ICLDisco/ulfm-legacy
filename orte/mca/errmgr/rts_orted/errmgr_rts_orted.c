@@ -434,6 +434,39 @@ static int update_state(orte_jobid_t job,
         } else {
             rc = ORTE_SUCCESS;
         }
+        /* also send it to local children still alive */
+        opal_buffer_t* localcast;
+        int i1=1;
+        localcast = OBJ_NEW(opal_buffer_t);
+        opal_dss_pack(localcast, &i1, 1, OPAL_INT);
+        if (ORTE_SUCCESS != (rc = opal_dss.pack(localcast, proc, 1, ORTE_NAME))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        if (ORTE_SUCCESS != (rc = opal_dss.pack(localcast, &state, 1, ORTE_PROC_STATE))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        OBJ_RETAIN(localcast);
+        for (item = opal_list_get_first(&orte_local_children);
+             item != opal_list_get_end(&orte_local_children);
+             item = opal_list_get_next(item)) {
+            child = (orte_odls_child_t*)item;
+                OPAL_OUTPUT_VERBOSE((5, orte_errmgr_base.output,
+                                     "%s errmgr:rts_orted reporting proc %s aborted (%s) to %s (local procs = %d)",
+                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                     ORTE_NAME_PRINT(proc),
+                                     orte_proc_state_to_str(state),
+                                     ORTE_NAME_PRINT(child->name),
+                                     jobdat->num_local_procs));
+            OBJ_RETAIN(localcast);
+            if (0 > (rc = orte_rml.send_buffer_nb(child->name, localcast, ORTE_RML_TAG_ERRMGR, 0, cbfunc, NULL))) {
+                ORTE_ERROR_LOG(rc);
+            } else {
+                rc = ORTE_SUCCESS;
+            }
+        }
+        OBJ_RELEASE(localcast);
         return rc;
     }
 
@@ -510,7 +543,7 @@ static int update_state(orte_jobid_t job,
             } else {
                 rc = ORTE_SUCCESS;
             }
-        }        
+        }
         return rc;
     }
 
