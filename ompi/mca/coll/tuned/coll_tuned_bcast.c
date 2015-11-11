@@ -70,6 +70,9 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
     if( tree->tree_nextsize != 0 ) {
         send_reqs = (ompi_request_t**)malloc( (ptrdiff_t)tree->tree_nextsize * 
                                               sizeof(ompi_request_t*) );
+        for( i = 0; i < tree->tree_nextsize; i++ ) {
+            send_reqs[i] = MPI_REQUEST_NULL;
+        }
     }
 #endif
 

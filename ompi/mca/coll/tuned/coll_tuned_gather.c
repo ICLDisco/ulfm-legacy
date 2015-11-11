@@ -275,7 +275,10 @@ ompi_coll_tuned_gather_intra_linear_sync(void *sbuf, int scount,
         char *ptmp;
         reqs = (ompi_request_t**) calloc(size, sizeof(ompi_request_t*));
         if (NULL == reqs) { ret = -1; line = __LINE__; goto error_hndl; }
-        
+        for (i = 0; i < size; i++) {
+            reqs[i] = MPI_REQUEST_NULL;
+        }
+
         ompi_datatype_type_size(rdtype, &typelng);
         ompi_datatype_get_extent(rdtype, &lb, &extent);
         first_segment_count = rcount;

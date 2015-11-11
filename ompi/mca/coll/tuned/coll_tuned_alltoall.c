@@ -311,7 +311,8 @@ int ompi_coll_tuned_alltoall_intra_linear_sync(void *sbuf, int scount,
     reqs = (ompi_request_t**) malloc( 2 * total_reqs * 
                                       sizeof(ompi_request_t*));
     if (NULL == reqs) { error = -1; line = __LINE__; goto error_hndl; }
-    
+    reqs[0] = reqs[1] = MPI_REQUEST_NULL;
+
     prcv = (char *) rbuf;
     psnd = (char *) sbuf;
 
