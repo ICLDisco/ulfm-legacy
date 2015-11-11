@@ -61,6 +61,7 @@ the updated specification for MPI_ERR_PROC_FAILED_PENDING.
  - MPI_COMM_REVOKE tested on intercommunicators.
 - Disabled completely (.ompi_ignore) many untested components.
 - Changed the default ORTE failure notification propagation aggregation delay from 1s to 25ms.
+- Added an OMPI internal failure propagator; failure propagation between SM domains is now immediate.
 - Bugfixes:
  - SendRecv would not always report MPI_ERR_PROC_FAILED correctly.
  - SendRecv could incorrectly update the status with errors pertaining to the Send portion of the Sendrecv.
