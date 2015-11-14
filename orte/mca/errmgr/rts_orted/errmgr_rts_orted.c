@@ -44,6 +44,7 @@
 #include "orte/mca/ess/ess.h"
 #include "orte/runtime/orte_quit.h"
 #include "orte/runtime/orte_globals.h"
+#include "opal/dss/dss_internal.h"
 
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/errmgr/base/base.h"
@@ -136,9 +137,10 @@ static int update_state(orte_jobid_t job,
     orte_odls_child_t *child;
     opal_buffer_t *alert;
     orte_plm_cmd_flag_t cmd;
-    int rc=ORTE_SUCCESS;
+    int rc=ORTE_SUCCESS, i1=1;
     orte_vpid_t null=ORTE_VPID_INVALID;
     orte_ns_cmp_bitmask_t mask;
+    opal_buffer_t* localcast;
 
     /*
      * if orte is trying to shutdown, just let it
@@ -434,9 +436,8 @@ static int update_state(orte_jobid_t job,
         } else {
             rc = ORTE_SUCCESS;
         }
+
         /* also send it to local children still alive */
-        opal_buffer_t* localcast;
-        int i1=1;
         localcast = OBJ_NEW(opal_buffer_t);
         opal_dss_pack(localcast, &i1, 1, OPAL_INT);
         if (ORTE_SUCCESS != (rc = opal_dss.pack(localcast, proc, 1, ORTE_NAME))) {
