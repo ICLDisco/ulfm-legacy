@@ -88,7 +88,7 @@
       integer MPI_CART, MPI_GRAPH, MPI_KEYVAL_INVALID
       integer MPI_SOURCE, MPI_TAG, MPI_ERROR
       integer MPI_TAG_UB, MPI_HOST, MPI_IO, MPI_WTIME_IS_GLOBAL
-      integer MPI_APPNUM, MPI_LASTUSEDCODE, MPI_UNIVERSE_SIZE
+      integer MPI_APPNUM, MPI_FT, MPI_LASTUSEDCODE, MPI_UNIVERSE_SIZE
       integer IMPI_CLIENT_SIZE, IMPI_CLIENT_COLOR
       integer IMPI_HOST_SIZE, IMPI_HOST_COLOR
       integer MPI_BSEND_OVERHEAD
@@ -118,15 +118,16 @@
       parameter (MPI_IO=2)
       parameter (MPI_WTIME_IS_GLOBAL=3)
       parameter (MPI_APPNUM=4)
-      parameter (MPI_LASTUSEDCODE=5)
-      parameter (MPI_UNIVERSE_SIZE=6)
-      parameter (MPI_WIN_BASE=7)
-      parameter (MPI_WIN_SIZE=8)
-      parameter (MPI_WIN_DISP_UNIT=9)
-      parameter (IMPI_CLIENT_SIZE=10)
-      parameter (IMPI_CLIENT_COLOR=11)
-      parameter (IMPI_HOST_SIZE=12)
-      parameter (IMPI_HOST_COLOR=13)
+      parameter (MPI_FT=5)
+      parameter (MPI_LASTUSEDCODE=6)
+      parameter (MPI_UNIVERSE_SIZE=7)
+      parameter (MPI_WIN_BASE=8)
+      parameter (MPI_WIN_SIZE=9)
+      parameter (MPI_WIN_DISP_UNIT=10)
+      parameter (IMPI_CLIENT_SIZE=11)
+      parameter (IMPI_CLIENT_COLOR=12)
+      parameter (IMPI_HOST_SIZE=13)
+      parameter (IMPI_HOST_COLOR=14)
 
       parameter (MPI_BSEND_OVERHEAD=128)
       parameter (MPI_ORDER_C=0)

@@ -492,6 +492,7 @@ enum {
 
     /* MPI-2 */
     MPI_APPNUM,
+    MPI_FT,
     MPI_LASTUSEDCODE,
     MPI_UNIVERSE_SIZE,
     MPI_WIN_BASE,
