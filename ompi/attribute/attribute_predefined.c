@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2015 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -48,6 +48,8 @@
  * MPI_IO is set to MPI_ANY_SOURCE.  We may need to revist this.
  *
  * MPI_WTIME_IS_GLOBAL is set to 0 (a conservative answer).
+ *
+ * MPI_FT is set to 0 or 1 (according to OPAL_ENABLE_FT_MPI)
  *
  * MPI_APPNUM is set as the result of a GPR subscription.
  *
@@ -123,6 +125,7 @@ int ompi_attr_create_predefined(void)
         OMPI_SUCCESS != (ret = create_comm(MPI_IO, true)) ||
         OMPI_SUCCESS != (ret = create_comm(MPI_WTIME_IS_GLOBAL, true)) ||
         OMPI_SUCCESS != (ret = create_comm(MPI_APPNUM, true)) ||
+        OMPI_SUCCESS != (ret = create_comm(MPI_FT, true)) ||
         OMPI_SUCCESS != (ret = create_comm(MPI_LASTUSEDCODE, false)) ||
         OMPI_SUCCESS != (ret = create_comm(MPI_UNIVERSE_SIZE, true)) ||
         OMPI_SUCCESS != (ret = create_win(MPI_WIN_BASE)) ||
@@ -145,6 +148,7 @@ int ompi_attr_create_predefined(void)
         OMPI_SUCCESS != (ret = set_f(MPI_HOST, MPI_PROC_NULL)) ||
         OMPI_SUCCESS != (ret = set_f(MPI_IO, MPI_ANY_SOURCE)) ||
         OMPI_SUCCESS != (ret = set_f(MPI_WTIME_IS_GLOBAL, 0)) ||
+        OMPI_SUCCESS != (ret = set_f(MPI_FT, OPAL_ENABLE_FT_MPI)) ||
         OMPI_SUCCESS != (ret = set_f(MPI_LASTUSEDCODE,
                                      ompi_mpi_errcode_lastused)) ||
 #if 0
@@ -188,6 +192,7 @@ int ompi_attr_free_predefined(void)
         OMPI_SUCCESS != (ret = free_comm(MPI_HOST)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_IO)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_WTIME_IS_GLOBAL)) ||
+        OMPI_SUCCESS != (ret = free_comm(MPI_FT)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_APPNUM)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_LASTUSEDCODE)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_UNIVERSE_SIZE)) ||
