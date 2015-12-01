@@ -53,7 +53,7 @@
 #define MCA_COLL_BASE_TAG_AGREEMENT_CATCH_UP_REQ -29
 #define MCA_COLL_BASE_TAG_AGREEMENT_UR_ELECTED -30
 #define MCA_COLL_BASE_TAG_MIN_FT -26
-#define MCA_COLL_BASE_TAG_MAX_FT -31
+#define MCA_COLL_BASE_TAG_MAX_FT -31 /*reserved to avoid revoke for normal reqs, see request/req_ft.c*/
 #endif /* OPAL_ENABLE_FT_MPI */
 
 #endif /* MCA_COLL_BASE_TAGS_H */
