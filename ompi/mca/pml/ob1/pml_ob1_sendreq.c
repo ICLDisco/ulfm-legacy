@@ -134,8 +134,7 @@ static int mca_pml_ob1_send_request_cancel(struct ompi_request_t* request, int c
     if( true == request->req_complete ) { /* way to late to cancel this one */
         return OMPI_SUCCESS;
     }
-    /* If FT is enabled then we allow canceling requests with a dead process or
-     * on a revoked communicator.
+    /* If FT is enabled then we allow canceling requests with a dead process.
      * However, we should not release the request as we don't know if there are
      * no pending fragments. This generates a memory leak as the send requests
      * will never be recovered. */
