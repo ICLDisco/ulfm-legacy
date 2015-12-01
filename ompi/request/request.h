@@ -386,9 +386,8 @@ static inline int ompi_request_free(ompi_request_t** request)
 OMPI_DECLSPEC bool ompi_request_state_ok(ompi_request_t *req);
 
 #include "ompi/mca/coll/base/coll_tags.h"
-#define OMPI_REQUEST_TAG_FT_MARK   (((int)0x3)<<(sizeof(int)-2))
 static inline bool ompi_request_tag_is_ft(int tag) {
-    return (tag <= MCA_COLL_BASE_TAG_MIN_FT && tag >= MCA_COLL_BASE_TAG_MAX_FT) || (OMPI_REQUEST_TAG_FT_MARK & tag);
+    return (tag <= MCA_COLL_BASE_TAG_MIN_FT && tag >= MCA_COLL_BASE_TAG_MAX_FT);
 }
 
 static inline bool ompi_request_tag_is_collective(int tag) {
