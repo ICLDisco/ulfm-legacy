@@ -164,7 +164,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
          * requests we can't return with an error before the buffer is unpinned
          */
         ompi_request_cancel(req);
-        req->req_tag = MCA_COLL_BASE_TAG_AGREEMENT; /* make it an FT request so it is not checked for errors */
+        req->req_tag = MCA_COLL_BASE_TAG_MAX_FT; /* make it an FT request so it is not checked for revoke */
         ompi_request_wait_completion(req);
         req->req_tag = tag;
         req->req_status._cancelled = false; /* This request is not cancelled, it is completed in error */
