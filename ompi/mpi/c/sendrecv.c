@@ -72,38 +72,6 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                 rc = MPI_ERR_TAG;
         }
         OMPI_ERRHANDLER_CHECK(rc, comm, rc, FUNC_NAME);
-
-#if OPAL_ENABLE_FT_MPI
-        /*
-         * An early check, so as to return early if we are communicating with
-         * a failed process. This is not absolutely necessary since we will
-         * check for this, and other, error conditions during the completion
-         * call in the PML.
-         */
-        if( !ompi_comm_iface_p2p_check_proc(comm, dest, &rc) ) {
-            /* Do *NOT* set status->MPI_ERROR here!  See MPI-1.1 doc,
-               sec 3.2.5, p.22 */
-            if( MPI_STATUS_IGNORE != status ) {
-                status->MPI_SOURCE = source;
-                status->MPI_TAG    = recvtag;
-                OMPI_STATUS_SET_COUNT(&status->_ucount, &zero);
-                status->_cancelled = false;
-            }
-            OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-        }
-
-        if( !ompi_comm_iface_p2p_check_proc(comm, source, &rc) ) {
-            /* Do *NOT* set status->MPI_ERROR here!  See MPI-1.1 doc,
-               sec 3.2.5, p.22 */
-            if( MPI_STATUS_IGNORE != status ) {
-                status->MPI_SOURCE = source;
-                status->MPI_TAG    = recvtag;
-                OMPI_STATUS_SET_COUNT(&status->_ucount, &zero);
-                status->_cancelled = false;
-            }
-            OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-        }
-#endif
     }
 
     OPAL_CR_ENTER_LIBRARY();
