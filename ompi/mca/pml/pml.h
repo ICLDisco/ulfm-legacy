@@ -222,13 +222,15 @@ typedef int (*mca_pml_base_module_del_comm_fn_t)(struct ompi_communicator_t* com
 /**
  * Downcall from MPI layer when a communicator is revoked.
  * 
- * @param comm  Communicator
- * @return      OMPI_SUCCESS or failure status.
+ * @param comm (INOUT)      Communicator
+ * @param coll_only (IN)    Revoke only the collective operations, or all
+ *                              non-FT operations
+ * @return                  OMPI_SUCCESS or failure status.
  *
  * Provides the PML the opportunity to change unexpected fragments 
  * handling and purge the queues associated with the communicator. 
  */
-typedef int (*mca_pml_base_module_revoke_comm_fn_t)(struct ompi_communicator_t* comm);
+typedef int (*mca_pml_base_module_revoke_comm_fn_t)(struct ompi_communicator_t* comm, bool coll_only);
 
 /**
  *  Initialize a persistent receive request. 
