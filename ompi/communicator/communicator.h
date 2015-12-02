@@ -203,7 +203,7 @@ struct ompi_communicator_t {
     /** Has this communicator been revoked - OMPI_Comm_revoke() */
     bool                     comm_revoked;
     /** Force errors to collective pt2pt operations? */
-    bool                     collectives_force_error;
+    bool                     coll_revoked;
     /** Quick lookup */
     int                      num_active_local;
     int                      num_active_remote;
@@ -396,7 +396,7 @@ static inline int ompi_comm_peer_lookup_id(ompi_communicator_t* comm, ompi_proc_
         (COMM)->any_source_enabled  = true;                             \
         (COMM)->any_source_offset   = 0;                                \
         (COMM)->comm_revoked        = false;                            \
-        (COMM)->collectives_force_error = false;                        \
+        (COMM)->coll_revoked        = false;                            \
         (COMM)->num_active_local    = (NPROCS);                         \
         (COMM)->num_active_remote   = (NPROCS);                         \
         (COMM)->lleader             = 0;                                \
@@ -416,9 +416,9 @@ static inline bool ompi_comm_is_any_source_enabled(ompi_communicator_t* comm)
 /*
  * Are collectives still active on this communicator?
  */
-static inline bool ompi_comm_force_error_on_collectives(ompi_communicator_t* comm)
+static inline bool ompi_comm_coll_revoked(ompi_communicator_t* comm)
 {
-    return (comm->collectives_force_error);
+    return (comm->coll_revoked);
 }
 
 /*
@@ -503,7 +503,7 @@ static inline bool ompi_comm_iface_coll_check(ompi_communicator_t *comm, int *er
         *err = MPI_ERR_REVOKED;
         return false;
     }
-    if( ompi_comm_force_error_on_collectives(comm) ) {
+    if( ompi_comm_coll_revoked(comm) ) {
         /* make sure to progress the revoke engine */
         opal_progress();
         *err = MPI_ERR_PROC_FAILED;

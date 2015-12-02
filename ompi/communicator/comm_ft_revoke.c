@@ -88,11 +88,9 @@ static int ompi_comm_revoke_local(ompi_communicator_t* comm, ompi_comm_rbcast_me
      * - Turn off collectives
      * - Turn off ANY_SOURCE receives
      */
-    comm->comm_revoked              = true;
-    comm->collectives_force_error   = true;
     comm->any_source_enabled        = false;
     /* purge the communicator unexpected fragments and matching logic */
-    MCA_PML_CALL(revoke_comm(comm));
+    MCA_PML_CALL(revoke_comm(comm, false));
     /* Signal the point-to-point stack to recheck requests */
     OPAL_THREAD_LOCK(&ompi_request_lock);
     opal_condition_signal(&ompi_request_cond);

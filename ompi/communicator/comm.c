@@ -148,7 +148,7 @@ int ompi_comm_set ( ompi_communicator_t **ncomm,
     newcomm->any_source_enabled  = true;
     newcomm->any_source_offset   = 0;
     newcomm->comm_revoked        = false;
-    newcomm->collectives_force_error = false;
+    newcomm->coll_revoked        = false;
     newcomm->num_active_local    = newcomm->c_local_group->grp_proc_count;
     newcomm->num_active_remote   = newcomm->c_remote_group->grp_proc_count;
     newcomm->lleader             = 0;
@@ -1622,7 +1622,7 @@ int ompi_topo_create (ompi_communicator_t *old_comm,
     new_comm->any_source_enabled  = true;
     new_comm->any_source_offset   = 0;
     new_comm->comm_revoked        = false;
-    new_comm->collectives_force_error = false;
+    new_comm->coll_revoked        = false;
     new_comm->num_active_local    = new_comm->c_local_group->grp_proc_count;
     new_comm->num_active_remote   = new_comm->c_remote_group->grp_proc_count;
     new_comm->lleader             = 0;

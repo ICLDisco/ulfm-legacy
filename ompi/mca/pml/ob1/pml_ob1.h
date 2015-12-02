@@ -99,7 +99,8 @@ extern int mca_pml_ob1_del_comm(
 
 #if OPAL_ENABLE_FT_MPI
 extern int mca_pml_ob1_revoke_comm(
-    struct ompi_communicator_t* comm
+    struct ompi_communicator_t* comm,
+    bool coll_only
 );
 #endif
 
