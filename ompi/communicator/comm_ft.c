@@ -325,7 +325,7 @@ int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_id, bool remot
     /* Disable ANY_SOURCE */
     comm->any_source_enabled = false;
     /* Disable collectives */
-    comm->collectives_force_error = true;
+    MCA_PML_CALL(revoke_comm(comm, true));
 
     if( !remote ) {
         comm->num_active_local -= 1;

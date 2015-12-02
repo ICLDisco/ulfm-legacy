@@ -130,11 +130,7 @@ static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, 
             opal_output_verbose(10, ompi_ftmpi_output_handle,
                                 "Recv_request_cancel: cancel granted for request %p because peer %d is dead\n",
                                 (void*)request, request->req_recv.req_base.req_peer);
-            OPAL_THREAD_LOCK(&ompi_request_lock);
-            ompi_request->req_status._cancelled = true;
-            OPAL_THREAD_UNLOCK(&ompi_request_lock);
-            recv_request_pml_complete(request);
-            return OMPI_SUCCESS;
+            goto do_cancel;
         }
 #endif /*OPAL_ENABLE_FT_MPI*/
         opal_output_verbose(10, ompi_ftmpi_output_handle,
@@ -146,6 +142,7 @@ static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, 
     opal_output_verbose(10, ompi_ftmpi_output_handle,
                         "Recv_request_cancel: cancel granted for request %p because it has not matched\n",
                         (void*)request);
+do_cancel:
     /**
      * As now the PML is done with this request we have to force the pml_complete
      * to true. Otherwise, the request will never be freed.
@@ -1006,44 +1003,6 @@ recv_req_match_wild( mca_pml_ob1_recv_request_t* req,
     *p = NULL;
     return NULL;
 }
-
-#if OPAL_ENABLE_FT_MPI
-int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm ) {
-    mca_pml_ob1_comm_t* comm = ompi_comm->c_pml_comm;
-    mca_pml_ob1_comm_proc_t* proc = comm->procs;
-    size_t i;
-
-    OPAL_THREAD_LOCK(&comm->matching_lock);
-    /* loop over all procs in that comm */
-    for (i = 0; i < comm->num_procs; i++) {
-        opal_list_t* frags_list;
-        opal_list_item_t *it;
-        /* loop over unexpected/cantmatch frags for this proc */
-        for ( frags_list = &proc[i].unexpected_frags; 
-              frags_list != &proc[i].frags_cant_match;
-              frags_list = &proc[i].frags_cant_match ) {
-            /* remove the frag from the list, ack if needed to remote cancel the send */
-            while( NULL != (it = opal_list_remove_first( frags_list )) ) {
-                mca_pml_ob1_recv_frag_t* frag = (mca_pml_ob1_recv_frag_t*)it;
-                mca_pml_ob1_hdr_t* hdr = (mca_pml_ob1_hdr_t*)frag->segments->seg_addr.pval;
-            
-                if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
-                    assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type ||
-                            MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
-                    /* Send a ACK with a NULL request to signify revocation */
-                    mca_pml_ob1_recv_request_ack_send(proc[i].ompi_proc, hdr->hdr_rndv.hdr_src_req.lval, NULL, 0, false);
-                }
-                else {
-                    /* if it's a TYPE_MATCH, the sender is not expecting anything
-                     * from us. So we are done. */
-                    continue;
-                }
-            }
-        }
-    }
-    OPAL_THREAD_UNLOCK(&comm->matching_lock);
-}
-#endif /*OPAL_ENABLE_FT_MPI*/
 
 void mca_pml_ob1_recv_req_start(mca_pml_ob1_recv_request_t *req)
 {

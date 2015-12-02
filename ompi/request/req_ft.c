@@ -109,6 +109,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
             goto return_with_error;
         }
     }
+
     /* Any type of request with a dead process must be terminated with error */
     if( OPAL_UNLIKELY(!ompi_comm_is_proc_active(req->req_mpi_object.comm, req->req_peer,
                                   OMPI_COMM_IS_INTER(req->req_mpi_object.comm))) ) {
@@ -132,7 +133,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
      * If the request is part of a collective, then the whole communicator
      * must be ok to continue. If not then return first failed process
      */
-    if( OPAL_UNLIKELY(ompi_comm_force_error_on_collectives(req->req_mpi_object.comm) &&
+    if( OPAL_UNLIKELY(ompi_comm_coll_revoked(req->req_mpi_object.comm) &&
                       ompi_request_tag_is_collective(req->req_tag)) ) {
         /* Return the last process known to have failed, may not have been the
          * first to cause the collectives to be disabled.
@@ -150,7 +151,7 @@ bool ompi_request_state_ok(ompi_request_t *req)
 
  return_with_error:
     if( MPI_ERR_PROC_FAILED_PENDING != req->req_status.MPI_ERROR ) {
-        int tag = req->req_tag;
+        int cancelled = req->req_status._cancelled;
         opal_output_verbose(10, ompi_ftmpi_output_handle,
                             "%s ompi_request_state_ok: Request %p cancelled due to completion with error %d\n", 
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), (void*)req, req->req_status.MPI_ERROR);
@@ -160,14 +161,14 @@ bool ompi_request_state_ok(ompi_request_t *req)
         }
         mca_pml.pml_dump(req->req_mpi_object.comm, ompi_ftmpi_output_handle);
 #endif
-        /* Cancel and force completion immmediately, in particular for Revoked
-         * requests we can't return with an error before the buffer is unpinned
+        /* Cancel and force completion immmediately
+         * However, for Revoked and Collective error we can't complete 
+         * with an error before the buffer is unpinned (i.e. the request gets
+         * wire cancelled).
          */
         ompi_request_cancel(req);
-        req->req_tag = MCA_COLL_BASE_TAG_MAX_FT; /* make it an FT request so it is not checked for revoke */
-        ompi_request_wait_completion(req);
-        req->req_tag = tag;
-        req->req_status._cancelled = false; /* This request is not cancelled, it is completed in error */
+        req->req_status._cancelled = cancelled; /* This request is not user cancelled here, it is completed in error */
+        return !req->req_complete; /* If this request is not complete yet, it is stil ok and needs more spinning */
     }
     return (MPI_SUCCESS == req->req_status.MPI_ERROR);
 }
