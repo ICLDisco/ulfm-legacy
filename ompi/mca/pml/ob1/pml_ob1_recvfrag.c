@@ -104,6 +104,8 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
     mca_pml_ob1_comm_t* comm = ompi_comm->c_pml_comm;
     mca_pml_ob1_comm_proc_t* proc = comm->procs;
     size_t i;
+    opal_list_t nack_list;
+    opal_list_item_t *it;
 
     OPAL_THREAD_LOCK(&comm->matching_lock);
     /* these assignement need to be here because we need the matching_lock */
@@ -113,41 +115,49 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
         "ob1_revoke_comm: purging unexpected fragments and sending NACK as necessary on comm %d, coll_only=%d",
         ompi_comm->c_contextid, coll_only ));
     /* loop over all procs in that comm */
+    OBJ_CONSTRUCT(&nack_list, opal_list_t);
     for (i = 0; i < comm->num_procs; i++) {
         opal_list_t* frags_list;
-        opal_list_item_t *it;
         /* loop over unexpected/cantmatch frags for this proc */
         for ( frags_list = &proc[i].unexpected_frags;
-              frags_list != &proc[i].frags_cant_match;
-              frags_list = &proc[i].frags_cant_match ) {
+              frags_list != NULL;
+              frags_list = ((&proc[i].unexpected_frags == frags_list)? &proc[i].frags_cant_match: NULL) ) {
+            OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
+                "Frag list considered is %s for proc %d, with %d frags", frags_list == &proc[i].frags_cant_match?"cantmatch":"unexpected", i, opal_list_get_size(frags_list)));
             /* remove the frag from the list, ack if needed to remote cancel the send */
-            for( it = opal_list_get_begin(frags_list);
+            for( it = opal_list_get_first(frags_list);
                  it != opal_list_get_end(frags_list);
                  it = opal_list_get_next(it) ) {
                 mca_pml_ob1_recv_frag_t* frag = (mca_pml_ob1_recv_frag_t*)it;
                 mca_pml_ob1_hdr_t* hdr = (mca_pml_ob1_hdr_t*)frag->segments->seg_addr.pval;
-
                 if( (ompi_comm_is_revoked(ompi_comm) && !ompi_request_tag_is_ft(hdr->hdr_match.hdr_tag)) ||
                     (ompi_comm_coll_revoked(ompi_comm) && ompi_request_tag_is_collective(hdr->hdr_match.hdr_tag)) ) {
                     it = opal_list_remove_item( frags_list, it );
-                    if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
-                        assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type ||
-                                MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
-                        OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
-                            "ob1_revoke_comm: sending NACK to %d", i));
-                        /* Send a ACK with a NULL request to signify revocation */
-                        mca_pml_ob1_recv_request_ack_send(proc[i].ompi_proc, hdr->hdr_rndv.hdr_src_req.lval, NULL, 0, false);
-                    }
-                    else {
-                        /* if it's a TYPE_MATCH, the sender is not expecting anything
-                         * from us. So we are done. */
-                        continue;
-                    }
+                    opal_list_append(&nack_list, (opal_list_item_t*)frag);
                 }
             }
         }
     }
     OPAL_THREAD_UNLOCK(&comm->matching_lock);
+    while( NULL != (it = opal_list_remove_first(&nack_list)) ) {
+        mca_pml_ob1_recv_frag_t* frag = (mca_pml_ob1_recv_frag_t*)it;
+        mca_pml_ob1_hdr_t* hdr = (mca_pml_ob1_hdr_t*)frag->segments->seg_addr.pval;
+
+        if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
+            assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type ||
+                    MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
+            OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
+                "ob1_revoke_comm: sending NACK to %d", i));
+            /* Send a ACK with a NULL request to signify revocation */
+            mca_pml_ob1_recv_request_ack_send(comm->procs[hdr->hdr_rndv.hdr_match.hdr_src].ompi_proc, hdr->hdr_rndv.hdr_src_req.lval, NULL, 0, false);
+        }
+        else {
+            /* if it's a TYPE_MATCH, the sender is not expecting anything
+             * from us. So we are done. */
+        }
+        MCA_PML_OB1_RECV_FRAG_RETURN(frag);
+    }
+    OBJ_DESTRUCT(&nack_list);
 }
 #endif /*OPAL_ENABLE_FT_MPI*/
 
