@@ -111,9 +111,6 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
     /* these assignement need to be here because we need the matching_lock */
     ompi_comm->coll_revoked = true;
     if( !coll_only ) ompi_comm->comm_revoked = true;
-    OPAL_OUTPUT_VERBOSE((5, ompi_ftmpi_output_handle,
-        "ob1_revoke_comm: purging unexpected fragments and sending NACK as necessary on comm %d, coll_only=%d",
-        ompi_comm->c_contextid, coll_only ));
     /* loop over all procs in that comm */
     OBJ_CONSTRUCT(&nack_list, opal_list_t);
     for (i = 0; i < comm->num_procs; i++) {
@@ -122,8 +119,15 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
         for ( frags_list = &proc[i].unexpected_frags;
               frags_list != NULL;
               frags_list = ((&proc[i].unexpected_frags == frags_list)? &proc[i].frags_cant_match: NULL) ) {
-            OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
-                "Frag list considered is %s for proc %d, with %d frags", frags_list == &proc[i].frags_cant_match?"cantmatch":"unexpected", i, opal_list_get_size(frags_list)));
+#if OPAL_ENABLE_DEBUG
+            if( opal_list_get_size(frags_list) ) {
+                OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
+                    "ob1_revoke_comm: purging %s for proc %d in comm %d (%s): it has %d frags",
+                    frags_list == &proc[i].frags_cant_match?"cantmatch":"unexpected", 
+                    i, ompi_comm->c_contextid, coll_only?"collective frags only":"all revoked", 
+                    opal_list_get_size(frags_list)));
+            }
+#endif
             /* remove the frag from the list, ack if needed to remote cancel the send */
             for( it = opal_list_get_first(frags_list);
                  it != opal_list_get_end(frags_list);
@@ -146,14 +150,16 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
         if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
             assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type ||
                     MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
-            OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
-                "ob1_revoke_comm: sending NACK to %d", i));
+            OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle,
+                "ob1_revoke_comm: sending NACK to %d", hdr->hdr_rndv.hdr_match.hdr_src));
             /* Send a ACK with a NULL request to signify revocation */
             mca_pml_ob1_recv_request_ack_send(comm->procs[hdr->hdr_rndv.hdr_match.hdr_src].ompi_proc, hdr->hdr_rndv.hdr_src_req.lval, NULL, 0, false);
         }
         else {
             /* if it's a TYPE_MATCH, the sender is not expecting anything
              * from us. So we are done. */
+            OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
+                "ob1_revoke_comm: dropping silently frag from %d", hdr->hdr_rndv.hdr_match.hdr_src));
         }
         MCA_PML_OB1_RECV_FRAG_RETURN(frag);
     }
@@ -226,6 +232,8 @@ void mca_pml_ob1_recv_frag_callback_match(mca_btl_base_module_t* btl,
         /* if it's a TYPE_MATCH, the sender is not expecting anything from us
          * so we are done. */
         OPAL_THREAD_UNLOCK(&comm->matching_lock);
+        OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
+            "ob1_revoke_comm: dropping silently frag from %d", hdr->hdr_src));
         return;
     }
 #endif
@@ -719,6 +727,10 @@ static int mca_pml_ob1_recv_frag_match( mca_btl_base_module_t *btl,
             mca_pml_ob1_rendezvous_hdr_t* hdr_rndv = (mca_pml_ob1_rendezvous_hdr_t*) hdr;
             mca_pml_ob1_recv_request_ack_send(proc->ompi_proc, hdr_rndv->hdr_src_req.lval, NULL, 0, false);
             OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle, "Recvfrag: comm %d is revoked or collectives force errors, sending a NACK to the RDV/RGET match from %d\n", hdr->hdr_ctx, hdr->hdr_src));
+        }
+        else {
+            OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
+                "ob1_revoke_comm: dropping silently frag from %d", hdr->hdr_src));
         }
         return;
     }
