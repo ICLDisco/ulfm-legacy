@@ -732,7 +732,7 @@ static int mca_pml_ob1_recv_frag_match( mca_btl_base_module_t *btl,
             OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
                 "ob1_revoke_comm: dropping silently frag from %d", hdr->hdr_src));
         }
-        return;
+        return OMPI_SUCCESS;
     }
 #endif
 
