@@ -230,6 +230,27 @@ int ompi_mpi_finalize(void)
        MPI barrier doesn't ensure that all messages have been transmitted
        before exiting, so the possibility of a stranded message exists.
     */
+#if OPAL_ENABLE_FT_MPI
+    /* grpcomm barrier does not tolerate /new/ failures. Let's make sure 
+     * we drain all preexisting failures before we proceed; 
+     * TODO: when we have better failure support in the runtime, we can
+     * remove that agreement */
+    {
+        ompi_communicator_t* comm = &ompi_mpi_comm_world.comm;
+        ompi_group_t* acked;
+        ompi_comm_failure_get_acked_internal(comm, &acked);
+        do {
+            ret = comm->c_coll.coll_agreement(comm,
+                                              &acked,
+                                              &ompi_mpi_op_band.op,
+                                              &ompi_mpi_int.dt,
+                                              0,
+                                              NULL,
+                                              comm->c_coll.coll_agreement_module);
+        } while(ret != MPI_SUCCESS);
+        OBJ_RELEASE(acked);
+    }
+#endif
     if (ORTE_SUCCESS != (ret = orte_grpcomm.barrier())) {
         ORTE_ERROR_LOG(ret);
         return ret;
@@ -290,6 +311,10 @@ int ompi_mpi_finalize(void)
 #if OPAL_ENABLE_FT_MPI
     /* finalize communicator 'revoke' handle */
     if (OMPI_SUCCESS != (ret = ompi_comm_finalize_revoke())) {
+        return ret;
+    }
+    /* finalize communicator 'rbcast' handle */
+    if (OMPI_SUCCESS != (ret = ompi_comm_finalize_rbcast())) {
         return ret;
     }
 #endif /* OPAL_ENABLE_FT_MPI */
