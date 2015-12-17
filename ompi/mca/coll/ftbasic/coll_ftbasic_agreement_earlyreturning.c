@@ -1570,7 +1570,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         *(int*)decided_value->bytes,
+                         ERA_VALUE_BYTES_COUNT(&decided_value->header)? *(int*)decided_value->bytes: 0,
                          decided_value->header.ret,
                          decided_value->header.nb_new_dead,
                          ci->agreement_id.ERAID_FIELDS.contextid,
@@ -1589,7 +1589,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
         OPAL_OUTPUT_VERBOSE((30, ompi_ftmpi_output_handle,
                              "%s ftbasic:agreement (ERA) decide %08x.%d.%d on agreement (%d.%d).%d: adding up to %d processes to the list of agreed deaths\n",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             *(int*)decided_value->bytes,
+                             ERA_VALUE_BYTES_COUNT(&decided_value->header)? *(int*)decided_value->bytes: 0,
                              decided_value->header.ret,
                              decided_value->header.nb_new_dead,
                              ci->agreement_id.ERAID_FIELDS.contextid,
@@ -1650,7 +1650,7 @@ static void era_decide(era_value_t *decided_value, era_agreement_info_t *ci)
     OPAL_OUTPUT_VERBOSE((10, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) decide %08x.%d.%d.. on agreement (%d.%d).%d: group of agreed deaths is of size %d\n",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                         *(int*)decided_value->bytes,
+                         ERA_VALUE_BYTES_COUNT(&decided_value->header)? *(int*)decided_value->bytes: 0,
                          decided_value->header.ret,
                          decided_value->header.nb_new_dead,
                          ci->agreement_id.ERAID_FIELDS.contextid,
@@ -2004,7 +2004,7 @@ static void send_msg(ompi_communicator_t *comm,
                              agreement_id.ERAID_FIELDS.epoch,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
-                             *(int*)value->bytes,
+                             ERA_VALUE_BYTES_COUNT(&value->header)? *(int*)value->bytes: 0,
                              value->header.ret,
                              value->header.nb_new_dead,
                              dst,
@@ -2021,7 +2021,7 @@ static void send_msg(ompi_communicator_t *comm,
                              agreement_id.ERAID_FIELDS.epoch,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
-                             *(int*)value->bytes,
+                             ERA_VALUE_BYTES_COUNT(&value->header)? *(int*)value->bytes: 0,
                              value->header.ret,
                              value->header.nb_new_dead,
                              nb_ack_failed,
@@ -2035,7 +2035,7 @@ static void send_msg(ompi_communicator_t *comm,
                              agreement_id.ERAID_FIELDS.epoch,
                              agreement_id.ERAID_FIELDS.agreementid,
                              era_msg_type_to_string(type),
-                             *(int*)value->bytes,
+                             ERA_VALUE_BYTES_COUNT(&value->header)? *(int*)value->bytes: 0,
                              value->header.ret,
                              value->header.nb_new_dead,
                              dst,
@@ -2116,7 +2116,7 @@ static void send_msg(ompi_communicator_t *comm,
                          agreement_id.ERAID_FIELDS.epoch,
                          agreement_id.ERAID_FIELDS.agreementid,
                          era_msg_type_to_string(type),
-                         *(int*)value->bytes,
+                         ERA_VALUE_BYTES_COUNT(&value->header)? *(int*)value->bytes: 0,
                          value->header.ret,
                          value->header.nb_new_dead,
                          msg_header.nb_ack,
@@ -2160,7 +2160,7 @@ static void send_msg(ompi_communicator_t *comm,
                                      agreement_id.ERAID_FIELDS.epoch,
                                      agreement_id.ERAID_FIELDS.agreementid,
                                      era_msg_type_to_string(type),
-                                     *(int*)value->bytes,
+                                     ERA_VALUE_BYTES_COUNT(&value->header)? *(int*)value->bytes: 0,
                                      value->header.ret,
                                      value->header.nb_new_dead,
                                      msg_header.nb_ack,
@@ -2316,7 +2316,7 @@ static void msg_up(era_msg_header_t *msg_header, uint8_t *bytes, int *new_dead, 
                          msg_header->agreement_id.ERAID_FIELDS.agreementid,
                          msg_header->src_comm_rank,
                          ORTE_NAME_PRINT(&msg_header->src_proc_name),
-                         *(int*)bytes,
+                         ERA_VALUE_BYTES_COUNT(&msg_header->agreement_value_header)? *(int*)bytes: 0,
                          msg_header->agreement_value_header.ret,
                          msg_header->agreement_value_header.nb_new_dead,
                          msg_header->nb_ack));
@@ -2408,7 +2408,7 @@ static void msg_up(era_msg_header_t *msg_header, uint8_t *bytes, int *new_dead, 
      * We can do this, because combine_agreement_values does not keep a reference on av */
     av->bytes = bytes;
     if( av->header.nb_new_dead > 0 )
-        av->new_dead_array = (int*) (bytes + ERA_VALUE_BYTES_COUNT(&av->header));
+        av->new_dead_array = new_dead;
     else
         av->new_dead_array = NULL;
 
@@ -2445,8 +2445,7 @@ static void msg_down(era_msg_header_t *msg_header, uint8_t *bytes, int *new_dead
                          msg_header->agreement_id.ERAID_FIELDS.agreementid,
                          msg_header->src_comm_rank,
                          ORTE_NAME_PRINT(&msg_header->src_proc_name),
-                         *(int*)bytes,
-                         msg_header->agreement_value_header.ret,
+                         ERA_VALUE_BYTES_COUNT(&msg_header->agreement_value_header)? *(int*)bytes: 0,
                          msg_header->agreement_value_header.nb_new_dead));
 
     ci = era_lookup_agreement_info( msg_header->agreement_id );
@@ -2568,7 +2567,7 @@ static void era_cb_fn(struct mca_btl_base_module_t* btl,
                              msg_header->agreement_id.ERAID_FIELDS.epoch,
                              msg_header->agreement_id.ERAID_FIELDS.agreementid,
                              msg_header->msg_type,
-                             *(int*)value_bytes,
+                             ERA_VALUE_BYTES_COUNT(&msg_header->agreement_value_header)? *(int*)value_bytes: 0,
                              msg_header->agreement_value_header.ret,
                              msg_header->agreement_value_header.nb_new_dead,
                              msg_header->src_comm_rank,
@@ -2990,7 +2989,7 @@ static int mca_coll_ftbasic_agreement_era_complete_agreement(era_identifier_t ag
                          agreement_id.ERAID_FIELDS.epoch,
                          agreement_id.ERAID_FIELDS.agreementid,
                          ret,
-                         *(int*)contrib));
+                         ERA_VALUE_BYTES_COUNT(&av->header)? *(int*)contrib: 0));
 
     return ret;
 }
@@ -3180,7 +3179,6 @@ int mca_coll_ftbasic_agreement_era_free_comm(ompi_communicator_t* comm,
                          comm->c_epoch));
 
     ompi_comm_failure_get_acked_internal( comm, &acked );
-
     do {
         rc = mca_coll_ftbasic_agreement_era_intra(comm,
                                                   &acked,
@@ -3190,7 +3188,6 @@ int mca_coll_ftbasic_agreement_era_free_comm(ompi_communicator_t* comm,
                                                   NULL,
                                                   comm->c_coll.coll_agreement_module);
     } while(rc != MPI_SUCCESS);
-
     OBJ_RELEASE(acked);
 
     aid.ERAID_FIELDS.contextid = comm->c_contextid;
