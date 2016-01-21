@@ -82,31 +82,3 @@ int mca_coll_base_open(void)
 
     return OMPI_SUCCESS;
 }
-
-#if OPAL_ENABLE_FT_MPI
-int mca_coll_base_agreement(struct ompi_communicator_t* comm,
-                            struct ompi_group_t **group,
-                            ompi_op_t *op,
-                            ompi_datatype_t *dt,
-                            int dt_count,
-                            void *contrib,
-                            struct mca_coll_base_module_2_0_0_t *module)
-{
-    return OMPI_ERR_NOT_SUPPORTED;
-}
-
-int mca_coll_base_iagreement(struct ompi_communicator_t* comm,
-                             struct ompi_group_t *group,
-                             ompi_op_t *op,
-                             ompi_datatype_t *dt,
-                             int dt_count,
-                             void *contrib,
-                             struct mca_coll_base_module_2_0_0_t *module,
-                             ompi_request_t **request)
-{
-    *request = MPI_REQUEST_NULL;
-
-    return OMPI_ERR_NOT_SUPPORTED;
-}
-
-#endif /* OPAL_ENABLE_FT_MPI */

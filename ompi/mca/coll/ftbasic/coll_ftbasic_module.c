@@ -32,6 +32,37 @@
 #include "ompi/mca/coll/base/base.h"
 #include "coll_ftbasic.h"
 
+#if OPAL_ENABLE_FT_MPI
+static int
+mca_coll_ftbasic_agreement(struct ompi_communicator_t* comm,
+                           struct ompi_group_t **group,
+                           ompi_op_t *op,
+                           ompi_datatype_t *dt,
+                           int dt_count,
+                           void *contrib,
+                           struct mca_coll_base_module_2_0_0_t *module)
+{
+    return comm->c_coll.coll_allreduce(MPI_IN_PLACE, contrib, dt_count, dt, op,
+                                       comm, module);
+}
+
+static int
+mca_coll_ftbasic_iagreement(struct ompi_communicator_t* comm,
+                            struct ompi_group_t *group,
+                            ompi_op_t *op,
+                            ompi_datatype_t *dt,
+                            int dt_count,
+                            void *contrib,
+                            struct mca_coll_base_module_2_0_0_t *module,
+                            ompi_request_t **request)
+{
+    *request = MPI_REQUEST_NULL;
+
+    return OMPI_ERR_NOT_SUPPORTED;
+}
+
+#endif /* OPAL_ENABLE_FT_MPI */
+
 /*
  * Initial query function that is invoked during MPI_INIT, allowing
  * this component to disqualify itself if it doesn't support the
@@ -119,6 +150,10 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
     ftbasic_module->super.coll_scatter        = NULL;
     ftbasic_module->super.coll_scatterv       = NULL;
 
+    /* agreement is a reduction with a bitwise OR */
+    ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement;
+    ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement;
+
     /*
      * Agreement operation setup
      * Intercommunicators not currently supported
@@ -130,27 +165,19 @@ mca_coll_ftbasic_comm_query(struct ompi_communicator_t *comm,
         /* Choose the correct operations */
         switch( mca_coll_ftbasic_cur_agreement_method ) {
         case COLL_FTBASIC_EARLY_TERMINATION:
-            if( OMPI_COMM_IS_INTER(comm) ) {
-                ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
-                ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
-            } else {
+            if( !OMPI_COMM_IS_INTER(comm) ) {
                 ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_eta_intra;
-                ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;  /* TODO */
             }
             break;
         default: /* Manages the COLL_FTBASIC_EARLY_RETURNING as default case too */
             if( OMPI_COMM_IS_INTER(comm) ) {
                 ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_inter;
-                ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement; /* TODO */
             } else {
                 ftbasic_module->super.coll_agreement  = mca_coll_ftbasic_agreement_era_intra;
                 ftbasic_module->super.coll_iagreement = mca_coll_ftbasic_iagreement_era_intra;
             }
             break;
         }
-    } else {
-        ftbasic_module->super.coll_agreement  = mca_coll_base_agreement;
-        ftbasic_module->super.coll_iagreement = mca_coll_base_iagreement;
     }
 
     return &(ftbasic_module->super);
