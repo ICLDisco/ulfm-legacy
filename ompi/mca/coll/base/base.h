@@ -163,28 +163,6 @@ int mca_coll_base_comm_unselect(struct ompi_communicator_t *comm);
  */
 OMPI_DECLSPEC int mca_coll_base_close(void);
 
-#if OPAL_ENABLE_FT_MPI
-/*
- * These are dummy functions for those modules that choose not to
- * implement these functions.
- */
-OMPI_DECLSPEC int mca_coll_base_agreement(struct ompi_communicator_t* comm,
-                                          struct ompi_group_t **group,
-                                          ompi_op_t *op,
-                                          ompi_datatype_t *dt,
-                                          int dt_count,
-                                          void *contrib,
-                                          struct mca_coll_base_module_2_0_0_t *module);
-OMPI_DECLSPEC int mca_coll_base_iagreement(struct ompi_communicator_t* comm,
-                                           struct ompi_group_t *group,
-                                           ompi_op_t *op,
-                                           ompi_datatype_t *dt,
-                                           int dt_count,
-                                           void *contrib,
-                                           struct mca_coll_base_module_2_0_0_t *module,
-                                           ompi_request_t **request);
-#endif /* OPAL_ENABLE_FT_MPI */
-
 /*
  * Globals
  */
