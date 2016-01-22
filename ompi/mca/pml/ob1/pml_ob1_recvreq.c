@@ -132,16 +132,18 @@ static int mca_pml_ob1_recv_request_cancel(struct ompi_request_t* ompi_request, 
                                 (void*)request, request->req_recv.req_base.req_peer);
             goto do_cancel;
         }
-#endif /*OPAL_ENABLE_FT_MPI*/
         opal_output_verbose(10, ompi_ftmpi_output_handle,
                             "Recv_request_cancel: cancel denied for request %p because it has matched peer %d\n",
                             (void*)request, request->req_recv.req_base.req_peer);
+#endif /*OPAL_ENABLE_FT_MPI*/
         return OMPI_SUCCESS;
     }
     OPAL_THREAD_UNLOCK(&comm->c_pml_comm->matching_lock);
+#if OPAL_ENABLE_FT_MPI
     opal_output_verbose(10, ompi_ftmpi_output_handle,
                         "Recv_request_cancel: cancel granted for request %p because it has not matched\n",
                         (void*)request);
+#endif
 do_cancel:
     /**
      * As now the PML is done with this request we have to force the pml_complete
