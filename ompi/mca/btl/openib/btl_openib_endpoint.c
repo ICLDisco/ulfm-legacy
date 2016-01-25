@@ -52,7 +52,7 @@
 static void mca_btl_openib_endpoint_construct(mca_btl_base_endpoint_t* endpoint);
 static void mca_btl_openib_endpoint_destruct(mca_btl_base_endpoint_t* endpoint);
 
-static inline int acruire_wqe(mca_btl_openib_endpoint_t *ep,
+static inline int acquire_wqe(mca_btl_openib_endpoint_t *ep,
         mca_btl_openib_send_frag_t *frag)
 {
     int qp = to_base_frag(frag)->base.order;
@@ -113,7 +113,7 @@ int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
 
     qp = des->order;
 
-    if(acruire_wqe(endpoint, frag) != OMPI_SUCCESS)
+    if(acquire_wqe(endpoint, frag) != OMPI_SUCCESS)
         return OMPI_ERR_RESOURCE_BUSY;
 
     eager_limit = mca_btl_openib_component.eager_limit +
@@ -522,6 +522,7 @@ void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
     mca_btl_openib_frag_t *openib_frag;
     mca_btl_openib_com_frag_t *com_frag;
     mca_btl_openib_control_header_t *ctl_hdr;
+    int rc;
 
     OPAL_OUTPUT((-1, "SENDING CTS to %s on qp index %d (QP num %d)",
                  endpoint->endpoint_proc->proc_ompi->proc_hostname,
@@ -559,11 +560,14 @@ void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
 
     /* Send the fragment */
     OPAL_THREAD_LOCK(&endpoint->endpoint_lock);
-    if (OMPI_SUCCESS != mca_btl_openib_endpoint_post_send(endpoint, sc_frag)) {
-        BTL_ERROR(("Failed to post CTS send"));
-        mca_btl_openib_endpoint_invoke_error(endpoint);
+    if (OMPI_SUCCESS != (rc = mca_btl_openib_endpoint_post_send(endpoint, sc_frag))) {
+        if( OMPI_ERR_RESOURCE_BUSY != rc ) {
+            BTL_ERROR(("Failed to post CTS send"));
+            mca_btl_openib_endpoint_invoke_error(endpoint);
+        }
+    } else {
+        endpoint->endpoint_cts_sent = true;
     }
-    endpoint->endpoint_cts_sent = true;
     OPAL_THREAD_UNLOCK(&endpoint->endpoint_lock);
 }
 
@@ -630,8 +634,8 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
     mca_btl_openib_send_frag_t *frag;
     mca_btl_openib_endpoint_t *ep;
     bool master = false;
+    int rc;
 
-    opal_output(-1, "Now we are CONNECTED");
     if (MCA_BTL_XRC_ENABLED) {
         OPAL_THREAD_LOCK(&endpoint->ib_addr->addr_lock);
         if (MCA_BTL_IB_ADDR_CONNECTED == endpoint->ib_addr->status) {
@@ -690,8 +694,12 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
         frag = to_send_frag(frag_item);
         /* We need to post this one */
 
-        if(OMPI_SUCCESS != mca_btl_openib_endpoint_post_send(endpoint, frag))
-            BTL_ERROR(("Error posting send"));
+        if(OMPI_SUCCESS != (rc = mca_btl_openib_endpoint_post_send(endpoint, frag))) {
+            /* if we are out of resources, let's try to reschedule everything later */
+            if( OMPI_ERR_RESOURCE_BUSY != rc ) {
+                BTL_ERROR(("Error posting send"));
+            }
+        }
     }
     OPAL_THREAD_UNLOCK(&endpoint->endpoint_lock);
 
