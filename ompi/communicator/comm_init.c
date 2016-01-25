@@ -291,7 +291,7 @@ int ompi_comm_finalize(void)
     OBJ_DESTRUCT (&ompi_mpi_communicators);
 #if OPAL_ENABLE_FT_MPI
     OBJ_DESTRUCT (&ompi_mpi_comm_epoch);
-#endif  /* OPAL_ENABLE_FT_MPI */
+#endif /* OPAL_ENABLE_FT_MPI */
 
     /* finalize the comm_reg stuff */
     ompi_comm_reg_finalize();

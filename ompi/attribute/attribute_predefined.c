@@ -49,7 +49,8 @@
  *
  * MPI_WTIME_IS_GLOBAL is set to 0 (a conservative answer).
  *
- * MPI_FT is set to 0 or 1 (according to OPAL_ENABLE_FT_MPI)
+ * MPI_FT is set to 0 or 1 (according to OPAL_ENABLE_FT_MPI and
+ * ompi_ftmpi_enabled)
  *
  * MPI_APPNUM is set as the result of a GPR subscription.
  *
@@ -125,7 +126,9 @@ int ompi_attr_create_predefined(void)
         OMPI_SUCCESS != (ret = create_comm(MPI_IO, true)) ||
         OMPI_SUCCESS != (ret = create_comm(MPI_WTIME_IS_GLOBAL, true)) ||
         OMPI_SUCCESS != (ret = create_comm(MPI_APPNUM, true)) ||
+#if OPAL_ENABLE_FT_MPI || 1
         OMPI_SUCCESS != (ret = create_comm(MPI_FT, true)) ||
+#endif /* OPAL_ENABLE_FT_MPI */
         OMPI_SUCCESS != (ret = create_comm(MPI_LASTUSEDCODE, false)) ||
         OMPI_SUCCESS != (ret = create_comm(MPI_UNIVERSE_SIZE, true)) ||
         OMPI_SUCCESS != (ret = create_win(MPI_WIN_BASE)) ||
@@ -148,7 +151,12 @@ int ompi_attr_create_predefined(void)
         OMPI_SUCCESS != (ret = set_f(MPI_HOST, MPI_PROC_NULL)) ||
         OMPI_SUCCESS != (ret = set_f(MPI_IO, MPI_ANY_SOURCE)) ||
         OMPI_SUCCESS != (ret = set_f(MPI_WTIME_IS_GLOBAL, 0)) ||
-        OMPI_SUCCESS != (ret = set_f(MPI_FT, OPAL_ENABLE_FT_MPI)) ||
+#if OPAL_ENABLE_FT_MPI
+        /* Although we always define the key to ease fortran integration,
+         * lets not set a default value to the attribute if we do not 
+         * have fault tolerance built in. */
+        OMPI_SUCCESS != (ret = set_f(MPI_FT, ompi_ftmpi_enabled)) ||
+#endif /* OPAL_ENABLE_FT_MPI */
         OMPI_SUCCESS != (ret = set_f(MPI_LASTUSEDCODE,
                                      ompi_mpi_errcode_lastused)) ||
 #if 0
@@ -192,7 +200,9 @@ int ompi_attr_free_predefined(void)
         OMPI_SUCCESS != (ret = free_comm(MPI_HOST)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_IO)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_WTIME_IS_GLOBAL)) ||
+#if OPAL_ENABLE_FT_MPI || 1
         OMPI_SUCCESS != (ret = free_comm(MPI_FT)) ||
+#endif /* OPAL_ENABLE_FT_MPI */
         OMPI_SUCCESS != (ret = free_comm(MPI_APPNUM)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_LASTUSEDCODE)) ||
         OMPI_SUCCESS != (ret = free_comm(MPI_UNIVERSE_SIZE)) ||
