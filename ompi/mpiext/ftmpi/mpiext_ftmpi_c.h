@@ -18,6 +18,7 @@
 #define MPIX_ERR_PROC_FAILED          MPI_ERR_PROC_FAILED
 #define MPIX_ERR_PROC_FAILED_PENDING  MPI_ERR_PROC_FAILED_PENDING
 #define MPIX_ERR_REVOKED              MPI_ERR_REVOKED
+#define MPIX_FT                       MPI_FT
 
 /********************************
  * Communicators
