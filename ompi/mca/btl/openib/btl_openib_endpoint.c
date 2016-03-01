@@ -697,7 +697,7 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
         if(OMPI_SUCCESS != (rc = mca_btl_openib_endpoint_post_send(endpoint, frag))) {
             /* if we are out of resources, let's try to reschedule everything later */
             if( OMPI_ERR_RESOURCE_BUSY != rc ) {
-                BTL_ERROR(("Error posting send"));
+                BTL_ERROR(("Error posting send to %d\n", endpoint->endpoint_proc->proc_ompi->proc_name.vpid));
             }
         }
     }
