@@ -72,7 +72,8 @@ static int ompi_comm_rbcast_bmg(ompi_communicator_t* comm, ompi_comm_rbcast_mess
     }
 
     /* d is the direction, forward (1*2^i), then backward (-1*2^i) */
-    for(d=1; d >= -1; d-=2) for(i=1; i < np/2; i*=2) {
+    for(i=1; i <= np/2; i*=2)
+      for(d=1; d >= -1; d-=2) {
         ompi_proc_t* proc;
         int idx = (np+me+d*i)%np;
         if(OPAL_LIKELY( idx < ompi_group_size(lgrp) )) {
