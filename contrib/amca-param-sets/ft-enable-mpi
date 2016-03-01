@@ -42,7 +42,6 @@ errmgr_rts_app_priority=5000
 # OMPI Parameters
 # - Only fully tested with the listed btls
 # - ftbasic provides agreement.
-#   - 'basic' is the only tested other collective set
 #
 ompi_ftmpi_enable=1
 # UGNI, OpenIB, TCP, SM have been tested to work well and support most failures gracefully.
