@@ -44,7 +44,6 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 {
     ompi_request_t* req;
     int rc = MPI_SUCCESS, rcs = MPI_SUCCESS;
-    int zero = 0;
 
     MEMCHECKER(
         memchecker_datatype(sendtype);

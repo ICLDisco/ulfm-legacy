@@ -205,12 +205,9 @@ int ompi_errmgr_mark_failed_peer_fw(ompi_proc_t *ompi_proc, orte_proc_state_t st
  */
 static int ompi_errmgr_rte_callback(orte_process_name_t proc, orte_proc_state_t state)
 {
-    int ret;
     ompi_proc_t *ompi_proc = NULL;
 
-    /*
-     * Find the ompi_proc_t
-     */
+    /* Find the ompi_proc_t */
     if( NULL == (ompi_proc = ompi_proc_find(&proc)) ) {
         /** TODO: RACE CONDITION -- This may be the notification for a process we don't know about
          *        yet -- We should keep this information for later notification / check when

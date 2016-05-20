@@ -63,16 +63,18 @@ int ompi_comm_finalize_failure_propagate(void) {
 /**
  * uplevel call from the error handler to initiate a failure_propagate
  */
-int ompi_comm_failure_propagate(ompi_communicator_t* comm, ompi_proc_t* proc, orte_proc_state_t state) {
+int ompi_comm_failure_propagate(ompi_communicator_t* comm, ompi_proc_t* proc, orte_proc_state_t state)
+{
+    ompi_comm_failure_propagate_message_t msg;
     int ret = OMPI_SUCCESS;
 
-    if( -1 == comm_failure_propagate_cb_type ) return OMPI_SUCCESS;
+    if( -1 == comm_failure_propagate_cb_type )
+        return OMPI_SUCCESS;
 
     OPAL_OUTPUT_VERBOSE((1, ompi_ftmpi_output_handle,
                          "%s %s: Initiate a propagation for failure of %s (state %s) on communicator %3d:%d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __func__, ORTE_NAME_PRINT(&proc->proc_name), orte_proc_state_to_str(state), comm->c_contextid, comm->c_epoch ));
 
-    ompi_comm_failure_propagate_message_t msg;
     /* Broadcast the 'failure_propagate' signal to all other processes. */
     msg.rbcast_msg.cid   = comm->c_contextid;
     msg.rbcast_msg.epoch = comm->c_epoch;
