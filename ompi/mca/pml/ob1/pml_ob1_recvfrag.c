@@ -100,7 +100,8 @@ match_one(mca_btl_base_module_t *btl,
           mca_pml_ob1_recv_frag_t* frag);
 
 #if OPAL_ENABLE_FT_MPI
-int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_only ) {
+int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_only )
+{
     mca_pml_ob1_comm_t* comm = ompi_comm->c_pml_comm;
     mca_pml_ob1_comm_proc_t* proc = comm->procs;
     size_t i;
@@ -123,9 +124,9 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
             if( opal_list_get_size(frags_list) ) {
                 OPAL_OUTPUT_VERBOSE((15, ompi_ftmpi_output_handle,
                     "ob1_revoke_comm: purging %s for proc %d in comm %d (%s): it has %d frags",
-                    frags_list == &proc[i].frags_cant_match?"cantmatch":"unexpected", 
-                    i, ompi_comm->c_contextid, coll_only?"collective frags only":"all revoked", 
-                    opal_list_get_size(frags_list)));
+                    frags_list == &proc[i].frags_cant_match ? "cantmatch" : "unexpected", 
+                    (int)i, ompi_comm->c_contextid, coll_only ? "collective frags only" : "all revoked", 
+                    (int)opal_list_get_size(frags_list)));
             }
 #endif
             /* remove the frag from the list, ack if needed to remote cancel the send */
@@ -164,6 +165,7 @@ int mca_pml_ob1_revoke_comm( struct ompi_communicator_t* ompi_comm, bool coll_on
         MCA_PML_OB1_RECV_FRAG_RETURN(frag);
     }
     OBJ_DESTRUCT(&nack_list);
+    return OMPI_SUCCESS;
 }
 #endif /*OPAL_ENABLE_FT_MPI*/
 
@@ -721,10 +723,10 @@ static int mca_pml_ob1_recv_frag_match( mca_btl_base_module_t *btl,
                       (ompi_comm_coll_revoked(comm_ptr) && ompi_request_tag_is_collective(hdr->hdr_tag)) ) {
         OPAL_THREAD_UNLOCK(&comm->matching_lock);
         if( MCA_PML_OB1_HDR_TYPE_MATCH != hdr->hdr_common.hdr_type ) {
-            assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type ||
-                    MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
             /* Send a ACK with a NULL request to signify revocation */
             mca_pml_ob1_rendezvous_hdr_t* hdr_rndv = (mca_pml_ob1_rendezvous_hdr_t*) hdr;
+            assert( MCA_PML_OB1_HDR_TYPE_RGET == hdr->hdr_common.hdr_type ||
+                    MCA_PML_OB1_HDR_TYPE_RNDV == hdr->hdr_common.hdr_type );
             mca_pml_ob1_recv_request_ack_send(proc->ompi_proc, hdr_rndv->hdr_src_req.lval, NULL, 0, false);
             OPAL_OUTPUT_VERBOSE((2, ompi_ftmpi_output_handle, "Recvfrag: comm %d is revoked or collectives force errors, sending a NACK to the RDV/RGET match from %d\n", hdr->hdr_ctx, hdr->hdr_src));
         }
