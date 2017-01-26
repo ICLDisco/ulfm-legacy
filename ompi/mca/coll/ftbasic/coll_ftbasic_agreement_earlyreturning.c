@@ -400,6 +400,7 @@ static era_agreement_info_t *era_create_agreement_info(era_identifier_t agreemen
 {
     era_agreement_info_t *ci;
     int r;
+    size_t value_bytes;
 #if OPAL_ENABLE_DEBUG
     void *value;
     assert( opal_hash_table_get_value_uint64(&era_ongoing_agreements,
@@ -413,7 +414,10 @@ static era_agreement_info_t *era_create_agreement_info(era_identifier_t agreemen
 
     assert( header->datatype >= 0 && header->datatype < OMPI_DATATYPE_MPI_MAX_PREDEFINED );
     /* ci->current_value->bytes will be filled up in combine_agreement_value, but let's allocate it here */
-    ci->current_value->bytes = (uint8_t*)malloc( ERA_VALUE_BYTES_COUNT(&ci->current_value->header) );
+    value_bytes = ERA_VALUE_BYTES_COUNT(&ci->current_value->header);
+    if( value_bytes > 0 ) {
+        ci->current_value->bytes = (uint8_t*)malloc( value_bytes );
+    }
     if( header->nb_new_dead > 0 ) {
         ci->current_value->new_dead_array = (int*)malloc(header->nb_new_dead * sizeof(int));
         for(r = 0; r < header->nb_new_dead; r++)
@@ -728,6 +732,7 @@ static void era_update_new_dead_list(era_agreement_info_t *ci)
     assert(ags->afr_size >= 0); /**< I should be working on an ags still attached to the communicator */
 
     /** Worst case: all processes minus me are dead */
+    if( ompi_group_size(comm->c_local_group) == 1 ) return;
     ra = (int*)malloc( (ompi_group_size(comm->c_local_group) - 1) * sizeof(int) );
     t = 0;
     r = 0;
@@ -915,7 +920,9 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
         ni->current_value->header.operand = value->header.operand;
         ni->current_value->header.dt_count = value->header.dt_count;
         ni->current_value->header.datatype = value->header.datatype;
-        memcpy(ni->current_value->bytes, value->bytes, ERA_VALUE_BYTES_COUNT(&value->header));
+        if( ERA_VALUE_BYTES_COUNT(&value->header) > 0 ) {
+            memcpy(ni->current_value->bytes, value->bytes, ERA_VALUE_BYTES_COUNT(&value->header));
+        }
         ni->current_value->header.ret = value->header.ret;
         ni->current_value->header.min_aid = value->header.min_aid;
         ni->current_value->header.max_aid = value->header.max_aid;
@@ -930,8 +937,10 @@ static void era_combine_agreement_values(era_agreement_info_t *ni, era_value_t *
         dt = opal_pointer_array_get_item(&ompi_datatype_f_to_c_table,
                                          ni->current_value->header.datatype);
         assert(NULL != dt); assert(dt->d_f_to_c_index == ni->current_value->header.datatype);
-        ompi_op_reduce( op, value->bytes, ni->current_value->bytes,
-                        ni->current_value->header.dt_count, dt);
+        if( ni->current_value->header.dt_count > 0 ) {
+            ompi_op_reduce( op, value->bytes, ni->current_value->bytes,
+                            ni->current_value->header.dt_count, dt);
+        }
         if( value->header.ret > ni->current_value->header.ret )
             ni->current_value->header.ret = value->header.ret;
 
@@ -2436,6 +2445,7 @@ static void msg_down(era_msg_header_t *msg_header, uint8_t *bytes, int *new_dead
 {
     era_agreement_info_t *ci;
     era_value_t *av;
+    size_t value_bytes;
 
     OPAL_OUTPUT_VERBOSE((3, ompi_ftmpi_output_handle,
                          "%s ftbasic:agreement (ERA) Received DOWN Message: Agreement ID = (%d.%d).%d, sender: %d/%s, msg value: %08x.%d.%d..\n",
@@ -2463,8 +2473,11 @@ static void msg_down(era_msg_header_t *msg_header, uint8_t *bytes, int *new_dead
     memcpy(&av->header, &msg_header->agreement_value_header, sizeof(era_value_header_t));
     /* We must allocate the arrays of bytes and new_dead ranks, because era_decide is going
      * to keep that era_value_t */
-    av->bytes = (uint8_t *)malloc(ERA_VALUE_BYTES_COUNT(&av->header));
-    memcpy(av->bytes, bytes, ERA_VALUE_BYTES_COUNT(&av->header));
+    value_bytes = ERA_VALUE_BYTES_COUNT(&av->header);
+    if( value_bytes > 0 ) {
+        av->bytes = (uint8_t *)malloc(value_bytes);
+        memcpy(av->bytes, bytes, value_bytes);
+    }
     if( av->header.nb_new_dead > 0 ) {
         av->new_dead_array = (int*)malloc(av->header.nb_new_dead * sizeof(int));
         memcpy(av->new_dead_array, new_dead,
