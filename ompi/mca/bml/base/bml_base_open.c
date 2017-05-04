@@ -37,7 +37,7 @@ double mca_bml_base_error_rate_ceiling;
 int    mca_bml_base_error_count;
 #endif
 
-int mca_bml_base_open(void) 
+int mca_bml_base_open(void)
 {
     /* See if we've already been here */
     if (++mca_bml_base_already_opened > 1) {
@@ -45,16 +45,16 @@ int mca_bml_base_open(void)
     }
 
     if(OMPI_SUCCESS !=
-       mca_base_components_open("bml", 0, mca_bml_base_static_components, 
-                                &mca_bml_base_components_available, 
-                                true)) {  
-        return OMPI_ERROR; 
+        mca_base_components_open("bml", 0, mca_bml_base_static_components,
+                                 &mca_bml_base_components_available,
+                                 true)) {
+        return OMPI_ERROR;
     }
 
 #if OPAL_ENABLE_DEBUG_RELIABILITY
     do {
         int param, value;
-        
+
         mca_base_param_register_int("bml", NULL, "error_rate_floor", "error_rate_floor", 0);
         param = mca_base_param_find("bml", NULL, "error_rate_floor");
         mca_base_param_lookup_int(param, &value);
@@ -78,12 +78,12 @@ int mca_bml_base_open(void)
         }
 
         /* initialize count */
-        if(mca_bml_base_error_rate_ceiling > 0 
+        if(mca_bml_base_error_rate_ceiling > 0
            && mca_bml_base_error_rate_floor <= mca_bml_base_error_rate_ceiling) {
             mca_bml_base_error_count = (int) ((mca_bml_base_error_rate_ceiling * rand())/(RAND_MAX+1.0));
         }
     } while (0);
 #endif
-    return mca_btl_base_open(); 
+    return mca_btl_base_open();
 }
 

@@ -30,6 +30,96 @@
 #include "coll_tuned_topo.h"
 #include "coll_tuned_util.h"
 
+static int
+mca_coll_tuned_alltoallv_intra_basic_inplace(const void *rbuf, const int *rcounts, const int *rdisps,
+                                             struct ompi_datatype_t *rdtype,
+                                             struct ompi_communicator_t *comm,
+                                             mca_coll_base_module_t *module)
+{
+    int i, j, size, rank, err=MPI_SUCCESS;
+    ompi_request_t *req;
+    char *allocated_buffer, *tmp_buffer;
+    size_t max_size, rdtype_size;
+    OPAL_PTRDIFF_TYPE ext, gap = 0, true_ext;
+
+    /* Initialize. */
+
+    size = ompi_comm_size(comm);
+    rank = ompi_comm_rank(comm);
+    ompi_datatype_type_size(rdtype, &rdtype_size);
+
+    /* If only one process, we're done. */
+    if (1 == size || 0 == rdtype_size) {
+        return MPI_SUCCESS;
+    }
+
+    /* Find the largest receive amount */
+    ompi_datatype_type_extent (rdtype, &ext);
+    ompi_datatype_get_true_extent (rdtype, &gap, &true_ext);
+    for (i = 0, max_size = 0 ; i < size ; ++i) {
+        size_t size = ((0 == rcounts[i]) ? 0 : true_ext + (rcounts[i] - 1) * ext);
+        max_size = size > max_size ? size : max_size;
+    }
+    /* The gap will always be the same as we are working on the same datatype */
+
+    /* Allocate a temporary buffer */
+    allocated_buffer = calloc (max_size, 1);
+    if (NULL == allocated_buffer) {
+        return OMPI_ERR_OUT_OF_RESOURCE;
+    }
+    tmp_buffer = allocated_buffer - gap;
+
+    /* Initiate all send/recv to/from others. */
+    /* in-place alltoallv slow algorithm (but works) */
+    for (i = 0 ; i < size ; ++i) {
+        for (j = i+1 ; j < size ; ++j) {
+            if (i == rank && rcounts[j]) {
+                /* Copy the data into the temporary buffer */
+                err = ompi_datatype_copy_content_same_ddt (rdtype, rcounts[j],
+                                                           tmp_buffer, (char *) rbuf + rdisps[j] * ext);
+                if (MPI_SUCCESS != err) { goto error_hndl; }
+
+                /* Exchange data with the peer */
+                err = MCA_PML_CALL(irecv ((char *) rbuf + rdisps[j] * ext, rcounts[j], rdtype,
+                                          j, MCA_COLL_BASE_TAG_ALLTOALLV, comm, &req));
+                if (MPI_SUCCESS != err) { goto error_hndl; }
+
+                err = MCA_PML_CALL(send ((void *) tmp_buffer,  rcounts[j], rdtype,
+                                          j, MCA_COLL_BASE_TAG_ALLTOALLV, MCA_PML_BASE_SEND_STANDARD,
+                                          comm));
+            } else if (j == rank && rcounts[i]) {
+                /* Copy the data into the temporary buffer */
+                err = ompi_datatype_copy_content_same_ddt (rdtype, rcounts[i],
+                                                           tmp_buffer, (char *) rbuf + rdisps[i] * ext);
+                if (MPI_SUCCESS != err) { goto error_hndl; }
+
+                /* Exchange data with the peer */
+                err = MCA_PML_CALL(irecv ((char *) rbuf + rdisps[i] * ext, rcounts[i], rdtype,
+                                          i, MCA_COLL_BASE_TAG_ALLTOALLV, comm, &req));
+                if (MPI_SUCCESS != err) { goto error_hndl; }
+
+                err = MCA_PML_CALL(send ((void *) tmp_buffer,  rcounts[i], rdtype,
+                                          i, MCA_COLL_BASE_TAG_ALLTOALLV, MCA_PML_BASE_SEND_STANDARD,
+                                          comm));
+                if (MPI_SUCCESS != err) { goto error_hndl; }
+            } else {
+                continue;
+            }
+
+            /* Wait for the requests to complete */
+            err = ompi_request_wait (&req, MPI_STATUSES_IGNORE);
+            if (MPI_SUCCESS != err) { goto error_hndl; }
+        }
+    }
+
+ error_hndl:
+    /* Free the temporary buffer */
+    free (allocated_buffer);
+
+    /* All done */
+    return err;
+}
+
 int
 ompi_coll_tuned_alltoallv_intra_pairwise(void *sbuf, int *scounts, int *sdisps,
                                          struct ompi_datatype_t *sdtype,
@@ -38,39 +128,26 @@ ompi_coll_tuned_alltoallv_intra_pairwise(void *sbuf, int *scounts, int *sdisps,
                                          struct ompi_communicator_t *comm,
                                          mca_coll_base_module_t *module)
 {
-    int line = -1, err = 0;
-    int rank, size, step;
-    int sendto, recvfrom;
+    int line = -1, err = 0, rank, size, step, sendto, recvfrom;
     void *psnd, *prcv;
     ptrdiff_t sext, rext;
+
+    if (MPI_IN_PLACE == sbuf) {
+        return mca_coll_tuned_alltoallv_intra_basic_inplace (rbuf, rcounts, rdisps,
+                                                             rdtype, comm, module);
+    }
 
     size = ompi_comm_size(comm);
     rank = ompi_comm_rank(comm);
 
     OPAL_OUTPUT((ompi_coll_tuned_stream,
-                 "coll:tuned:alltoallv_intra_pairwise rank %d", rank));
+                 "coll:base:alltoallv_intra_pairwise rank %d", rank));
 
     ompi_datatype_type_extent(sdtype, &sext);
     ompi_datatype_type_extent(rdtype, &rext);
 
-    psnd = ((char *) sbuf) + (ptrdiff_t)sdisps[rank] * sext;
-    prcv = ((char *) rbuf) + (ptrdiff_t)rdisps[rank] * rext;
-
-    if (0 != scounts[rank]) {
-        err = ompi_datatype_sndrcv(psnd, scounts[rank], sdtype,
-                              prcv, rcounts[rank], rdtype);
-        if (MPI_SUCCESS != err) {
-            return err;
-        }
-    }
-
-    /* If only one process, we're done. */
-    if (1 == size) {
-        return MPI_SUCCESS;
-    }
-
-    /* Perform pairwise exchange starting from 1 since local exhange is done */
-    for (step = 1; step < size + 1; step++) {
+   /* Perform pairwise exchange starting from 1 since local exchange is done */
+    for (step = 0; step < size; step++) {
 
         /* Determine sender and receiver for this step. */
         sendto  = (rank + step) % size;
@@ -81,20 +158,21 @@ ompi_coll_tuned_alltoallv_intra_pairwise(void *sbuf, int *scounts, int *sdisps,
         prcv = (char*)rbuf + (ptrdiff_t)rdisps[recvfrom] * rext;
 
         /* send and receive */
-        err = ompi_coll_tuned_sendrecv( psnd, scounts[sendto], sdtype, sendto, 
+        err = ompi_coll_tuned_sendrecv( psnd, scounts[sendto], sdtype, sendto,
                                         MCA_COLL_BASE_TAG_ALLTOALLV,
-                                        prcv, rcounts[recvfrom], rdtype, recvfrom, 
+                                        prcv, rcounts[recvfrom], rdtype, recvfrom,
                                         MCA_COLL_BASE_TAG_ALLTOALLV,
                                         comm, MPI_STATUS_IGNORE, rank);
-        if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl;  }
+        if (MPI_SUCCESS != err) { line = __LINE__; goto err_hndl;  }
     }
 
     return MPI_SUCCESS;
- 
+
  err_hndl:
     OPAL_OUTPUT((ompi_coll_tuned_stream,
-                 "%s:%4d\tError occurred %d, rank %2d", __FILE__, line, 
-                 err, rank));
+                 "%s:%4d\tError occurred %d, rank %2d at step %d", __FILE__, line,
+                 err, rank, step));
+    (void)line;  // silence compiler warning
     return err;
 }
 
