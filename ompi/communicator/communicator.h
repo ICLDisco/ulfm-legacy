@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2015 The University of Tennessee and The University
+ * Copyright (c) 2004-2017 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -481,11 +481,11 @@ OMPI_DECLSPEC int ompi_comm_set_rank_failed(ompi_communicator_t *comm, int peer_
  */
 static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int peer_id, int *err)
 {
-    if( ompi_comm_is_revoked(comm) ) {
+    if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm)) ) {
         *err = MPI_ERR_REVOKED;
         return false;
     }
-    if( !ompi_comm_is_proc_active(comm, peer_id, OMPI_COMM_IS_INTER(comm)) ) {
+    if( OPAL_UNLIKELY(!ompi_comm_is_proc_active(comm, peer_id, OMPI_COMM_IS_INTER(comm))) ) {
         /* make sure to progress the revoke engine */
         opal_progress();
         *err = MPI_ERR_PROC_FAILED;
@@ -499,11 +499,11 @@ static inline bool ompi_comm_iface_p2p_check_proc(ompi_communicator_t *comm, int
  */
 static inline bool ompi_comm_iface_coll_check(ompi_communicator_t *comm, int *err)
 {
-    if( ompi_comm_is_revoked(comm) ) {
+    if( OPAL_UNLIKELY(ompi_comm_is_revoked(comm)) ) {
         *err = MPI_ERR_REVOKED;
         return false;
     }
-    if( ompi_comm_coll_revoked(comm) ) {
+    if( OPAL_UNLIKELY(ompi_comm_coll_revoked(comm)) ) {
         /* make sure to progress the revoke engine */
         opal_progress();
         *err = MPI_ERR_PROC_FAILED;

@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2017 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -66,19 +66,19 @@ int MPI_Ssend(void *buf, int count, MPI_Datatype type, int dest, int tag, MPI_Co
             OMPI_CHECK_USER_BUFFER(rc, buf, type, count);
         }
         OMPI_ERRHANDLER_CHECK(rc, comm, rc, FUNC_NAME);
+    }
 
 #if OPAL_ENABLE_FT_MPI
-        /*
-         * An early check, so as to return early if we are communicating with
-         * a failed process. This is not absolutely necessary since we will
-         * check for this, and other, error conditions during the completion
-         * call in the PML.
-         */
-        if( !ompi_comm_iface_p2p_check_proc(comm, dest, &rc) ) {
-            OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
-        }
-#endif
+    /*
+     * An early check, so as to return early if we are communicating with
+     * a failed process. This is not absolutely necessary since we will
+     * check for this, and other, error conditions during the completion
+     * call in the PML.
+     */
+    if( OPAL_UNLIKELY(!ompi_comm_iface_p2p_check_proc(comm, dest, &rc)) ) {
+        OMPI_ERRHANDLER_RETURN(rc, comm, rc, FUNC_NAME);
     }
+#endif
 
     if (MPI_PROC_NULL == dest) {
         return MPI_SUCCESS;
