@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2017 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -68,18 +68,18 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high,
         if ( NULL == newcomm )
             return OMPI_ERRHANDLER_INVOKE ( intercomm, MPI_ERR_ARG, 
                                             FUNC_NAME);
+    }
 
 #if OPAL_ENABLE_FT_MPI
-        /*
-         * An early check, so as to return early if we are using a broken
-         * communicator. This is not absolutely necessary since we will
-         * check for this, and other, error conditions during the operation.
-         */
-        if( !ompi_comm_iface_create_check(intercomm, &rc) ) {
-            OMPI_ERRHANDLER_RETURN(rc, intercomm, rc, FUNC_NAME);
-        }
-#endif
+    /*
+     * An early check, so as to return early if we are using a broken
+     * communicator. This is not absolutely necessary since we will
+     * check for this, and other, error conditions during the operation.
+     */
+    if( OPAL_UNLIKELY(!ompi_comm_iface_create_check(intercomm, &rc)) ) {
+        OMPI_ERRHANDLER_RETURN(rc, intercomm, rc, FUNC_NAME);
     }
+#endif
 
     OPAL_CR_ENTER_LIBRARY();
 

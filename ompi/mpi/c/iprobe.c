@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2017 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2008 High Performance Computing Center Stuttgart, 
@@ -79,7 +79,7 @@ int MPI_Iprobe(int source, int tag, MPI_Comm comm, int *flag, MPI_Status *status
      * Check here for issues with the peer, so we do not have to duplicate the
      * functionality in the PML.
      */
-    if( !ompi_comm_iface_p2p_check_proc(comm, source, &rc) ) {
+    if( OPAL_UNLIKELY(!ompi_comm_iface_p2p_check_proc(comm, source, &rc)) ) {
         if (MPI_STATUS_IGNORE != status) {
             status->MPI_SOURCE = source;
             status->MPI_TAG    = tag;
